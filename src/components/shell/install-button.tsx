@@ -24,6 +24,8 @@ export function InstallButton() {
     setStandalone(window.matchMedia("(display-mode: standalone)").matches);
   }, []);
 
+  // Never in the bundled desktop app — you're already running it.
+  if (process.env.NEXT_PUBLIC_DESKTOP === "1") return null;
   if (standalone) return null;
 
   return (
