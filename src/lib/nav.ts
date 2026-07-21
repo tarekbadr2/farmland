@@ -85,3 +85,11 @@ export const navGroups: NavGroup[] = [
 
 export const allNavItems: NavItem[] = navGroups.flatMap((g) => g.items);
 export const primaryNavItems: NavItem[] = allNavItems.filter((i) => i.primary);
+
+/** Whether a nav item is the active route. The animal profile lives at /animal
+ *  (a query-param route) but belongs under the Animals item. */
+export function isNavActive(pathname: string, href: string): boolean {
+  if (pathname === href || pathname.startsWith(`${href}/`)) return true;
+  if (href === "/animals" && pathname.startsWith("/animal")) return true;
+  return false;
+}

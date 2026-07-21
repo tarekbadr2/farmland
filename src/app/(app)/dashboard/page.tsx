@@ -385,7 +385,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="mt-3 grid grid-cols-7 gap-1">
-                {weather.data?.forecast.map((f) => (
+                {weather.data?.forecast?.map((f) => (
                   <div key={f.date} className="rounded-md bg-muted/50 px-1 py-1.5 text-center">
                     <p className="text-[9px] uppercase text-muted-foreground">
                       {formatDate(f.date, locale, { weekday: "short", day: undefined, month: undefined, year: undefined })}

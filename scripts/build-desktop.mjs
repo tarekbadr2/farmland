@@ -26,6 +26,20 @@ if (existsSync(stash) && !existsSync(api)) renameSync(stash, api);
 const hadApi = existsSync(api);
 if (hadApi) renameSync(api, stash);
 
+// A Ctrl-C during `next build` skips the finally block, which would leave the
+// API route stashed and the web build silently missing it. Restore on signals.
+const restore = () => {
+  if (existsSync(stash) && !existsSync(api)) renameSync(stash, api);
+};
+process.on("SIGINT", () => {
+  restore();
+  process.exit(130);
+});
+process.on("SIGTERM", () => {
+  restore();
+  process.exit(143);
+});
+
 try {
   rmSync(path.join(root, "out"), { recursive: true, force: true });
   execSync("next build", {

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
-import { primaryNavItems } from "@/lib/nav";
+import { primaryNavItems, isNavActive } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +21,7 @@ export function MobileTabBar() {
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 glass pb-[env(safe-area-inset-bottom)] lg:hidden">
       <ul className="flex">
         {items.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const active = isNavActive(pathname, item.href);
           return (
             <li key={item.href} className="flex-1">
               <Link

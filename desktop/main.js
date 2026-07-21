@@ -21,17 +21,32 @@ const WEB_ORIGIN = process.env.HERDOS_WEB || "https://farmland.vercel.app";
 ipcMain.handle("desktop-google-signin", () =>
   new Promise((resolve, reject) => {
     let settled = false;
-    const server = http.createServer((req, res) => {
-      const idToken = new URL(req.url, "http://localhost").searchParams.get("idToken");
+    const page = (heading, note) =>
+      "<!doctype html><meta charset=utf-8><body style=\"font-family:system-ui;text-align:center;padding-top:18vh;color:#12161c\">" +
+      `<h2>${heading}</h2><p>${note}</p></body>`;
+    const finish = (res, heading, note, done) => {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(
-        "<!doctype html><meta charset=utf-8><body style=\"font-family:system-ui;text-align:center;padding-top:18vh;color:#12161c\">" +
-          "<h2>Signed in</h2><p>You can close this tab and return to Herd OS.</p></body>",
-      );
-      if (idToken && !settled) {
+      res.end(page(heading, note));
+      if (!settled) {
         settled = true;
-        resolve(idToken);
+        done();
         setTimeout(() => server.close(), 500);
+      }
+    };
+    const server = http.createServer((req, res) => {
+      const q = new URL(req.url, "http://localhost").searchParams;
+      const idToken = q.get("idToken");
+      const error = q.get("error");
+      if (idToken) {
+        finish(res, "Signed in", "You can close this tab and return to Herd OS.", () => resolve(idToken));
+      } else if (error) {
+        finish(res, "Sign-in failed", "Close this tab and try again from Herd OS.", () =>
+          reject(new Error(error)),
+        );
+      } else {
+        // A stray hit (favicon, reload) — don't claim anything happened.
+        res.writeHead(204);
+        res.end();
       }
     });
     server.on("error", reject);

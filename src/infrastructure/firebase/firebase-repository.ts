@@ -755,50 +755,63 @@ export class FirebaseFarmRepository implements FarmRepository {
     const id = doc(this.col(paths.feedConsumption(this.farmId))).id;
     const rationRef = doc(this.db, paths.rations(this.farmId), input.rationId);
 
-    const record = await runTransaction(this.db, async (txn) => {
-      const rationSnap = await txn.get(rationRef);
-      if (!rationSnap.exists()) throw new Error(`Ration ${input.rationId} not found`);
-      const ration = rationSnap.data() as FeedRation;
+    // Offline-safe: a worker logs a feeding in the barn with no signal.
+    // runTransaction needs a live server round-trip and rejects offline, so we
+    // read (cache when offline) then write a batch that queues. Feed logging
+    // isn't concurrent enough to need the transaction's atomicity.
+    const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+    const read = (ref: ReturnType<typeof doc>) =>
+      offline ? getDocFromCache(ref) : getDoc(ref);
 
-      // Read every component feed before writing any — a transaction requires
-      // all reads to precede all writes.
-      const components = ration.components ?? [];
-      const feedSnaps = await Promise.all(
-        components.map((c) => txn.get(doc(this.db, paths.feedItems(this.farmId), c.feedItemId))),
-      );
+    let rationSnap;
+    try {
+      rationSnap = await read(rationRef);
+    } catch {
+      throw new Error("Open the feed page once while online — then this works offline.");
+    }
+    if (!rationSnap.exists()) throw new Error(`Ration ${input.rationId} not found`);
+    const ration = rationSnap.data() as FeedRation;
+    const components = ration.components ?? [];
 
-      let totalKg = 0;
-      let totalCost = 0;
-      feedSnaps.forEach((snap, i) => {
-        const kg = round(components[i].kgPerHead * input.heads, 1);
-        totalKg += kg;
-        if (snap.exists()) {
-          const feed = snap.data() as FeedItem;
-          // Ration is kg; stock and cost are per-unit. Convert once, here.
-          const perKg = kgPerUnit(feed.unit);
-          const unitsDrawn = kg / perKg;
-          totalCost += unitsDrawn * (feed.costPerUnit ?? 0);
-          txn.update(snap.ref, {
-            stock: round(Math.max(0, (feed.stock ?? 0) - unitsDrawn), 2),
-          });
-        }
-      });
+    // A component whose feed doc isn't cached offline still logs; it just can't
+    // draw down that item's stock until the write path can read it.
+    const feedSnaps = await Promise.all(
+      components.map((c) =>
+        read(doc(this.db, paths.feedItems(this.farmId), c.feedItemId)).catch(() => null),
+      ),
+    );
 
-      const consumption: FeedConsumption = {
-        id,
-        farmId: this.farmId,
-        date: input.date,
-        zoneId: input.zoneId,
-        rationId: input.rationId,
-        kg: round(totalKg, 1),
-        cost: round(totalCost, 2),
-        heads: input.heads,
-      };
-      txn.set(doc(this.db, paths.feedConsumption(this.farmId), id), consumption);
-      return consumption;
+    let totalKg = 0;
+    let totalCost = 0;
+    const batch = writeBatch(this.db);
+    feedSnaps.forEach((snap, i) => {
+      const kg = round(components[i].kgPerHead * input.heads, 1);
+      totalKg += kg;
+      if (snap?.exists()) {
+        const feed = snap.data() as FeedItem;
+        // Ration is kg; stock and cost are per-unit. Convert once, here.
+        const perKg = kgPerUnit(feed.unit);
+        const unitsDrawn = kg / perKg;
+        totalCost += unitsDrawn * (feed.costPerUnit ?? 0);
+        batch.update(snap.ref, {
+          stock: round(Math.max(0, (feed.stock ?? 0) - unitsDrawn), 2),
+        });
+      }
     });
 
-    return record;
+    const consumption: FeedConsumption = {
+      id,
+      farmId: this.farmId,
+      date: input.date,
+      zoneId: input.zoneId,
+      rationId: input.rationId,
+      kg: round(totalKg, 1),
+      cost: round(totalCost, 2),
+      heads: input.heads,
+    };
+    batch.set(doc(this.db, paths.feedConsumption(this.farmId), id), consumption);
+    await trackWrite(batch.commit());
+    return consumption;
   }
 
   /* -------------------------------- Inventory ------------------------------ */
@@ -888,8 +901,18 @@ export class FirebaseFarmRepository implements FarmRepository {
    * milk buyers book milk sales, animal buyers book animal sales.
    */
   async recordInvoicePayment(input: InvoicePaymentInput): Promise<Invoice> {
+    // Reads before the write must survive offline (a buyer paying at the gate
+    // with no signal): read from the cache when offline, and let the batch queue
+    // rather than blocking on a server ack. The invoice must have been opened
+    // once while online for its doc to be cached.
+    const offline = typeof navigator !== "undefined" && navigator.onLine === false;
     const invRef = doc(this.db, paths.invoices(this.farmId), input.invoiceId);
-    const snap = await getDoc(invRef);
+    let snap;
+    try {
+      snap = offline ? await getDocFromCache(invRef) : await getDoc(invRef);
+    } catch {
+      throw new Error("Open this invoice once while online — then payments record offline.");
+    }
     if (!snap.exists()) throw new Error(`Invoice ${input.invoiceId} not found`);
     const invoice = { id: snap.id, ...snap.data() } as Invoice;
 
@@ -897,11 +920,16 @@ export class FirebaseFarmRepository implements FarmRepository {
     const paidAmount = round(Math.min(total, (invoice.paidAmount ?? 0) + input.amount), 2);
     const status: Invoice["status"] = paidAmount >= total ? "paid" : "partial";
 
-    const partner = invoice.customerId
-      ? ((await getDoc(doc(this.db, paths.partners(this.farmId), invoice.customerId))).data() as
-          | Partner
-          | undefined)
-      : undefined;
+    let partner: Partner | undefined;
+    if (invoice.customerId) {
+      try {
+        const pRef = doc(this.db, paths.partners(this.farmId), invoice.customerId);
+        const pSnap = offline ? await getDocFromCache(pRef) : await getDoc(pRef);
+        partner = pSnap.data() as Partner | undefined;
+      } catch {
+        partner = undefined; // uncached offline → income books as "other"
+      }
+    }
     const category =
       partner?.kind === "animal_buyer"
         ? "animal_sales"
@@ -924,7 +952,7 @@ export class FirebaseFarmRepository implements FarmRepository {
       invoiceId: invoice.id,
       paymentMethod: input.paymentMethod,
     });
-    await batch.commit();
+    await trackWrite(batch.commit());
 
     return { ...invoice, paidAmount, status };
   }

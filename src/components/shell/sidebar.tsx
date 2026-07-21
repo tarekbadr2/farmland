@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { ChevronsLeft, Sparkles } from "lucide-react";
-import { navGroups } from "@/lib/nav";
+import { navGroups, isNavActive } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n/provider";
 import { useAuth } from "@/lib/auth/provider";
 import { useAlerts, useFarm } from "@/hooks/use-farm-data";
@@ -60,8 +60,7 @@ export function SidebarNav({
             )}
             <ul className="space-y-0.5">
               {group.items.map((item) => {
-                const active =
-                  pathname === item.href || pathname.startsWith(`${item.href}/`);
+                const active = isNavActive(pathname, item.href);
                 const badge = item.href === "/notifications" && unread ? unread : null;
 
                 const link = (
