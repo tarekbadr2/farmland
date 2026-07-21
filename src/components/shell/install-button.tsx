@@ -6,11 +6,19 @@ import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n/provider";
 
 /**
- * "Install app" affordance. Chrome/Edge/Android fire `beforeinstallprompt` once
- * the PWA is installable; we capture it and show a button. iOS Safari doesn't
- * expose an install API (it's Share → Add to Home Screen), so the button simply
- * never appears there — and it hides itself once the app is already installed.
+ * "Get the app" affordance.
+ *
+ * The browser's own PWA install prompt is unreliable as the *only* download
+ * path: it only fires on Chrome/Edge/Android, disappears once the app is already
+ * installed, and never shows on iOS or Firefox. So this button is always visible
+ * on the web and does the best thing available — a native one-click install when
+ * the browser offers it, otherwise it opens the desktop installer download. It
+ * hides only when the app is already running as an installed app.
  */
+
+// Latest published GitHub Release — its page carries the Windows .exe installer.
+const DOWNLOAD_URL = "https://github.com/tarekbadr2/farmland/releases/latest";
+
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
@@ -19,12 +27,12 @@ interface BeforeInstallPromptEvent extends Event {
 export function InstallButton() {
   const { locale } = useI18n();
   const [deferred, setDeferred] = React.useState<BeforeInstallPromptEvent | null>(null);
+  const [standalone, setStandalone] = React.useState(false);
 
   React.useEffect(() => {
-    if (window.matchMedia("(display-mode: standalone)").matches) return; // already installed
-
+    setStandalone(window.matchMedia("(display-mode: standalone)").matches);
     const onPrompt = (e: Event) => {
-      e.preventDefault(); // stop the mini-infobar; we drive it from our button
+      e.preventDefault(); // suppress the mini-infobar; we drive install from the button
       setDeferred(e as BeforeInstallPromptEvent);
     };
     const onInstalled = () => setDeferred(null);
@@ -36,21 +44,27 @@ export function InstallButton() {
     };
   }, []);
 
-  if (!deferred) return null;
+  if (standalone) return null; // already installed — nothing to offer
+
+  const getApp = async () => {
+    if (deferred) {
+      await deferred.prompt(); // native one-click install (Chrome/Edge/Android)
+      await deferred.userChoice.catch(() => undefined);
+      setDeferred(null);
+    } else {
+      window.open(DOWNLOAD_URL, "_blank", "noopener"); // desktop installer download
+    }
+  };
 
   return (
     <Button
       variant="outline"
       size="sm"
       className="hidden h-8 gap-1.5 sm:flex"
-      onClick={async () => {
-        await deferred.prompt();
-        await deferred.userChoice.catch(() => undefined);
-        setDeferred(null);
-      }}
+      onClick={getApp}
     >
       <Download className="size-3.5" />
-      {locale === "ar" ? "تثبيت التطبيق" : "Install app"}
+      {locale === "ar" ? "تنزيل التطبيق" : "Get the app"}
     </Button>
   );
 }
