@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   GoogleAuthProvider,
   onAuthStateChanged,
+  signInWithCredential,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut as fbSignOut,
@@ -119,6 +120,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       signInWithGoogle: async () => {
         const { auth } = getFirebase();
+        // In the desktop app, Google sign-in runs in the user's real browser
+        // (Google blocks OAuth in embedded app windows). The preload bridge
+        // returns a Google id token, which we exchange for a Firebase session.
+        const desktop = (window as unknown as { desktopAuth?: { signInWithGoogle: () => Promise<string> } }).desktopAuth;
+        if (desktop?.signInWithGoogle) {
+          const idToken = await desktop.signInWithGoogle();
+          await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+          return;
+        }
         await signInWithPopup(auth, new GoogleAuthProvider());
       },
       signOut: async () => {

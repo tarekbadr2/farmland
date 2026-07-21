@@ -6,10 +6,49 @@
 // no internet needed to open it. Firebase (client SDK) still talks to the cloud
 // directly for data, exactly as it does on the web.
 
-const { app, BrowserWindow, shell, Menu } = require("electron");
+const { app, BrowserWindow, shell, Menu, ipcMain } = require("electron");
 const path = require("path");
 const http = require("http");
 const handler = require("serve-handler");
+
+// The hosted site that carries the Google sign-in bridge page (real browser).
+const WEB_ORIGIN = process.env.HERDOS_WEB || "https://farmland.vercel.app";
+
+// Google refuses OAuth inside the app window, so sign-in happens in the user's
+// real browser: open the hosted /desktop-signin page, and catch the returned
+// Google credential on a one-shot localhost listener. The token only touches
+// 127.0.0.1 on this machine.
+ipcMain.handle("desktop-google-signin", () =>
+  new Promise((resolve, reject) => {
+    let settled = false;
+    const server = http.createServer((req, res) => {
+      const idToken = new URL(req.url, "http://localhost").searchParams.get("idToken");
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(
+        "<!doctype html><meta charset=utf-8><body style=\"font-family:system-ui;text-align:center;padding-top:18vh;color:#12161c\">" +
+          "<h2>Signed in</h2><p>You can close this tab and return to Herd OS.</p></body>",
+      );
+      if (idToken && !settled) {
+        settled = true;
+        resolve(idToken);
+        setTimeout(() => server.close(), 500);
+      }
+    });
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const port = server.address().port;
+      shell.openExternal(`${WEB_ORIGIN}/desktop-signin?port=${port}`);
+    });
+    // Give up if the user never finishes.
+    setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        server.close();
+        reject(new Error("Sign-in timed out"));
+      }
+    }, 5 * 60 * 1000);
+  }),
+);
 
 // Present as normal Chrome — Google's OAuth refuses sign-in from user agents it
 // tags as "embedded" (the default Electron UA).
@@ -68,7 +107,11 @@ function createWindow() {
     icon: path.join(__dirname, "app-icon.png"),
     title: "Herd OS",
     autoHideMenuBar: true,
-    webPreferences: { contextIsolation: true, nodeIntegration: false },
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, "preload.js"),
+    },
   });
 
   win.loadURL(appUrl, { userAgent: CHROME_UA });
