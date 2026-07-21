@@ -12,7 +12,7 @@ const http = require("http");
 const handler = require("serve-handler");
 
 // The hosted site that carries the Google sign-in bridge page (real browser).
-const WEB_ORIGIN = process.env.HERDOS_WEB || "https://farmland.vercel.app";
+const WEB_ORIGIN = process.env.HERDOS_WEB || "https://farmland-tarekbadr2s-projects.vercel.app";
 
 // Google refuses OAuth inside the app window, so sign-in happens in the user's
 // real browser: open the hosted /desktop-signin page, and catch the returned
@@ -150,7 +150,7 @@ app.whenReady().then(async () => {
   try {
     await startServer();
   } catch {
-    appUrl = "https://farmland.vercel.app"; // last-resort fallback
+    appUrl = "https://farmland-tarekbadr2s-projects.vercel.app"; // last-resort fallback
   }
   createWindow();
   app.on("activate", () => {

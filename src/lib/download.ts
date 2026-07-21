@@ -5,5 +5,5 @@ export const DOWNLOAD_URL =
 /** The hosted web deployment — the marketing site and the metered AI endpoint.
  *  The bundled desktop app calls back here for anything that needs the server
  *  (the Claude advisor); the app itself runs locally. */
-export const WEB_ORIGIN = "https://farmland.vercel.app";
+export const WEB_ORIGIN = "https://farmland-tarekbadr2s-projects.vercel.app";
 
