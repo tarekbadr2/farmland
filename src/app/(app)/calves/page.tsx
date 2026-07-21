@@ -280,7 +280,7 @@ export default function CalvesPage() {
               columns={columns}
               rows={enriched}
               loading={isLoading}
-              onRowClick={(c) => router.push(`/animals/${c.id}`)}
+              onRowClick={(c) => router.push(`/animal?id=${c.id}`)}
               mobileCard={(c) => (
                 <div>
                   <div className="flex items-center justify-between gap-2">

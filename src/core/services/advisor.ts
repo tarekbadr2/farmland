@@ -102,7 +102,7 @@ export function generateInsights(ctx: AdvisorContext): Insight[] {
       evidence: `Peer mean ${round(worst.peerAvg, 1)} L/day vs ${worst.animal.avgDailyMilkL} L/day observed.`,
       action: "Run a California Mastitis Test on the flagged animals at the next milking.",
       actionAr: "أجرِ اختبار CMT على الحيوانات المحددة في الحلبة القادمة.",
-      href: `/animals/${worst.animal.id}`,
+      href: `/animal?id=${worst.animal.id}`,
       animalIds: droppers.slice(0, 12).map((d) => d.animal.id),
     });
   }

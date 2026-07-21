@@ -1,9 +1,10 @@
 name: Build desktop installer
 
-# Builds the Windows .exe installer on a GitHub-hosted Windows runner, which
-# (unlike a locked-down local PC) can run electron-builder's full NSIS pipeline.
-# Run it by hand from the Actions tab, or push a tag like v0.1.0 to also publish
-# a downloadable Release.
+# Builds the fully-bundled Windows .exe on a GitHub-hosted Windows runner (which,
+# unlike a locked-down local PC, can run electron-builder's full NSIS pipeline).
+# It first static-exports the whole app, then packages it inside Electron so the
+# installer is self-contained. Run it by hand from the Actions tab, or push a tag
+# like v0.2.0 to also publish a downloadable Release.
 
 on:
   workflow_dispatch: {}
@@ -17,12 +18,29 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    # Public Firebase web config (ships to the client anyway; access control is
+    # in firestore.rules). Baked into the static export at build time.
+    env:
+      NEXT_PUBLIC_DATA_SOURCE: firebase
+      NEXT_PUBLIC_FARM_ID: farm_nile_delta
+      NEXT_PUBLIC_FIREBASE_API_KEY: AIzaSyA2O6hqukbr_qSBlMG6RCQ2elGDVdwcvP4
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: studio-5814781224-899ee.firebaseapp.com
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: studio-5814781224-899ee
+      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: studio-5814781224-899ee.firebasestorage.app
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "859891908542"
+      NEXT_PUBLIC_FIREBASE_APP_ID: "1:859891908542:web:1daa3fb6cb430220e603ef"
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Install app deps
+        run: npm install
+
+      - name: Static-export the app (bundled into the installer)
+        run: npm run build:desktop
 
       - name: Install desktop deps
         working-directory: desktop

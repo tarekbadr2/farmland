@@ -297,7 +297,7 @@ export default function BreedingPage() {
                 <DataTable
                   columns={dueColumns}
                   rows={m.dueSoon.slice(0, 40)}
-                  onRowClick={(a) => router.push(`/animals/${a.id}`)}
+                  onRowClick={(a) => router.push(`/animal?id=${a.id}`)}
                   mobileCard={(a) => (
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">

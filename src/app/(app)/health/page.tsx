@@ -283,7 +283,7 @@ export default function HealthPage() {
                   columns={caseColumns}
                   rows={activeCases.slice(0, 50)}
                   loading={isLoading}
-                  onRowClick={(e) => router.push(`/animals/${e.animalId}`)}
+                  onRowClick={(e) => router.push(`/animal?id=${e.animalId}`)}
                   mobileCard={(e) => (
                     <div>
                       <div className="flex items-center justify-between gap-2">
@@ -302,7 +302,7 @@ export default function HealthPage() {
                 <DataTable
                   columns={vaccColumns}
                   rows={dueVaccinations.slice(0, 50)}
-                  onRowClick={(e) => router.push(`/animals/${e.animalId}`)}
+                  onRowClick={(e) => router.push(`/animal?id=${e.animalId}`)}
                   mobileCard={(e) => (
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
@@ -321,7 +321,7 @@ export default function HealthPage() {
                 <DataTable
                   columns={caseColumns}
                   rows={withdrawal.slice(0, 50)}
-                  onRowClick={(e) => router.push(`/animals/${e.animalId}`)}
+                  onRowClick={(e) => router.push(`/animal?id=${e.animalId}`)}
                   emptyLabel={t("notifications.empty")}
                   mobileCard={(e) => (
                     <div className="flex items-center justify-between gap-2">

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Area,
@@ -69,8 +69,8 @@ import { peakFromCurrent } from "@/core/repositories/demo-repository";
 import { ageFromDOB, diffDays, formatDate, relativeDays } from "@/lib/date";
 import { groupBy, round } from "@/lib/utils";
 
-export default function AnimalProfilePage() {
-  const { id } = useParams<{ id: string }>();
+function AnimalProfileInner() {
+  const id = useSearchParams().get("id") ?? "";
   const router = useRouter();
   const { t, ln, locale, formatNumber, formatCurrency } = useI18n();
 
@@ -647,7 +647,7 @@ function ParentLink({ parent }: { parent?: import("@/core/domain/types").Animal 
   if (!parent) return <span className="text-muted-foreground">—</span>;
   return (
     <Link
-      href={`/animals/${parent.id}`}
+      href={`/animal?id=${parent.id}`}
       className="tabular text-primary underline-offset-4 hover:underline"
     >
       {parent.tag} · {ln(parent)}
@@ -696,5 +696,14 @@ function ProfileSkeleton() {
       </div>
       <Skeleton className="h-80 rounded-xl" />
     </div>
+  );
+}
+
+// useSearchParams must sit under a Suspense boundary for static export.
+export default function AnimalProfilePage() {
+  return (
+    <React.Suspense fallback={<ProfileSkeleton />}>
+      <AnimalProfileInner />
+    </React.Suspense>
   );
 }

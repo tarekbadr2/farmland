@@ -1,7 +1,7 @@
 {
   "name": "herd-os-desktop",
   "productName": "Herd OS",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Herd OS — Buffalo Farm Management (desktop shell)",
   "author": "Tarek Badr",
   "main": "main.js",
@@ -27,6 +27,9 @@
       "main.js",
       "app-icon.png"
     ],
+    "extraResources": [
+      { "from": "../out", "to": "app", "filter": ["**/*"] }
+    ],
     "win": {
       "target": [
         "nsis"
@@ -41,5 +44,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Herd OS"
     }
+  },
+  "dependencies": {
+    "serve-handler": "^6.1.7"
   }
 }

@@ -18,6 +18,9 @@ node_modules/
 /.next/
 /out/
 
+# desktop static-export build helpers
+/.api-stash/
+
 # production
 /build
 

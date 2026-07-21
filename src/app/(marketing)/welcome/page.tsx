@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { useI18n } from "@/lib/i18n/provider";
 import { getFirebase } from "@/infrastructure/firebase/client";
-import { DOWNLOAD_URL } from "../layout";
+import { DOWNLOAD_URL } from "@/lib/download";
 
 const FEATURES = [
   { icon: Milk, en: "Milk & parlor", enD: "Two-shift records, quality, forecasts and per-cow yield.", ar: "الحليب والحلابة", arD: "سجلات الوردية، الجودة، التنبؤ، وإنتاج كل بقرة." },

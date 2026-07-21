@@ -351,7 +351,7 @@ export default function MilkPage() {
                       {(key === "best" ? best : worst).map((a, i) => (
                         <li key={a.id}>
                           <Link
-                            href={`/animals/${a.id}`}
+                            href={`/animal?id=${a.id}`}
                             className="flex items-center gap-3 rounded-lg border border-border/70 px-3 py-2 transition hover:border-ring/40 hover:bg-accent/40"
                           >
                             <span className="tabular w-5 text-[11px] text-muted-foreground">

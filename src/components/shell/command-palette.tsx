@@ -68,7 +68,7 @@ export function CommandPalette({
                   <Command.Item
                     key={a.id}
                     value={a.id}
-                    onSelect={() => go(`/animals/${a.id}`)}
+                    onSelect={() => go(`/animal?id=${a.id}`)}
                     className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-[13px] data-[selected=true]:bg-accent"
                   >
                     <Beef className="size-4 text-muted-foreground" />

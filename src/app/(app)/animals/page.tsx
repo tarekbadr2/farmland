@@ -378,7 +378,7 @@ export default function AnimalsPage() {
           columns={columns}
           rows={data?.items ?? []}
           loading={isLoading}
-          onRowClick={(a) => router.push(`/animals/${a.id}`)}
+          onRowClick={(a) => router.push(`/animal?id=${a.id}`)}
           sortKey={sortBy}
           sortDir={sortDir}
           onSort={onSort}

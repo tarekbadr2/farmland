@@ -173,7 +173,7 @@ export default function DashboardPage() {
         date: a.expectedCalvingDate!,
         icon: Baby,
         label: `${t("breeding.calvings")} · ${a.tag}`,
-        href: `/animals/${a.id}`,
+        href: `/animal?id=${a.id}`,
       })),
     ...health$.dueVaccinationList
       .filter((e) => diffDays(e.nextDueDate!, TODAY) <= 14)
@@ -768,7 +768,7 @@ export default function DashboardPage() {
                 {topProducers.map((a, i) => (
                   <li key={a.id}>
                     <Link
-                      href={`/animals/${a.id}`}
+                      href={`/animal?id=${a.id}`}
                       className="flex items-center gap-3 rounded-lg px-2 py-1.5 transition hover:bg-accent/50"
                     >
                       <span className="tabular w-4 text-[11px] text-muted-foreground">

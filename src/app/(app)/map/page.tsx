@@ -218,7 +218,7 @@ export default function FarmMapPage() {
                       {inZone.slice(0, 60).map((a) => (
                         <Link
                           key={a.id}
-                          href={`/animals/${a.id}`}
+                          href={`/animal?id=${a.id}`}
                           className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-accent/50"
                         >
                           <span className="tabular text-[12px] font-medium">{a.tag}</span>

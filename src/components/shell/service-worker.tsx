@@ -13,6 +13,9 @@ import { toast } from "sonner";
 export function ServiceWorkerRegistrar() {
   React.useEffect(() => {
     if (process.env.NODE_ENV !== "production") return;
+    // In the bundled desktop app the whole thing is already served from disk, so
+    // the offline service worker is redundant (and would cache the local build).
+    if (process.env.NEXT_PUBLIC_DESKTOP === "1") return;
     if (!("serviceWorker" in navigator)) return;
 
     let reloading = false;

@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:desktop": "node scripts/build-desktop.mjs",
     "postbuild": "node scripts/precache-manifest.mjs",
     "start": "next start",
     "lint": "eslint",

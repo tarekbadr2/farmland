@@ -268,7 +268,7 @@ export default function AssistantPage() {
                             {answer.animals.slice(0, 60).map((a) => (
                               <Link
                                 key={a.id}
-                                href={`/animals/${a.id}`}
+                                href={`/animal?id=${a.id}`}
                                 className="flex items-center gap-3 rounded-lg border border-border/70 px-3 py-2 transition hover:border-ring/40 hover:bg-accent/40"
                               >
                                 <span className="tabular w-20 shrink-0 text-[12.5px] font-medium">

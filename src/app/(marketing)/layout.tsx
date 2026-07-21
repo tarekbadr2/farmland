@@ -7,9 +7,7 @@ import { Download, Languages } from "lucide-react";
 import { Logo } from "@/components/shell/logo";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n/provider";
-
-export const DOWNLOAD_URL =
-  "https://github.com/tarekbadr2/farmland/releases/latest/download/Herd-OS-Setup.exe";
+import { DOWNLOAD_URL } from "@/lib/download";
 
 /**
  * Public marketing chrome — the product's front door. No auth, no app shell;
