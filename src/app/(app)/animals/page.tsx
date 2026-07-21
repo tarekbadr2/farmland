@@ -9,6 +9,7 @@ import { PageHeader, gridStagger } from "@/components/common/page-header";
 import { StatCard } from "@/components/common/stat-card";
 import { DataTable, type Column } from "@/components/common/data-table";
 import { AnimalFormDialog } from "@/components/animals/animal-form-dialog";
+import { ImportAnimalsDialog } from "@/components/animals/import-dialog";
 import {
   AnimalStatusPill,
   HealthScore,
@@ -240,6 +241,7 @@ export default function AnimalsPage() {
             <Button variant="outline" size="sm">
               <QrCode /> {t("animals.scanTag")}
             </Button>
+            <ImportAnimalsDialog />
             <AnimalFormDialog
               trigger={
                 <Button size="sm">
