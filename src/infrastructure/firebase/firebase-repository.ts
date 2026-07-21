@@ -116,6 +116,56 @@ function rows<T>(snap: { docs: QueryDocumentSnapshot<DocumentData>[] }): T[] {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
 }
 
+/** Firestore Timestamp / {seconds} / ISO string → ISO string. */
+function toIso(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (v && typeof v === "object") {
+    const o = v as { toDate?: () => Date; seconds?: number };
+    if (typeof o.toDate === "function") return o.toDate().toISOString();
+    if (typeof o.seconds === "number") return new Date(o.seconds * 1000).toISOString();
+  }
+  return new Date().toISOString();
+}
+
+const ALERT_CATEGORIES = new Set([
+  "health", "breeding", "milk", "inventory", "weather", "task", "finance", "system",
+]);
+
+// The Cloud Function tags alerts with a `kind`; map it to the UI's category so
+// function-raised alerts still get the right icon instead of the system default.
+const KIND_TO_CATEGORY: Record<string, Alert["category"]> = {
+  calving_due: "breeding",
+  vaccination_due: "health",
+  quarantine: "health",
+  low_stock: "inventory",
+  expiring_stock: "inventory",
+  milk_drop: "milk",
+  missed_milking: "milk",
+  overdue_tasks: "task",
+};
+
+/**
+ * Coerce a stored alert into the shape the UI expects. Alerts raised by the
+ * Cloud Function land with a Firestore Timestamp `createdAt`, no `channels`, and
+ * a `kind` in place of `category` — normalising all three here means the list
+ * can't crash on a function-generated row (the UI assumes a string date and an
+ * iterable `channels`).
+ */
+function normalizeAlert(a: Record<string, unknown>): Alert {
+  const category = ALERT_CATEGORIES.has(a.category as string)
+    ? (a.category as string)
+    : KIND_TO_CATEGORY[a.kind as string] ?? "system";
+  const channels = Array.isArray(a.channels) && a.channels.length ? a.channels : ["in_app"];
+  return {
+    ...(a as unknown as Alert),
+    createdAt: toIso(a.createdAt),
+    category: category as Alert["category"],
+    channels: channels as Alert["channels"],
+    animalId: (a.animalId ?? a.subjectId) as string | undefined,
+    read: Boolean(a.read),
+  };
+}
+
 export class FirebaseFarmRepository implements FarmRepository {
   readonly source = "firebase" as const;
   private farmId: string;
@@ -883,8 +933,14 @@ export class FirebaseFarmRepository implements FarmRepository {
 
   /* --------------------------------- Alerts -------------------------------- */
 
-  getAlerts = () =>
-    this.all<Alert>(paths.alerts(this.farmId), orderBy("createdAt", "desc"), fsLimit(200));
+  getAlerts = async (): Promise<Alert[]> => {
+    const raw = await this.all<Record<string, unknown>>(
+      paths.alerts(this.farmId),
+      orderBy("createdAt", "desc"),
+      fsLimit(200),
+    );
+    return raw.map(normalizeAlert);
+  };
 
   async markAlertRead(id: ID): Promise<void> {
     await updateDoc(doc(this.db, paths.alerts(this.farmId), id), { read: true });

@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 
 initializeApp();
 
@@ -50,6 +50,18 @@ export const round = (n: number, dp = 1) => Number(n.toFixed(dp));
 
 export type AlertSeverity = "critical" | "warning" | "info";
 
+/** Alert `kind` → the app's alert category (drives the notification icon). */
+const KIND_TO_CATEGORY: Record<string, string> = {
+  calving_due: "breeding",
+  vaccination_due: "health",
+  quarantine: "health",
+  low_stock: "inventory",
+  expiring_stock: "inventory",
+  milk_drop: "milk",
+  missed_milking: "milk",
+  overdue_tasks: "task",
+};
+
 export interface AlertInput {
   id: string;
   kind: string;
@@ -84,8 +96,23 @@ export async function writeAlerts(farmId: string, alerts: AlertInput[]): Promise
 
   for (let i = 0; i < alerts.length; i += 400) {
     const batch = db.batch();
-    for (const { id, ...rest } of alerts.slice(i, i + 400)) {
-      batch.set(col.doc(id), { ...rest, farmId, createdAt: Timestamp.now() }, { merge: true });
+    for (const { id, kind, subjectId, ...rest } of alerts.slice(i, i + 400)) {
+      // Write the shape the app's Alert type expects: an ISO-string createdAt
+      // (not a Firestore Timestamp), a mapped category, and an iterable channels
+      // list. Getting this wrong is what crashed the notifications screen.
+      batch.set(
+        col.doc(id),
+        {
+          ...rest,
+          kind,
+          farmId,
+          category: KIND_TO_CATEGORY[kind] ?? "system",
+          channels: ["push", "in_app"],
+          animalId: subjectId ?? null,
+          createdAt: new Date().toISOString(),
+        },
+        { merge: true },
+      );
       written++;
     }
     await batch.commit();
