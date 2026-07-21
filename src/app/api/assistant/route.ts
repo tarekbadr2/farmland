@@ -20,9 +20,21 @@ import { verifyBearer } from "@/lib/server/firebase-admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MODEL = "claude-opus-4-8";
+// Sonnet, not Opus: the advisor is grounded Q&A over a pre-computed brief — a
+// bounded task Sonnet handles well at ~40% lower cost, which matters when AI
+// usage drives pricing.
+const MODEL = "claude-sonnet-5";
 const MAX_QUESTION = 600;
 const MAX_BRIEF = 12_000;
+
+// The bundled desktop app calls this endpoint cross-origin from a localhost
+// port, so allow CORS. The Firebase ID token in the Authorization header is the
+// real gate; the origin isn't trusted, so a wildcard is fine (no cookies).
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
 
 const SYSTEM_PROMPT = `You are "Herd", the advisor built into a buffalo-farm management system used by Egyptian dairy and beef farmers.
 
@@ -43,25 +55,33 @@ function textOf(msg: Anthropic.Message): string {
     .trim();
 }
 
+const json = (body: unknown, init?: ResponseInit) =>
+  NextResponse.json(body, { ...init, headers: { ...CORS, ...(init?.headers ?? {}) } });
+
+// CORS preflight for the desktop app's cross-origin call.
+export function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS });
+}
+
 export async function POST(req: Request) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   // No key configured (demo backend, or not set up yet) → let the client use
   // the deterministic advisor. Not an error.
   if (!apiKey) {
-    return NextResponse.json({ fallback: true, reason: "no-key" });
+    return json({ fallback: true, reason: "no-key" });
   }
 
   let body: { question?: unknown; brief?: unknown };
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "invalid-json" }, { status: 400 });
+    return json({ error: "invalid-json" }, { status: 400 });
   }
 
   const question = typeof body.question === "string" ? body.question.trim() : "";
   const brief = typeof body.brief === "string" ? body.brief : "";
   if (!question) {
-    return NextResponse.json({ error: "missing-question" }, { status: 400 });
+    return json({ error: "missing-question" }, { status: 400 });
   }
 
   // Gate the paid model behind a valid farm sign-in so the endpoint can't be
@@ -71,10 +91,10 @@ export async function POST(req: Request) {
   try {
     caller = await verifyBearer(req.headers.get("authorization"));
   } catch {
-    return NextResponse.json({ fallback: true, reason: "auth-unavailable" });
+    return json({ fallback: true, reason: "auth-unavailable" });
   }
   if (!caller) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return json({ error: "unauthorized" }, { status: 401 });
   }
 
   const client = new Anthropic({ apiKey });
@@ -93,11 +113,11 @@ export async function POST(req: Request) {
     });
 
     const answer = textOf(message);
-    if (!answer) return NextResponse.json({ fallback: true, reason: "empty" });
-    return NextResponse.json({ answer });
+    if (!answer) return json({ fallback: true, reason: "empty" });
+    return json({ answer });
   } catch (err) {
     console.error("[assistant] Claude call failed:", err);
     // Any upstream failure (rate limit, network, bad key) → local advisor.
-    return NextResponse.json({ fallback: true, reason: "upstream-error" });
+    return json({ fallback: true, reason: "upstream-error" });
   }
 }

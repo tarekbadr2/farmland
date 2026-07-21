@@ -25,6 +25,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { MilkStatusPill, ReproStatusPill } from "@/components/common/status-pill";
 import { useI18n } from "@/lib/i18n/provider";
+import { WEB_ORIGIN } from "@/lib/download";
+
+// The bundled desktop app has no local server, so it calls the hosted metered
+// endpoint (which holds the Claude key and can meter usage for billing). On the
+// web it's same-origin.
+const ASSISTANT_ENDPOINT =
+  process.env.NEXT_PUBLIC_DESKTOP === "1" ? `${WEB_ORIGIN}/api/assistant` : "/api/assistant";
 import {
   useAnimals,
   useBreeding,
@@ -118,7 +125,7 @@ export default function AssistantPage() {
           }
         }
 
-        const res = await fetch("/api/assistant", {
+        const res = await fetch(ASSISTANT_ENDPOINT, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
