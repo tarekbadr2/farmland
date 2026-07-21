@@ -1,0 +1,33 @@
+rules_version = '2';
+
+// Animal photos, videos, documents and voice notes.
+// Path: farms/{farmId}/animals/{animalId}/{fileName}
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isMember(farmId) {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/farms/$(farmId)/members/$(request.auth.uid));
+    }
+
+    function isImageOrDoc() {
+      return request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('video/.*')
+          || request.resource.contentType.matches('audio/.*')
+          || request.resource.contentType == 'application/pdf';
+    }
+
+    match /farms/{farmId}/{allPaths=**} {
+      allow read: if isMember(farmId);
+      // 25 MB ceiling: a phone photo of a swollen udder is under 5 MB, and an
+      // unbounded upload from the pen is how a storage bill gets interesting.
+      allow write: if isMember(farmId)
+                   && request.resource.size < 25 * 1024 * 1024
+                   && isImageOrDoc();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

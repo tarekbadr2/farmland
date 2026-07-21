@@ -1,0 +1,908 @@
+/**
+ * Firestore adapter.
+ *
+ * Implements the same `FarmRepository` contract as the demo adapter, so no
+ * component changes when you flip NEXT_PUBLIC_DATA_SOURCE.
+ *
+ * Two rules govern everything below:
+ *  1. Never fan out. Anything that could return 50,000 documents takes a bound.
+ *  2. Filter and sort in Firestore, not in JavaScript. A client-side `.filter()`
+ *     over a paginated result silently searches only the page you loaded.
+ */
+
+import {
+  collection,
+  deleteDoc,
+  deleteField,
+  doc,
+  getDoc,
+  getDocFromCache,
+  getDocs,
+  limit as fsLimit,
+  orderBy,
+  query,
+  runTransaction,
+  serverTimestamp,
+  setDoc,
+  startAfter,
+  updateDoc,
+  where,
+  writeBatch,
+  type DocumentData,
+  type Query,
+  type QueryConstraint,
+  type QueryDocumentSnapshot,
+} from "firebase/firestore";
+
+import { getFirebase } from "./client";
+import { FARM_ID, PREFIX_END, animalSearchFields, paths } from "./paths";
+import type {
+  Alert,
+  Animal,
+  Attendance,
+  BreedingEvent,
+  DailyMilkPoint,
+  Employee,
+  Farm,
+  FarmTask,
+  FeedConsumption,
+  FeedItem,
+  FeedRation,
+  HealthEvent,
+  ID,
+  InventoryItem,
+  Invoice,
+  Member,
+  MilkRecord,
+  Partner,
+  PendingInvite,
+  Role,
+  SemenStraw,
+  StockMovement,
+  TimelineEntry,
+  Transaction,
+  UtilityReading,
+  WeatherNow,
+  Zone,
+} from "@/core/domain/types";
+import type {
+  AnimalQuery,
+  AttendanceInput,
+  EventWrite,
+  FarmRepository,
+  FeedConsumptionInput,
+  InvoicePaymentInput,
+  MilkSessionInput,
+  Page,
+  WriteOutcome,
+} from "@/core/repositories/farm-repository";
+import { invoiceTotal } from "@/core/repositories/farm-repository";
+import { trackWrite } from "@/lib/sync/offline-store";
+import {
+  applyBreedingEvent,
+  applyHealthEvent,
+  attendanceFromClock,
+  kgPerUnit,
+} from "@/core/domain/rules";
+import { addDays, toISODate } from "@/lib/date";
+import { round } from "@/lib/utils";
+
+/**
+ * Firestore rejects `undefined` outright, so it has to be handled explicitly —
+ * and the right handling differs by operation.
+ *
+ * On a create there is nothing to clear, so undefined fields are dropped.
+ */
+function omitUndefined<T extends object>(value: T): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined));
+}
+
+/**
+ * On an update, undefined means "clear this" — an open cow must lose her
+ * expected calving date, not keep a stale one. Dropping the key would silently
+ * leave the old value in place, which is how a cow ends up permanently
+ * pregnant on the dashboard.
+ */
+function clearUndefined<T extends object>(value: T): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).map(([k, v]) => [k, v === undefined ? deleteField() : v]),
+  );
+}
+
+/** Collection reads that back whole-page analytics. Bounded, deliberately. */
+const ANALYTIC_LIMIT = 5000;
+
+function rows<T>(snap: { docs: QueryDocumentSnapshot<DocumentData>[] }): T[] {
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
+}
+
+export class FirebaseFarmRepository implements FarmRepository {
+  readonly source = "firebase" as const;
+  private farmId: string;
+
+  constructor(farmId: string = FARM_ID) {
+    this.farmId = farmId;
+  }
+
+  private get db() {
+    return getFirebase().db;
+  }
+
+  private col(path: string) {
+    return collection(this.db, path);
+  }
+
+  private async all<T>(path: string, ...constraints: QueryConstraint[]): Promise<T[]> {
+    const snap = await getDocs(query(this.col(path), ...constraints));
+    return rows<T>(snap);
+  }
+
+  /* ---------------------------------- Farm -------------------------------- */
+
+  async getFarm(): Promise<Farm> {
+    const snap = await getDoc(doc(this.db, paths.farm(this.farmId)));
+    if (!snap.exists()) throw new Error(`Farm ${this.farmId} not found. Run the seed script.`);
+    return { id: snap.id, ...snap.data() } as Farm;
+  }
+
+  getZones = () => this.all<Zone>(paths.zones(this.farmId), orderBy("name"));
+
+  /* ---------------------------------- Team --------------------------------- */
+
+  getMembers = () => this.all<Member>(paths.members(this.farmId), orderBy("email"));
+
+  getPendingInvites = () =>
+    this.all<PendingInvite>(paths.pendingMembers(this.farmId), orderBy("email"));
+
+  async inviteMember(email: string, role: Role): Promise<PendingInvite> {
+    const key = email.trim().toLowerCase();
+    const invite: PendingInvite = { email: key, role, invitedAt: new Date().toISOString() };
+    // Keyed by email so re-inviting updates the role rather than duplicating.
+    await setDoc(doc(this.db, paths.pendingMembers(this.farmId), key), invite);
+    return invite;
+  }
+
+  async setMemberRole(uid: ID, role: Role): Promise<void> {
+    // Owners keep the wildcard; a demotion strips it so the rules stop treating
+    // them as owner the instant the role changes.
+    await updateDoc(doc(this.db, paths.members(this.farmId), uid), {
+      role,
+      permissions: role === "owner" ? ["*"] : [],
+    });
+  }
+
+  async removeMember(uid: ID): Promise<void> {
+    await deleteDoc(doc(this.db, paths.members(this.farmId), uid));
+  }
+
+  async revokeInvite(email: string): Promise<void> {
+    await deleteDoc(doc(this.db, paths.pendingMembers(this.farmId), email.trim().toLowerCase()));
+  }
+
+  /* --------------------------------- Animals ------------------------------- */
+
+  /**
+   * Paginated herd query.
+   *
+   * Equality filters and the sort run in Firestore against composite indexes
+   * (see firestore.indexes.json). Search is a prefix range on tag and name,
+   * fired as two parallel queries and merged — Firestore can't OR ranges across
+   * two fields in one query, and substring search needs a real search index.
+   */
+  async listAnimals(q: AnimalQuery = {}): Promise<Page<Animal>> {
+    const {
+      search = "",
+      status = "all",
+      milkStatus = "all",
+      reproStatus = "all",
+      penId = "all",
+      breed = "all",
+      sex = "all",
+      group = "all",
+      sortBy = "tag",
+      sortDir = "asc",
+      page = 1,
+      pageSize = 25,
+    } = q;
+
+    const term = search.trim().toLowerCase();
+    if (term) return this.searchAnimals(term, pageSize);
+
+    const constraints: QueryConstraint[] = [];
+    if (status !== "all") constraints.push(where("status", "==", status));
+    if (milkStatus !== "all") constraints.push(where("milkStatus", "==", milkStatus));
+    if (reproStatus !== "all") constraints.push(where("reproStatus", "==", reproStatus));
+    if (penId !== "all") constraints.push(where("penId", "==", penId));
+    if (breed !== "all") constraints.push(where("breed", "==", breed));
+    if (sex !== "all") constraints.push(where("sex", "==", sex));
+    if (group === "calves") constraints.push(where("isCalf", "==", true));
+    if (group === "bulls") {
+      constraints.push(where("sex", "==", "male"), where("isCalf", "==", false));
+    }
+    if (group === "adults") {
+      constraints.push(where("sex", "==", "female"), where("isCalf", "==", false));
+    }
+
+    const sortField =
+      sortBy === "milk"
+        ? "avgDailyMilkL"
+        : sortBy === "age"
+          ? "dateOfBirth"
+          : sortBy === "weight"
+            ? "weightKg"
+            : sortBy === "health"
+              ? "healthScore"
+              : sortBy === "name"
+                ? "nameLower"
+                : "tag";
+
+    // "Age ascending" means oldest first, which is dateOfBirth ascending.
+    const dir = sortDir;
+    const base = query(this.col(paths.animals(this.farmId)), ...constraints, orderBy(sortField, dir));
+
+    // Firestore rejects any single query whose limit exceeds 10,000. Callers ask
+    // for the whole herd (pageSize 100000) to compute aggregates, so when the
+    // request won't fit in one query, page through it in max-size batches and
+    // return everything. This is the path the dashboard, herd summary, analytics
+    // and the advisor all take; it scales to a 50k+ herd (a handful of batches).
+    const FS_LIMIT = 10_000;
+    if (pageSize > FS_LIMIT) {
+      const items: Animal[] = [];
+      let batchCursor: QueryDocumentSnapshot<DocumentData> | null = null;
+      for (;;) {
+        const batchQuery: Query<DocumentData> = batchCursor
+          ? query(base, startAfter(batchCursor), fsLimit(FS_LIMIT))
+          : query(base, fsLimit(FS_LIMIT));
+        const batch = await getDocs(batchQuery);
+        if (batch.empty) break;
+        items.push(...rows<Animal>(batch));
+        if (batch.size < FS_LIMIT) break;
+        batchCursor = batch.docs[batch.docs.length - 1];
+      }
+      const total = await this.animalCount(constraints.length ? undefined : "total");
+      return { items, total, page: 1, pageSize };
+    }
+
+    // Cursor pagination: walk to the requested page. Cheap for the first pages,
+    // which is all a human ever clicks; deep links should carry a cursor.
+    let cursor: QueryDocumentSnapshot<DocumentData> | null = null;
+    for (let p = 1; p < page; p++) {
+      const step: Query<DocumentData> = cursor
+        ? query(base, startAfter(cursor), fsLimit(pageSize))
+        : query(base, fsLimit(pageSize));
+      const snap = await getDocs(step);
+      if (snap.empty) break;
+      cursor = snap.docs[snap.docs.length - 1];
+    }
+
+    const pageQuery: Query<DocumentData> = cursor
+      ? query(base, startAfter(cursor), fsLimit(pageSize))
+      : query(base, fsLimit(pageSize));
+    const snap = await getDocs(pageQuery);
+
+    // Firestore has no cheap COUNT over a filtered set at this size. The farm
+    // document carries counters maintained by a Cloud Function trigger.
+    const total = await this.animalCount(constraints.length ? undefined : "total");
+
+    return { items: rows<Animal>(snap), total, page, pageSize };
+  }
+
+  private async searchAnimals(term: string, pageSize: number): Promise<Page<Animal>> {
+    const col = this.col(paths.animals(this.farmId));
+    // A prefix search never needs more than a screenful; cap at Firestore's
+    // 10,000 limit ceiling so a caller's "fetch all" pageSize can't blow up.
+    const cap = Math.min(pageSize, 10_000);
+    const prefix = (field: string) =>
+      getDocs(
+        query(
+          col,
+          orderBy(field),
+          where(field, ">=", term),
+          where(field, "<=", term + PREFIX_END),
+          fsLimit(cap),
+        ),
+      );
+
+    const [byTag, byName, byRfid] = await Promise.all([
+      prefix("tagLower"),
+      prefix("nameLower"),
+      prefix("rfidLower"),
+    ]);
+
+    const merged = new Map<string, Animal>();
+    [byTag, byName, byRfid].forEach((snap) =>
+      rows<Animal>(snap).forEach((a) => merged.set(a.id, a)),
+    );
+    const items = [...merged.values()].sort((a, b) => a.tag.localeCompare(b.tag));
+
+    return { items: items.slice(0, cap), total: items.length, page: 1, pageSize };
+  }
+
+  private async animalCount(counter?: string): Promise<number> {
+    const snap = await getDoc(doc(this.db, paths.farm(this.farmId)));
+    const counts = (snap.data()?.counts ?? {}) as Record<string, number>;
+    return counts[counter ?? "total"] ?? counts.total ?? 0;
+  }
+
+  async getAnimal(id: ID): Promise<Animal | null> {
+    const snap = await getDoc(doc(this.db, paths.animals(this.farmId), id));
+    return snap.exists() ? ({ id: snap.id, ...snap.data() } as Animal) : null;
+  }
+
+  async getAnimalTimeline(id: ID): Promise<TimelineEntry[]> {
+    const [animal, health, breeding] = await Promise.all([
+      this.getAnimal(id),
+      this.all<HealthEvent>(paths.health(this.farmId), where("animalId", "==", id)),
+      this.all<BreedingEvent>(paths.breeding(this.farmId), where("animalId", "==", id)),
+    ]);
+    if (!animal) return [];
+
+    const entries: TimelineEntry[] = [
+      {
+        id: `tl_birth_${id}`,
+        date: animal.dateOfBirth,
+        kind: "birth",
+        title: animal.acquiredFrom === "purchased" ? "Purchased and registered" : "Born on farm",
+        titleAr: animal.acquiredFrom === "purchased" ? "تم الشراء والتسجيل" : "ولدت في المزرعة",
+        detail: `Tag ${animal.tag}`,
+        detailAr: `رقم ${animal.tag}`,
+      },
+    ];
+
+    health.forEach((h) =>
+      entries.push({
+        id: h.id,
+        date: h.date,
+        kind: "health",
+        title:
+          h.type === "vaccination"
+            ? `Vaccinated — ${h.vaccine}`
+            : `Diagnosed — ${h.disease?.replace(/_/g, " ")}`,
+        titleAr: h.type === "vaccination" ? `تطعيم — ${h.vaccine}` : `تشخيص — ${h.disease}`,
+        detail: h.medication ? `${h.medication} · ${h.dosage ?? ""}` : h.vetName,
+        detailAr: h.vetName,
+      }),
+    );
+
+    breeding.forEach((b) =>
+      entries.push({
+        id: b.id,
+        date: b.date,
+        kind: "breeding",
+        title:
+          b.type === "calving"
+            ? `Calved (${b.outcome ?? "live"})`
+            : b.type === "ai"
+              ? `Inseminated · batch ${b.semenBatch}`
+              : b.type.replace(/_/g, " "),
+        titleAr: b.type === "calving" ? "ولادة" : b.type === "ai" ? "تلقيح صناعي" : "حدث تناسلي",
+        detail: b.technician ?? b.notes,
+        detailAr: b.technician,
+      }),
+    );
+
+    if (animal.expectedCalvingDate) {
+      entries.push({
+        id: `tl_due_${id}`,
+        date: animal.expectedCalvingDate,
+        kind: "breeding",
+        title: "Expected calving",
+        titleAr: "الولادة المتوقعة",
+      });
+    }
+
+    return entries.sort((a, b) => b.date.localeCompare(a.date));
+  }
+
+  async getAnimalMilkHistory(id: ID, days = 120): Promise<MilkRecord[]> {
+    const from = addDays(toISODate(new Date()), -days);
+    return this.all<MilkRecord>(
+      paths.milkRecords(this.farmId),
+      where("animalId", "==", id),
+      where("date", ">=", from),
+      orderBy("date", "asc"),
+    );
+  }
+
+  async getAnimalWeightHistory(id: ID) {
+    const snaps = await this.all<{ id: string; date: string; weightKg: number }>(
+      `${paths.animals(this.farmId)}/${id}/weights`,
+      orderBy("date", "asc"),
+    );
+    if (snaps.length) return snaps.map((s) => ({ date: s.date, weightKg: s.weightKg }));
+    // No scale integration yet on this animal — one point beats an empty chart.
+    const animal = await this.getAnimal(id);
+    return animal ? [{ date: toISODate(new Date()), weightKg: animal.weightKg }] : [];
+  }
+
+  async saveAnimal(patch: Partial<Animal> & { id?: ID }): Promise<Animal> {
+    const id = patch.id ?? doc(this.col(paths.animals(this.farmId))).id;
+    const searchable =
+      patch.tag && patch.name
+        ? animalSearchFields({
+            tag: patch.tag,
+            name: patch.name,
+            nameAr: patch.nameAr ?? patch.name,
+            rfid: patch.rfid ?? "",
+          })
+        : {};
+    const ref = doc(this.db, paths.animals(this.farmId), id);
+    await setDoc(ref, { ...patch, ...searchable, farmId: this.farmId }, { merge: true });
+    return (await this.getAnimal(id))!;
+  }
+
+  /* ----------------------------------- Milk -------------------------------- */
+
+  async getMilkDaily(days = 730): Promise<DailyMilkPoint[]> {
+    const from = addDays(toISODate(new Date()), -days);
+    const list = await this.all<DailyMilkPoint & { id: string }>(
+      paths.milkDaily(this.farmId),
+      where("date", ">=", from),
+      orderBy("date", "asc"),
+    );
+    return list;
+  }
+
+  getMilkRecords = (date: string) =>
+    this.all<MilkRecord>(paths.milkRecords(this.farmId), where("date", "==", date));
+
+  /**
+   * Records a parlor session and rolls the herd aggregate forward in the same
+   * batch. The dashboard reads `milkDaily`, never a fan-out over per-animal
+   * rows — at 50k head that query would be 100,000 documents a day.
+   */
+  async recordMilkSession(input: MilkSessionInput): Promise<WriteOutcome> {
+    const { date, session, entries } = input;
+    const batch = writeBatch(this.db);
+
+    entries.forEach((entry) => {
+      const id = `${date}_${entry.animalId}_${session}`;
+      batch.set(doc(this.db, paths.milkRecords(this.farmId), id), {
+        farmId: this.farmId,
+        animalId: entry.animalId,
+        date,
+        session,
+        volumeL: entry.volumeL,
+        rejectedL: entry.rejectedL ?? 0,
+        fatPct: input.fatPct ?? 0,
+        proteinPct: input.proteinPct ?? 0,
+        somaticCellCount: input.somaticCellCount ?? 0,
+        temperatureC: input.temperatureC ?? 0,
+        workerId: input.workerId ?? null,
+        machineId: input.machineId ?? null,
+        // Server clock, not the tablet's — the rules use this to freeze a
+        // record two days after it was taken, and a phone with a wrong date
+        // must not be able to reopen last month's numbers.
+        recordedAt: serverTimestamp(),
+      });
+    });
+
+    const sessionTotal = entries.reduce((s, e) => s + e.volumeL, 0);
+    const rejected = entries.reduce((s, e) => s + (e.rejectedL ?? 0), 0);
+
+    // Read-then-write so re-recording a session corrects rather than doubles.
+    // This has to survive the parlor: offline, possibly on a day this device has
+    // never cached (the first session of the morning with no signal). A plain
+    // getDoc throws `unavailable` there, so read from the cache when offline and
+    // treat a miss as a fresh day rather than stranding the milker. The write
+    // itself is already offline-safe — batch.commit persists locally and syncs.
+    const dailyRef = doc(this.db, paths.milkDaily(this.farmId), date);
+    const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+    let prev: Partial<DailyMilkPoint> = {};
+    try {
+      const existing = offline ? await getDocFromCache(dailyRef) : await getDoc(dailyRef);
+      prev = (existing.data() ?? {}) as Partial<DailyMilkPoint>;
+    } catch {
+      prev = {}; // offline with nothing cached for this date → start at zero
+    }
+    const morningL = session === "morning" ? sessionTotal : (prev.morningL ?? 0);
+    const eveningL = session === "evening" ? sessionTotal : (prev.eveningL ?? 0);
+
+    batch.set(
+      dailyRef,
+      {
+        farmId: this.farmId,
+        date,
+        morningL: round(morningL, 1),
+        eveningL: round(eveningL, 1),
+        totalL: round(morningL + eveningL, 1),
+        rejectedL: round((prev.rejectedL ?? 0) + rejected, 1),
+        avgFat: input.fatPct ?? prev.avgFat ?? 0,
+        avgProtein: input.proteinPct ?? prev.avgProtein ?? 0,
+        milkingCows: Math.max(entries.length, prev.milkingCows ?? 0),
+      },
+      { merge: true },
+    );
+
+    // Fire the write and let the UI move on. Firestore has already applied it to
+    // the local cache and persisted the mutation, so it survives a reload and
+    // syncs on its own; blocking on the server ack is what stranded a milker in
+    // a spinner when the signal dropped.
+    return trackWrite(batch.commit());
+  }
+
+  /* ---------------------------- Event writes ------------------------------- */
+
+  /**
+   * Writes a document and a derived patch to a second document, atomically.
+   *
+   * The two must never half-apply — a calving that records the event but fails
+   * to move the cow to `fresh` leaves her pregnant forever on the dashboard, and
+   * nobody notices until she doesn't calve again.
+   *
+   * Online, that guarantee is a real transaction: a fresh server read, isolated
+   * from concurrent edits. Offline, a transaction is impossible (it needs a
+   * server round-trip), so we fall back to reading the target from the local
+   * cache and writing both documents in one batch — still atomic, still durable,
+   * and it syncs when the signal returns instead of erroring in the vet's hand.
+   * The isolation we give up offline only matters if two people edit the same
+   * animal in the same outage, which on a farm effectively never happens.
+   */
+  private async writeWithDerivedPatch(params: {
+    writeRef: ReturnType<typeof doc>;
+    writeData: Record<string, unknown>;
+    patchRef: ReturnType<typeof doc>;
+    derive: (current: DocumentData) => Record<string, unknown>;
+    missing: string;
+  }): Promise<WriteOutcome> {
+    const { writeRef, writeData, patchRef, derive, missing } = params;
+
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      let snap;
+      try {
+        snap = await getDocFromCache(patchRef);
+      } catch {
+        throw new Error(`${missing} — open it once while online, then this will work offline.`);
+      }
+      if (!snap.exists()) throw new Error(missing);
+
+      const patch = clearUndefined(derive(snap.data()));
+      const batch = writeBatch(this.db);
+      batch.set(writeRef, omitUndefined(writeData));
+      if (Object.keys(patch).length) batch.update(patchRef, patch as DocumentData);
+      return trackWrite(batch.commit());
+    }
+
+    await runTransaction(this.db, async (txn) => {
+      const snap = await txn.get(patchRef);
+      if (!snap.exists()) throw new Error(missing);
+      const patch = clearUndefined(derive(snap.data()));
+      txn.set(writeRef, omitUndefined(writeData));
+      if (Object.keys(patch).length) txn.update(patchRef, patch as DocumentData);
+    });
+    return "acked";
+  }
+
+  /** Event + implied animal change, offline-safe. */
+  private async writeEventWithAnimalPatch<T extends { animalId: ID; id?: ID }>(
+    collectionPath: string,
+    event: T,
+    derivePatch: (animal: Animal) => Partial<Animal>,
+  ): Promise<T & { id: ID }> {
+    const id = event.id ?? doc(this.col(collectionPath)).id;
+    await this.writeWithDerivedPatch({
+      writeRef: doc(this.db, collectionPath, id),
+      writeData: { ...event, id, farmId: this.farmId },
+      patchRef: doc(this.db, paths.animals(this.farmId), event.animalId),
+      derive: (data) => derivePatch({ id: event.animalId, ...data } as Animal),
+      missing: `Animal ${event.animalId} not found`,
+    });
+    return { ...event, id };
+  }
+
+  async saveHealthEvent(
+    event: EventWrite<Omit<HealthEvent, "id" | "farmId">>,
+  ): Promise<HealthEvent> {
+    const saved = await this.writeEventWithAnimalPatch(
+      paths.health(this.farmId),
+      event,
+      (animal) => ({
+        ...applyHealthEvent(animal, event),
+        // Withdrawal only ever extends — a second treatment can't shorten the
+        // period the first one started.
+        ...(event.withdrawalUntil &&
+        (!animal.withdrawalUntil || event.withdrawalUntil > animal.withdrawalUntil)
+          ? { withdrawalUntil: event.withdrawalUntil }
+          : {}),
+      }),
+    );
+    return saved as HealthEvent;
+  }
+
+  async saveBreedingEvent(
+    event: EventWrite<Omit<BreedingEvent, "id" | "farmId">>,
+  ): Promise<BreedingEvent> {
+    const saved = await this.writeEventWithAnimalPatch(
+      paths.breeding(this.farmId),
+      event,
+      (animal) => applyBreedingEvent(animal, event),
+    );
+    return saved as BreedingEvent;
+  }
+
+  async saveStockMovement(
+    move: EventWrite<Omit<StockMovement, "id" | "farmId">>,
+  ): Promise<StockMovement> {
+    const id = move.id ?? doc(this.col(paths.stockMovements(this.farmId))).id;
+
+    // Signed so the stock level and the movement log can never disagree about
+    // direction — the sign lives in one place, here.
+    const delta =
+      move.kind === "in"
+        ? Math.abs(move.quantity)
+        : move.kind === "adjustment"
+          ? move.quantity
+          : -Math.abs(move.quantity);
+
+    await this.writeWithDerivedPatch({
+      writeRef: doc(this.db, paths.stockMovements(this.farmId), id),
+      writeData: { ...move, id, farmId: this.farmId },
+      patchRef: doc(this.db, paths.inventory(this.farmId), move.itemId),
+      derive: (item) => {
+        const current = (item.stock as number) ?? 0;
+        const next = current + delta;
+        // Overdrawing is a data error, not a sync concern — refuse it in both
+        // paths. Offline the check runs against the cached stock level.
+        if (next < 0) {
+          throw new Error(`Only ${current} ${item.unit ?? "units"} of ${item.name} on hand`);
+        }
+        return { stock: round(next, 2) };
+      },
+      missing: `Inventory item ${move.itemId} not found`,
+    });
+
+    return { ...move, id, farmId: this.farmId } as StockMovement;
+  }
+
+  async saveTransaction(
+    txn: EventWrite<Omit<Transaction, "id" | "farmId">>,
+  ): Promise<Transaction> {
+    const id = txn.id ?? doc(this.col(paths.transactions(this.farmId))).id;
+    const record = { ...txn, id, farmId: this.farmId } as Transaction;
+    await setDoc(doc(this.db, paths.transactions(this.farmId), id), omitUndefined(record));
+    return record;
+  }
+
+  /* -------------------------------- Breeding ------------------------------- */
+
+  getBreedingEvents = () =>
+    this.all<BreedingEvent>(
+      paths.breeding(this.farmId),
+      orderBy("date", "desc"),
+      fsLimit(ANALYTIC_LIMIT),
+    );
+
+  getSemenInventory = () => this.all<SemenStraw>(paths.semen(this.farmId), orderBy("sireName"));
+
+  /* --------------------------------- Health -------------------------------- */
+
+  getHealthEvents = () =>
+    this.all<HealthEvent>(
+      paths.health(this.farmId),
+      orderBy("date", "desc"),
+      fsLimit(ANALYTIC_LIMIT),
+    );
+
+  /* ---------------------------------- Feed --------------------------------- */
+
+  getFeedItems = () => this.all<FeedItem>(paths.feedItems(this.farmId), orderBy("name"));
+  getRations = () => this.all<FeedRation>(paths.rations(this.farmId), orderBy("name"));
+  getFeedConsumption = () =>
+    this.all<FeedConsumption>(
+      paths.feedConsumption(this.farmId),
+      orderBy("date", "desc"),
+      fsLimit(ANALYTIC_LIMIT),
+    );
+
+  /**
+   * Logs a feeding and draws its component feeds from stock in one transaction.
+   *
+   * Kilograms and cost come from the ration, not the client. Feed stock is only
+   * decremented for components that actually exist — a ration referencing a feed
+   * that's been deleted still logs, it just can't draw down a phantom item.
+   */
+  async logFeedConsumption(input: FeedConsumptionInput): Promise<FeedConsumption> {
+    const id = doc(this.col(paths.feedConsumption(this.farmId))).id;
+    const rationRef = doc(this.db, paths.rations(this.farmId), input.rationId);
+
+    const record = await runTransaction(this.db, async (txn) => {
+      const rationSnap = await txn.get(rationRef);
+      if (!rationSnap.exists()) throw new Error(`Ration ${input.rationId} not found`);
+      const ration = rationSnap.data() as FeedRation;
+
+      // Read every component feed before writing any — a transaction requires
+      // all reads to precede all writes.
+      const components = ration.components ?? [];
+      const feedSnaps = await Promise.all(
+        components.map((c) => txn.get(doc(this.db, paths.feedItems(this.farmId), c.feedItemId))),
+      );
+
+      let totalKg = 0;
+      let totalCost = 0;
+      feedSnaps.forEach((snap, i) => {
+        const kg = round(components[i].kgPerHead * input.heads, 1);
+        totalKg += kg;
+        if (snap.exists()) {
+          const feed = snap.data() as FeedItem;
+          // Ration is kg; stock and cost are per-unit. Convert once, here.
+          const perKg = kgPerUnit(feed.unit);
+          const unitsDrawn = kg / perKg;
+          totalCost += unitsDrawn * (feed.costPerUnit ?? 0);
+          txn.update(snap.ref, {
+            stock: round(Math.max(0, (feed.stock ?? 0) - unitsDrawn), 2),
+          });
+        }
+      });
+
+      const consumption: FeedConsumption = {
+        id,
+        farmId: this.farmId,
+        date: input.date,
+        zoneId: input.zoneId,
+        rationId: input.rationId,
+        kg: round(totalKg, 1),
+        cost: round(totalCost, 2),
+        heads: input.heads,
+      };
+      txn.set(doc(this.db, paths.feedConsumption(this.farmId), id), consumption);
+      return consumption;
+    });
+
+    return record;
+  }
+
+  /* -------------------------------- Inventory ------------------------------ */
+
+  getInventory = () => this.all<InventoryItem>(paths.inventory(this.farmId), orderBy("name"));
+  getStockMovements = () =>
+    this.all<StockMovement>(
+      paths.stockMovements(this.farmId),
+      orderBy("date", "desc"),
+      fsLimit(500),
+    );
+
+  /* -------------------------------- Employees ------------------------------ */
+
+  getEmployees = () => this.all<Employee>(paths.employees(this.farmId), orderBy("name"));
+
+  async saveEmployee(employee: EventWrite<Omit<Employee, "id" | "farmId">>): Promise<Employee> {
+    const id = employee.id ?? doc(this.col(paths.employees(this.farmId))).id;
+    const record = { ...employee, id, farmId: this.farmId } as Employee;
+    await setDoc(doc(this.db, paths.employees(this.farmId), id), omitUndefined(record));
+    return record;
+  }
+
+  getAttendance = () =>
+    this.all<Attendance>(paths.attendance(this.farmId), orderBy("date", "desc"), fsLimit(2000));
+
+  async recordAttendance(input: AttendanceInput): Promise<Attendance> {
+    // One row per employee per day: a deterministic id makes a second clock
+    // event correct the first rather than stack a duplicate shift.
+    const id = `${input.date}_${input.employeeId}`;
+    const record = attendanceFromClock(input, this.farmId, id);
+    await setDoc(doc(this.db, paths.attendance(this.farmId), id), omitUndefined(record), {
+      merge: true,
+    });
+    return record;
+  }
+
+  /* ---------------------------------- Tasks -------------------------------- */
+
+  getTasks = () =>
+    this.all<FarmTask>(paths.tasks(this.farmId), orderBy("dueAt", "desc"), fsLimit(500));
+
+  async updateTask(id: ID, patch: Partial<FarmTask>): Promise<FarmTask> {
+    await updateDoc(doc(this.db, paths.tasks(this.farmId), id), patch as DocumentData);
+    const snap = await getDoc(doc(this.db, paths.tasks(this.farmId), id));
+    return { id: snap.id, ...snap.data() } as FarmTask;
+  }
+
+  async saveTask(task: EventWrite<Omit<FarmTask, "id" | "farmId">>): Promise<FarmTask> {
+    const id = task.id ?? doc(this.col(paths.tasks(this.farmId))).id;
+    const record = { ...task, id, farmId: this.farmId } as FarmTask;
+    await setDoc(doc(this.db, paths.tasks(this.farmId), id), omitUndefined(record));
+    return record;
+  }
+
+  /* --------------------------------- Finance ------------------------------- */
+
+  getTransactions = () =>
+    this.all<Transaction>(
+      paths.transactions(this.farmId),
+      orderBy("date", "desc"),
+      fsLimit(ANALYTIC_LIMIT),
+    );
+
+  getInvoices = () =>
+    this.all<Invoice>(paths.invoices(this.farmId), orderBy("issuedAt", "desc"), fsLimit(500));
+
+  async saveInvoice(invoice: EventWrite<Omit<Invoice, "id" | "farmId">>): Promise<Invoice> {
+    const id = invoice.id ?? doc(this.col(paths.invoices(this.farmId))).id;
+    const record = { ...invoice, id, farmId: this.farmId } as Invoice;
+    await setDoc(doc(this.db, paths.invoices(this.farmId), id), omitUndefined(record));
+    return record;
+  }
+
+  async setInvoiceStatus(id: ID, status: Invoice["status"]): Promise<Invoice> {
+    await updateDoc(doc(this.db, paths.invoices(this.farmId), id), { status });
+    const snap = await getDoc(doc(this.db, paths.invoices(this.farmId), id));
+    return { id: snap.id, ...snap.data() } as Invoice;
+  }
+
+  /**
+   * Records a payment and posts the income in the same batch.
+   *
+   * The invoice's receivable and the ledger's income are two views of one
+   * event; writing them together is what stops the P&L and the outstanding
+   * balance from drifting apart. The income category follows the customer —
+   * milk buyers book milk sales, animal buyers book animal sales.
+   */
+  async recordInvoicePayment(input: InvoicePaymentInput): Promise<Invoice> {
+    const invRef = doc(this.db, paths.invoices(this.farmId), input.invoiceId);
+    const snap = await getDoc(invRef);
+    if (!snap.exists()) throw new Error(`Invoice ${input.invoiceId} not found`);
+    const invoice = { id: snap.id, ...snap.data() } as Invoice;
+
+    const total = invoiceTotal(invoice);
+    const paidAmount = round(Math.min(total, (invoice.paidAmount ?? 0) + input.amount), 2);
+    const status: Invoice["status"] = paidAmount >= total ? "paid" : "partial";
+
+    const partner = invoice.customerId
+      ? ((await getDoc(doc(this.db, paths.partners(this.farmId), invoice.customerId))).data() as
+          | Partner
+          | undefined)
+      : undefined;
+    const category =
+      partner?.kind === "animal_buyer"
+        ? "animal_sales"
+        : partner?.kind === "milk_buyer"
+          ? "milk_sales"
+          : "other_income";
+
+    const txnId = doc(this.col(paths.transactions(this.farmId))).id;
+    const batch = writeBatch(this.db);
+    batch.update(invRef, { paidAmount, status });
+    batch.set(doc(this.db, paths.transactions(this.farmId), txnId), {
+      id: txnId,
+      farmId: this.farmId,
+      kind: "income",
+      category,
+      amount: input.amount,
+      date: input.date,
+      description: `Payment · invoice ${invoice.number}`,
+      counterpartyId: invoice.customerId ?? null,
+      invoiceId: invoice.id,
+      paymentMethod: input.paymentMethod,
+    });
+    await batch.commit();
+
+    return { ...invoice, paidAmount, status };
+  }
+
+  getPartners = () => this.all<Partner>(paths.partners(this.farmId), orderBy("name"));
+
+  /* --------------------------------- Alerts -------------------------------- */
+
+  getAlerts = () =>
+    this.all<Alert>(paths.alerts(this.farmId), orderBy("createdAt", "desc"), fsLimit(200));
+
+  async markAlertRead(id: ID): Promise<void> {
+    await updateDoc(doc(this.db, paths.alerts(this.farmId), id), { read: true });
+  }
+
+  /* -------------------------------- Telemetry ------------------------------ */
+
+  async getWeather(): Promise<WeatherNow> {
+    const snap = await getDoc(doc(this.db, paths.telemetry(this.farmId), "weather"));
+    if (!snap.exists()) throw new Error("No weather document. The weather sync job hasn't run.");
+    return snap.data() as WeatherNow;
+  }
+
+  getUtilities = () =>
+    this.all<UtilityReading>(paths.utilities(this.farmId), orderBy("date", "asc"), fsLimit(400));
+}
+
+/** Lets the milk form call `recordMilkSession` without importing Firestore. */
+export function isFirebaseRepository(repo: FarmRepository): repo is FirebaseFarmRepository {
+  return repo.source === "firebase";
+}

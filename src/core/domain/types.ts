@@ -1,0 +1,603 @@
+/**
+ * Domain model — the language of the farm.
+ *
+ * These types are storage-agnostic on purpose: repositories in
+ * `src/core/repositories` speak only in these shapes, so the Firestore adapter
+ * and the in-memory demo adapter are interchangeable.
+ */
+
+export type ID = string;
+
+/** Multi-tenant root. Everything below hangs off a farm. */
+export interface Farm {
+  id: ID;
+  name: string;
+  nameAr: string;
+  country: string;
+  city: string;
+  timezone: string;
+  currency: "EGP" | "SAR" | "AED" | "USD";
+  plan: "starter" | "growth" | "enterprise";
+  animalLimit: number;
+  createdAt: string;
+  logoUrl?: string;
+  coordinates: { lat: number; lng: number };
+}
+
+export type Role = "owner" | "manager" | "veterinarian" | "worker" | "accountant";
+
+export interface Membership {
+  userId: ID;
+  farmId: ID;
+  role: Role;
+  permissions: string[];
+}
+
+/** A person with access to the farm. Keyed in Firestore by their auth uid. */
+export interface Member {
+  id: ID; // the auth uid
+  farmId: ID;
+  email: string;
+  name?: string;
+  role: Role;
+  permissions?: string[];
+  /** Links this login to an employee record, for task assignment. */
+  employeeId?: ID;
+  grantedAt?: string;
+}
+
+/**
+ * An invited person who hasn't signed in yet.
+ *
+ * Firebase only issues a uid on first sign-in, so an invite can't become a real
+ * member ahead of time. It's parked here keyed by email; a Cloud Function
+ * promotes it to a member the first time that email signs in.
+ */
+export interface PendingInvite {
+  email: ID;
+  role: Role;
+  invitedAt?: string;
+}
+
+export interface AppUser {
+  id: ID;
+  name: string;
+  email: string;
+  phone?: string;
+  avatarUrl?: string;
+  role: Role;
+  farmId: ID;
+  locale: "en" | "ar";
+}
+
+/* --------------------------------- Animals -------------------------------- */
+
+export type AnimalStatus =
+  | "active"
+  | "sold"
+  | "dead"
+  | "culled"
+  | "quarantine";
+
+export type MilkStatus = "lactating" | "dry" | "heifer" | "not_applicable";
+
+export type ReproStatus =
+  | "open"
+  | "inseminated"
+  | "pregnant"
+  | "fresh"
+  | "not_applicable";
+
+export type Sex = "female" | "male";
+
+export type Breed =
+  | "egyptian_baladi"
+  | "murrah"
+  | "nili_ravi"
+  | "jafarabadi"
+  | "crossbreed";
+
+export type Temperament = "calm" | "nervous" | "aggressive" | "docile";
+export type HornStatus = "horned" | "polled" | "dehorned";
+
+export interface Animal {
+  id: ID;
+  farmId: ID;
+  tag: string;
+  rfid: string;
+  microchip?: string;
+  name: string;
+  nameAr: string;
+  sex: Sex;
+  breed: Breed;
+  bloodline?: string;
+  motherId?: ID;
+  fatherId?: ID;
+  dateOfBirth: string;
+  status: AnimalStatus;
+  milkStatus: MilkStatus;
+  reproStatus: ReproStatus;
+  penId: ID;
+  weightKg: number;
+  bodyConditionScore: number; // 1..5
+  hornStatus: HornStatus;
+  color: string;
+  temperament: Temperament;
+  healthScore: number; // 0..100
+  lactationNumber: number;
+  lastCalvingDate?: string;
+  dryDate?: string;
+  expectedCalvingDate?: string;
+
+  /* Reproduction tracking. Services-per-conception and days-open are the two
+     numbers that decide whether a dairy makes money, so they get first-class
+     fields rather than being re-derived from the event log on every read. */
+  lastHeatDate?: string;
+  lastServiceDate?: string;
+  /** Reset at calving. Three or more without conception is a repeat breeder. */
+  servicesThisLactation?: number;
+  calvesBorn?: number;
+
+  /** Milk from this animal must not enter the bulk tank until this date. */
+  withdrawalUntil?: string;
+
+  avgDailyMilkL: number;
+  /** Rolling baseline maintained by the daily job; drives milk-drop alerts. */
+  milkBaselineL?: number;
+  lifetimeMilkL: number;
+  valuation: number;
+  insurance?: { provider: string; policyNo: string; coverage: number; expiry: string };
+  photoUrl?: string;
+  notes?: string;
+  acquiredAt: string;
+  acquiredFrom?: "born_on_farm" | "purchased";
+  isCalf: boolean;
+  gpsCollar?: boolean;
+}
+
+/* ---------------------------------- Pens ---------------------------------- */
+
+export type ZoneKind =
+  | "pen"
+  | "barn"
+  | "milking_parlor"
+  | "feed_store"
+  | "clinic"
+  | "office"
+  | "quarantine"
+  | "water";
+
+export interface Zone {
+  id: ID;
+  farmId: ID;
+  name: string;
+  nameAr: string;
+  kind: ZoneKind;
+  capacity: number;
+  /** Normalised 0..100 layout grid used by the interactive farm map. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  shadeCoverPct?: number;
+  hasFans?: boolean;
+}
+
+/* ----------------------------------- Milk --------------------------------- */
+
+export type MilkSession = "morning" | "evening";
+
+export interface MilkRecord {
+  id: ID;
+  farmId: ID;
+  animalId: ID;
+  date: string;
+  session: MilkSession;
+  volumeL: number;
+  fatPct: number;
+  proteinPct: number;
+  somaticCellCount: number;
+  temperatureC: number;
+  rejectedL: number;
+  rejectionReason?: "antibiotic_residue" | "high_scc" | "abnormal_color" | "contamination";
+  workerId?: ID;
+  machineId?: string;
+}
+
+export interface DailyMilkPoint {
+  date: string;
+  morningL: number;
+  eveningL: number;
+  totalL: number;
+  rejectedL: number;
+  avgFat: number;
+  avgProtein: number;
+  milkingCows: number;
+}
+
+/* --------------------------------- Breeding -------------------------------- */
+
+export type BreedingEventType =
+  | "heat"
+  | "ai"
+  | "natural_mating"
+  | "pregnancy_check"
+  | "calving"
+  | "abortion"
+  | "dry_off";
+
+export interface BreedingEvent {
+  id: ID;
+  farmId: ID;
+  animalId: ID;
+  type: BreedingEventType;
+  date: string;
+  sireId?: ID;
+  semenBatch?: string;
+  technician?: string;
+  result?: "pregnant" | "open" | "inconclusive";
+  calfIds?: ID[];
+  outcome?: "live" | "stillbirth" | "twins" | "died_24h";
+  notes?: string;
+}
+
+export interface SemenStraw {
+  id: ID;
+  farmId: ID;
+  batch: string;
+  sireName: string;
+  sireBreed: Breed;
+  quantity: number;
+  collectedAt: string;
+  expiresAt: string;
+  tankId: string;
+  costPerStraw: number;
+  conceptionRate: number;
+}
+
+/* ---------------------------------- Health --------------------------------- */
+
+export type HealthEventType =
+  | "vaccination"
+  | "treatment"
+  | "diagnosis"
+  | "surgery"
+  | "lab_result"
+  | "vet_visit"
+  | "checkup";
+
+export type Disease =
+  | "mastitis"
+  | "lameness"
+  | "ketosis"
+  | "milk_fever"
+  | "pneumonia"
+  | "diarrhea"
+  | "fmd"
+  | "brucellosis"
+  | "metritis"
+  | "parasites";
+
+export interface HealthEvent {
+  id: ID;
+  farmId: ID;
+  animalId: ID;
+  type: HealthEventType;
+  date: string;
+  disease?: Disease;
+  vaccine?: string;
+  medication?: string;
+  dosage?: string;
+  vitals?: { temperatureC?: number; heartRate?: number; respiration?: number };
+  vetName?: string;
+  cost: number;
+  withdrawalUntil?: string;
+  outcome?: "recovered" | "ongoing" | "chronic" | "died";
+  isolation?: boolean;
+  nextDueDate?: string;
+  notes?: string;
+}
+
+/* ----------------------------------- Feed ---------------------------------- */
+
+export type FeedCategory =
+  | "concentrate"
+  | "roughage"
+  | "silage"
+  | "mineral"
+  | "supplement";
+
+export interface FeedItem {
+  id: ID;
+  farmId: ID;
+  name: string;
+  nameAr: string;
+  category: FeedCategory;
+  unit: "kg" | "ton" | "bale";
+  stock: number;
+  reorderLevel: number;
+  costPerUnit: number;
+  supplierId: ID;
+  expiresAt?: string;
+  dryMatterPct: number;
+  proteinPct: number;
+  energyMcalPerKg: number;
+}
+
+export interface FeedRation {
+  id: ID;
+  farmId: ID;
+  name: string;
+  nameAr: string;
+  targetGroup: "lactating" | "dry" | "calves" | "bulls" | "heifers";
+  components: { feedItemId: ID; kgPerHead: number }[];
+  costPerHead: number;
+}
+
+export interface FeedConsumption {
+  id: ID;
+  farmId: ID;
+  date: string;
+  zoneId: ID;
+  rationId: ID;
+  kg: number;
+  cost: number;
+  heads: number;
+}
+
+/* -------------------------------- Inventory -------------------------------- */
+
+export type InventoryCategory =
+  | "medicine"
+  | "equipment"
+  | "cleaning"
+  | "tools"
+  | "fuel"
+  | "parts"
+  | "consumables";
+
+export interface InventoryItem {
+  id: ID;
+  farmId: ID;
+  sku: string;
+  name: string;
+  nameAr: string;
+  category: InventoryCategory;
+  unit: string;
+  stock: number;
+  reorderLevel: number;
+  unitCost: number;
+  supplierId: ID;
+  expiresAt?: string;
+  location: string;
+  batchNo?: string;
+}
+
+export interface StockMovement {
+  id: ID;
+  farmId: ID;
+  itemId: ID;
+  date: string;
+  kind: "in" | "out" | "adjustment" | "waste";
+  quantity: number;
+  reference?: string;
+  userId?: ID;
+}
+
+/* -------------------------------- Employees -------------------------------- */
+
+export type EmployeeRole =
+  | "milker"
+  | "feeder"
+  | "vet_assistant"
+  | "supervisor"
+  | "driver"
+  | "cleaner"
+  | "accountant"
+  | "manager";
+
+export interface Employee {
+  id: ID;
+  farmId: ID;
+  code: string;
+  name: string;
+  nameAr: string;
+  role: EmployeeRole;
+  phone: string;
+  nationalId: string;
+  hiredAt: string;
+  monthlySalary: number;
+  shift: "morning" | "evening" | "night" | "rotating";
+  active: boolean;
+  performanceScore: number;
+  avatarUrl?: string;
+  trainings: { name: string; completedAt: string }[];
+  safetyIncidents: number;
+}
+
+export interface Attendance {
+  id: ID;
+  farmId: ID;
+  employeeId: ID;
+  date: string;
+  clockIn?: string;
+  clockOut?: string;
+  status: "present" | "absent" | "leave" | "late";
+  hours: number;
+  overtimeHours: number;
+}
+
+/* ----------------------------------- Tasks --------------------------------- */
+
+export type TaskPriority = "low" | "medium" | "high" | "critical";
+export type TaskStatus = "todo" | "in_progress" | "done" | "missed";
+export type TaskCategory =
+  | "milking"
+  | "feeding"
+  | "health"
+  | "breeding"
+  | "cleaning"
+  | "maintenance"
+  | "admin";
+
+export interface FarmTask {
+  id: ID;
+  farmId: ID;
+  title: string;
+  titleAr: string;
+  category: TaskCategory;
+  priority: TaskPriority;
+  status: TaskStatus;
+  dueAt: string;
+  assigneeId?: ID;
+  animalId?: ID;
+  zoneId?: ID;
+  recurrence?: "daily" | "weekly" | "monthly" | "none";
+  completedAt?: string;
+  notes?: string;
+}
+
+/* ---------------------------------- Finance -------------------------------- */
+
+export type TxnKind = "income" | "expense";
+export type TxnCategory =
+  | "milk_sales"
+  | "animal_sales"
+  | "manure_sales"
+  | "other_income"
+  | "feed"
+  | "medicine"
+  | "labor"
+  | "fuel"
+  | "utilities"
+  | "maintenance"
+  | "veterinary"
+  | "transport"
+  | "rent"
+  | "other_expense";
+
+export interface Transaction {
+  id: ID;
+  farmId: ID;
+  date: string;
+  kind: TxnKind;
+  category: TxnCategory;
+  amount: number;
+  description: string;
+  counterpartyId?: ID;
+  invoiceId?: ID;
+  paymentMethod: "cash" | "bank" | "credit";
+}
+
+export interface Invoice {
+  id: ID;
+  farmId: ID;
+  number: string;
+  customerId: ID;
+  issuedAt: string;
+  dueAt: string;
+  lines: { description: string; qty: number; unitPrice: number }[];
+  paidAmount: number;
+  status: "draft" | "sent" | "partial" | "paid" | "overdue";
+}
+
+/* -------------------------------- Customers -------------------------------- */
+
+export type PartnerKind = "milk_buyer" | "animal_buyer" | "supplier" | "veterinarian";
+
+export interface Partner {
+  id: ID;
+  farmId: ID;
+  kind: PartnerKind;
+  name: string;
+  nameAr: string;
+  contactName: string;
+  phone: string;
+  email?: string;
+  address?: string;
+  balance: number;
+  creditLimit?: number;
+  rating: number;
+  since: string;
+}
+
+/* ------------------------------ Notifications ------------------------------ */
+
+export type AlertSeverity = "info" | "warning" | "critical";
+export type AlertChannel = "push" | "sms" | "email" | "in_app";
+
+export interface Alert {
+  id: ID;
+  farmId: ID;
+  severity: AlertSeverity;
+  category:
+    | "health"
+    | "breeding"
+    | "milk"
+    | "inventory"
+    | "weather"
+    | "task"
+    | "finance"
+    | "system";
+  title: string;
+  titleAr: string;
+  body: string;
+  bodyAr: string;
+  createdAt: string;
+  read: boolean;
+  animalId?: ID;
+  href?: string;
+  channels: AlertChannel[];
+}
+
+/* --------------------------------- Weather --------------------------------- */
+
+export interface WeatherNow {
+  temperatureC: number;
+  humidityPct: number;
+  windKph: number;
+  condition: "clear" | "cloudy" | "rain" | "dust" | "hot";
+  /** Temperature–Humidity Index — the standard heat-stress metric for buffalo. */
+  thi: number;
+  heatStress: "none" | "mild" | "moderate" | "severe";
+  forecast: {
+    date: string;
+    minC: number;
+    maxC: number;
+    humidityPct: number;
+    thi: number;
+    condition: WeatherNow["condition"];
+  }[];
+}
+
+/* --------------------------------- Sensors --------------------------------- */
+
+export interface UtilityReading {
+  date: string;
+  waterM3: number;
+  electricityKwh: number;
+  dieselL: number;
+  outageMinutes: number;
+  co2eKg: number;
+}
+
+/* -------------------------------- Timeline --------------------------------- */
+
+export interface TimelineEntry {
+  id: ID;
+  date: string;
+  kind:
+    | "birth"
+    | "milk"
+    | "health"
+    | "breeding"
+    | "movement"
+    | "weight"
+    | "financial"
+    | "note";
+  title: string;
+  titleAr: string;
+  detail?: string;
+  detailAr?: string;
+  icon?: string;
+}

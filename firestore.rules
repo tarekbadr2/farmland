@@ -1,0 +1,220 @@
+rules_version = '2';
+
+// ---------------------------------------------------------------------------
+// Herd OS security rules
+//
+// Model: every document lives under farms/{farmId}/…, so authorisation is a
+// single membership lookup rather than a predicate on each document. Roles are
+// read from farms/{farmId}/members/{uid} — the same document the UI reads, so
+// the interface and the database can never disagree about who can do what.
+//
+// The UI is not the enforcement point. Everything below must hold even if
+// someone drives the SDK directly from a console.
+// ---------------------------------------------------------------------------
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function member(farmId) {
+      return get(/databases/$(database)/documents/farms/$(farmId)/members/$(request.auth.uid));
+    }
+
+    function isMember(farmId) {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/farms/$(farmId)/members/$(request.auth.uid));
+    }
+
+    function role(farmId) {
+      return member(farmId).data.role;
+    }
+
+    function hasRole(farmId, roles) {
+      return isMember(farmId) && role(farmId) in roles;
+    }
+
+    function isOwner(farmId) {
+      return hasRole(farmId, ['owner']);
+    }
+
+    function canManage(farmId) {
+      return hasRole(farmId, ['owner', 'manager']);
+    }
+
+    // ----------------------------- Farm root ------------------------------
+    match /farms/{farmId} {
+      allow read: if isMember(farmId);
+      allow update: if canManage(farmId);
+      allow create, delete: if false;   // provisioned server-side only
+
+      // ------------------------- Membership --------------------------
+      // Only the owner grants access. A member may read the roster so the UI
+      // can show who is on shift, but nobody can promote themselves.
+      match /members/{uid} {
+        // A member may read the whole roster (the UI shows who is on shift).
+        // Anyone signed in may read their OWN membership record — or confirm
+        // they have none — so a non-member's login resolves to "no access"
+        // instead of throwing a permission error and crashing the sign-in.
+        allow read: if isMember(farmId) || request.auth.uid == uid;
+        allow write: if isOwner(farmId);
+      }
+
+      // Pending invites, keyed by email. The owner manages them; the promotion
+      // to a real member is done by the claimMembership function with admin
+      // rights, because the invitee isn't a member yet and the rules give them
+      // nothing until they are.
+      match /pendingMembers/{email} {
+        allow read, write: if isOwner(farmId);
+      }
+
+      // --------------------------- Herd ------------------------------
+      match /animals/{animalId} {
+        allow read: if isMember(farmId);
+        allow create, update: if canManage(farmId)
+                              || hasRole(farmId, ['veterinarian']);
+        allow delete: if isOwner(farmId);
+
+        match /weights/{weightId} {
+          allow read: if isMember(farmId);
+          allow write: if isMember(farmId);   // smart scale writes as the handler
+        }
+      }
+
+      match /zones/{zoneId} {
+        allow read: if isMember(farmId);
+        allow write: if canManage(farmId);
+      }
+
+      // --------------------------- Milk ------------------------------
+      // Milkers write; nobody edits history. Correcting a session overwrites
+      // the deterministic {date}_{animal}_{session} id, which is an update by
+      // the same rule — but a record older than 2 days is frozen so yesterday's
+      // numbers can't drift after the tanker has been paid.
+      match /milkRecords/{recordId} {
+        allow read: if isMember(farmId);
+        allow create: if isMember(farmId)
+                      && request.resource.data.volumeL is number
+                      && request.resource.data.volumeL >= 0
+                      && request.resource.data.volumeL < 80;
+        allow update: if canManage(farmId)
+                      || (isMember(farmId)
+                          && resource.data.recordedAt is timestamp
+                          && request.time < resource.data.recordedAt + duration.value(2, 'd'));
+        allow delete: if canManage(farmId);
+      }
+
+      match /milkDaily/{date} {
+        allow read: if isMember(farmId);
+        allow write: if isMember(farmId);   // rolled forward with each session
+      }
+
+      // ------------------------ Clinical -----------------------------
+      match /health/{eventId} {
+        allow read: if isMember(farmId);
+        allow create, update: if hasRole(farmId, ['owner', 'manager', 'veterinarian']);
+        allow delete: if isOwner(farmId);
+      }
+
+      match /breeding/{eventId} {
+        allow read: if isMember(farmId);
+        allow create, update: if hasRole(farmId, ['owner', 'manager', 'veterinarian']);
+        allow delete: if isOwner(farmId);
+      }
+
+      match /semen/{strawId} {
+        allow read: if isMember(farmId);
+        allow write: if hasRole(farmId, ['owner', 'manager', 'veterinarian']);
+      }
+
+      // --------------------- Feed & inventory ------------------------
+      match /feedItems/{itemId} {
+        allow read: if isMember(farmId);
+        allow write: if canManage(farmId);
+      }
+      match /rations/{rationId} {
+        allow read: if isMember(farmId);
+        allow write: if canManage(farmId);
+      }
+      match /feedConsumption/{recordId} {
+        allow read: if isMember(farmId);
+        allow create: if isMember(farmId);
+        allow update, delete: if canManage(farmId);
+      }
+      match /inventory/{itemId} {
+        allow read: if isMember(farmId);
+        allow write: if canManage(farmId);
+      }
+      match /stockMovements/{movementId} {
+        allow read: if isMember(farmId);
+        allow create: if isMember(farmId);
+        allow update, delete: if canManage(farmId);
+      }
+
+      // ---------------------------- People ---------------------------
+      // Salaries are in here. Workers must not read the roster's pay fields,
+      // so the whole collection is management-and-accountant only; the task
+      // board shows assignee names from a separate public projection.
+      match /employees/{employeeId} {
+        allow read: if hasRole(farmId, ['owner', 'manager', 'accountant']);
+        allow write: if hasRole(farmId, ['owner', 'manager']);
+      }
+
+      match /attendance/{recordId} {
+        allow read: if hasRole(farmId, ['owner', 'manager', 'accountant']);
+        allow create: if isMember(farmId);
+        allow update, delete: if canManage(farmId);
+      }
+
+      match /tasks/{taskId} {
+        allow read: if isMember(farmId);
+        allow create, delete: if canManage(farmId);
+        // A worker may only move a task assigned to them, and only its status.
+        allow update: if canManage(farmId)
+                      || (isMember(farmId)
+                          && resource.data.assigneeId == member(farmId).data.employeeId
+                          && request.resource.data.diff(resource.data)
+                               .affectedKeys()
+                               .hasOnly(['status', 'completedAt', 'notes']));
+      }
+
+      // --------------------------- Money -----------------------------
+      match /transactions/{txnId} {
+        allow read: if hasRole(farmId, ['owner', 'manager', 'accountant']);
+        allow write: if hasRole(farmId, ['owner', 'accountant']);
+      }
+      match /invoices/{invoiceId} {
+        allow read: if hasRole(farmId, ['owner', 'manager', 'accountant']);
+        allow write: if hasRole(farmId, ['owner', 'accountant']);
+      }
+      match /partners/{partnerId} {
+        allow read: if isMember(farmId);
+        allow write: if hasRole(farmId, ['owner', 'manager', 'accountant']);
+      }
+
+      // ------------------------- Telemetry ---------------------------
+      match /alerts/{alertId} {
+        allow read: if isMember(farmId);
+        allow update: if isMember(farmId)
+                      && request.resource.data.diff(resource.data)
+                           .affectedKeys().hasOnly(['read']);
+        allow create, delete: if canManage(farmId);
+      }
+      match /telemetry/{docId} {
+        allow read: if isMember(farmId);
+        allow write: if canManage(farmId);
+      }
+      match /utilities/{readingId} {
+        allow read: if isMember(farmId);
+        allow write: if canManage(farmId);
+      }
+    }
+
+    // Anything not matched above is denied. Keep it that way.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

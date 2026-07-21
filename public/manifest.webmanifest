@@ -1,0 +1,22 @@
+{
+  "name": "Herd OS — Buffalo Farm Management",
+  "short_name": "Herd OS",
+  "description": "Enterprise herd management for buffalo dairies.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0f1319",
+  "theme_color": "#12161c",
+  "orientation": "portrait-primary",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Record milk", "url": "/milk" },
+    { "name": "Animals", "url": "/animals" },
+    { "name": "Tasks", "url": "/tasks" }
+  ]
+}
