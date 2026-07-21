@@ -181,9 +181,6 @@ export function Topbar() {
                 <DropdownMenuItem onSelect={() => setTheme(theme === "dark" ? "light" : "dark")}>
                   {t("settings.theme")}
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={toggleLocale}>
-                  {t("settings.language")} — {locale === "en" ? "العربية" : "English"}
-                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={async () => {
