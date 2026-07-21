@@ -212,6 +212,20 @@ service cloud.firestore {
       }
     }
 
+    // Public demo-request leads from the marketing site. Anyone may submit one
+    // (validated), but nobody can read or change them from the client — the
+    // owner reads leads from the console / admin. Create-only, field-checked.
+    match /leads/{leadId} {
+      allow create: if request.resource.data.name is string
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() < 200
+                    && request.resource.data.email is string
+                    && request.resource.data.email.size() > 3
+                    && request.resource.data.email.size() < 200
+                    && request.resource.data.get('message', '').size() < 2000;
+      allow read, update, delete: if false;
+    }
+
     // Anything not matched above is denied. Keep it that way.
     match /{document=**} {
       allow read, write: if false;
