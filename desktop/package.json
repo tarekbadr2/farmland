@@ -1,0 +1,44 @@
+{
+  "name": "herd-os-desktop",
+  "productName": "Herd OS",
+  "version": "0.1.0",
+  "description": "Herd OS — Buffalo Farm Management (desktop shell)",
+  "author": "Tarek Badr",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.0.3",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "png-to-ico": "^3.0.2",
+    "rcedit": "^5.0.2"
+  },
+  "build": {
+    "appId": "farm.herdos.desktop",
+    "productName": "Herd OS",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "app-icon.png"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "app-icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Herd OS"
+    }
+  }
+}
