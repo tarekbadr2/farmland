@@ -28,14 +28,15 @@ import { useSyncStatus } from "@/hooks/use-sync-status";
 import { SyncStatus } from "@/components/shell/sync-status";
 import { InstallButton } from "@/components/shell/install-button";
 import { ScanTagDialog } from "@/components/animals/scan-tag-dialog";
-import { IS_DESKTOP } from "@/lib/platform";
+import { useFullApp } from "@/lib/work-mode";
+import { WorkModeToggle } from "@/components/shell/work-mode-toggle";
 
 export function Topbar() {
   const pathname = usePathname();
   const router = useRouter();
   const { t, ln, locale, toggleLocale } = useI18n();
-  const { user, signOut, bypassed } = useAuth();
-  const webView = !IS_DESKTOP && !bypassed;
+  const { user, signOut } = useAuth();
+  const webView = !useFullApp();
   const { data: farm } = useFarm();
   const initials = (user?.name ?? "?")
     .split(" ")
@@ -79,6 +80,8 @@ export function Topbar() {
           >
             <Menu />
           </Button>
+
+          <WorkModeToggle />
 
           <h1 className="truncate text-[15px] font-semibold tracking-tight lg:text-base">
             {current ? t(current.labelKey) : t("app.name")}

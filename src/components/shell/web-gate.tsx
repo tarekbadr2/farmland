@@ -3,13 +3,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Download, LayoutDashboard, Monitor } from "lucide-react";
+import { Download, HardHat, LayoutDashboard, Monitor } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/lib/auth/provider";
 import { useI18n } from "@/lib/i18n/provider";
 import { DOWNLOAD_URL } from "@/lib/download";
-import { IS_DESKTOP, isWebViewAllowed } from "@/lib/platform";
+import { isWebViewAllowed } from "@/lib/platform";
+import { useFullApp, setWorkMode } from "@/lib/work-mode";
 
 /**
  * On the website the app is view-only. This lets the overview and settings/
@@ -18,12 +18,12 @@ import { IS_DESKTOP, isWebViewAllowed } from "@/lib/platform";
  * pass straight through.
  */
 export function WebGate({ children }: { children: React.ReactNode }) {
-  const { bypassed } = useAuth();
   const { locale } = useI18n();
   const pathname = usePathname();
   const ar = locale === "ar";
+  const fullApp = useFullApp();
 
-  if (IS_DESKTOP || bypassed || isWebViewAllowed(pathname)) return <>{children}</>;
+  if (fullApp || isWebViewAllowed(pathname)) return <>{children}</>;
 
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center px-6 text-center" dir={ar ? "rtl" : "ltr"}>
@@ -52,6 +52,14 @@ export function WebGate({ children }: { children: React.ReactNode }) {
           </Link>
         </Button>
       </div>
+
+      <button
+        onClick={() => setWorkMode(true)}
+        className="mt-5 flex items-center gap-1.5 text-[12.5px] text-primary underline-offset-2 hover:underline"
+      >
+        <HardHat className="size-3.5" />
+        {ar ? "استخدم التطبيق الكامل هنا (وضع العمل)" : "Use the full app here (Work mode)"}
+      </button>
     </div>
   );
 }

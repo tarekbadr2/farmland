@@ -6,22 +6,20 @@ import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
 import { primaryNavItems, webNavGroups, isNavActive } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n/provider";
-import { useAuth } from "@/lib/auth/provider";
-import { IS_DESKTOP } from "@/lib/platform";
+import { useFullApp } from "@/lib/work-mode";
 import { cn } from "@/lib/utils";
 
 /** Thumb-reachable bar. Five destinations max — anything more is a menu. */
 export function MobileTabBar() {
   const pathname = usePathname();
   const { t } = useI18n();
-  const { bypassed } = useAuth();
-  const items =
-    !IS_DESKTOP && !bypassed
-      ? webNavGroups.flatMap((g) => g.items)
-      : [
-          ...primaryNavItems,
-          { href: "/assistant", labelKey: "nav.assistant" as const, icon: Sparkles },
-        ];
+  const fullApp = useFullApp();
+  const items = fullApp
+    ? [
+        ...primaryNavItems,
+        { href: "/assistant", labelKey: "nav.assistant" as const, icon: Sparkles },
+      ]
+    : webNavGroups.flatMap((g) => g.items);
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 glass pb-[env(safe-area-inset-bottom)] lg:hidden">

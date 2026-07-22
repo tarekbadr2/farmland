@@ -3,20 +3,19 @@
 import { Download, Monitor } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/lib/auth/provider";
 import { useI18n } from "@/lib/i18n/provider";
 import { DOWNLOAD_URL } from "@/lib/download";
-import { IS_DESKTOP } from "@/lib/platform";
+import { useFullApp } from "@/lib/work-mode";
 
 /** Shown only on the website (view-only) — a persistent nudge to install the
  *  desktop app, where the farm is actually managed. Hidden on the desktop build
  *  and in the demo. */
 export function WebDownloadBanner() {
-  const { bypassed } = useAuth();
   const { locale } = useI18n();
   const ar = locale === "ar";
 
-  if (IS_DESKTOP || bypassed) return null;
+  // Hidden on desktop, in the demo, and once Work mode is on (full app already).
+  if (useFullApp()) return null;
 
   return (
     <div
