@@ -24,6 +24,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { useI18n } from "@/lib/i18n/provider";
 import { getFirebase } from "@/infrastructure/firebase/client";
 import { DOWNLOAD_URL } from "@/lib/download";
+import { PLANS, PLAN_ORDER, TRIAL_DAYS, formatEgp } from "@/lib/billing/plans";
 
 const FEATURES = [
   { icon: Milk, en: "Milk & parlor", enD: "Two-shift records, quality, forecasts and per-cow yield.", ar: "الحليب والحلابة", arD: "سجلات الوردية، الجودة، التنبؤ، وإنتاج كل بقرة." },
@@ -157,37 +158,70 @@ export default function LandingPage() {
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-3xl font-semibold tracking-tight">{ar ? "الأسعار" : "Pricing"}</h2>
           <p className="mt-3 text-[14px] text-muted-foreground">
-            {ar ? "خطة واحدة بسيطة لكل مزرعة." : "One simple plan per farm."}
+            {ar
+              ? `تسعير حسب حجم القطيع. ابدأ بتجربة مجانية ${TRIAL_DAYS} أيام — بدون بطاقة.`
+              : `Priced by herd size. Start with a ${TRIAL_DAYS}-day free trial — no card required.`}
           </p>
         </div>
 
-        <div className="mx-auto mt-10 max-w-md rounded-3xl border border-primary/30 bg-card p-8 shadow-sm">
-          <p className="text-[13px] font-semibold uppercase tracking-wide text-primary">
-            {ar ? "بريميوم" : "Premium"}
-          </p>
-          <div className="mt-2 flex items-end gap-2">
-            <span className="text-4xl font-semibold">{ar ? "تواصل معنا" : "Let's talk"}</span>
-          </div>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            {ar ? "تسعير حسب حجم القطيع. اطلب عرضًا لمعرفة التفاصيل." : "Priced by herd size. Request a demo for details."}
-          </p>
+        <div className="mx-auto mt-10 grid max-w-5xl gap-5 sm:grid-cols-3">
+          {PLAN_ORDER.map((tier) => {
+            const plan = PLANS[tier];
+            const meta = ar ? plan.ar : plan.en;
+            const featured = tier === "growth";
+            const nf = (v: number) => v.toLocaleString(ar ? "ar-EG" : "en-US");
+            return (
+              <div
+                key={tier}
+                className={
+                  "relative flex flex-col rounded-3xl border bg-card p-7 shadow-sm " +
+                  (featured ? "border-primary/40 ring-1 ring-primary/25" : "border-border/70")
+                }
+              >
+                {featured && (
+                  <span className="absolute -top-3 start-6 flex items-center gap-1 rounded-full bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground">
+                    <Sparkles className="size-3" />
+                    {ar ? "الأكثر شيوعًا" : "Most popular"}
+                  </span>
+                )}
+                <p className="text-[15px] font-semibold">{meta.name}</p>
+                <p className="mt-1 min-h-[34px] text-[12.5px] text-muted-foreground">{meta.tagline}</p>
+                <div className="mt-4 flex items-baseline gap-1">
+                  <span className="text-3xl font-semibold tracking-tight">
+                    {formatEgp(plan.amount, ar ? "ar" : "en")}
+                  </span>
+                  <span className="text-[12px] text-muted-foreground">{ar ? "/ شهر" : "/ mo"}</span>
+                </div>
 
-          <ul className="mt-6 space-y-2.5 text-[13.5px]">
-            {(ar
-              ? ["تطبيق سطح المكتب الكامل", "عدد غير محدود من الحيوانات والمستخدمين", "يعمل دون إنترنت", "تقارير PDF وExcel", "دعم بالعربية والإنجليزية"]
-              : ["Full desktop application", "Unlimited animals and users", "Works fully offline", "PDF & Excel reports", "Arabic & English support"]
-            ).map((item) => (
-              <li key={item} className="flex items-center gap-2">
-                <Check className="size-4 shrink-0 text-primary" />
-                {item}
-              </li>
-            ))}
-          </ul>
+                <ul className="mt-5 flex-1 space-y-2.5 text-[13.5px]">
+                  {[
+                    ar ? `حتى ${nf(plan.herdLimit)} رأس` : `Up to ${nf(plan.herdLimit)} head`,
+                    ar ? `${nf(plan.aiQuota)} سؤال للمساعد الذكي / شهر` : `${nf(plan.aiQuota)} AI questions / mo`,
+                    ar ? `${nf(plan.seats)} مقعد للفريق` : `${nf(plan.seats)} team seats`,
+                    ar ? "يعمل دون إنترنت" : "Works fully offline",
+                    ar ? "تقارير PDF وExcel" : "PDF & Excel reports",
+                  ].map((item) => (
+                    <li key={item} className="flex items-start gap-2">
+                      <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
 
-          <Button asChild size="lg" className="mt-7 w-full">
-            <a href="#demo">{ar ? "اطلب عرضًا" : "Request a demo"}</a>
-          </Button>
+                <Button asChild size="lg" variant={featured ? "default" : "outline"} className="mt-6 w-full">
+                  <a href="/login">{ar ? "ابدأ التجربة المجانية" : "Start free trial"}</a>
+                </Button>
+              </div>
+            );
+          })}
         </div>
+
+        <p className="mt-6 text-center text-[12px] text-muted-foreground">
+          {ar ? "تحتاج حجمًا أكبر أو ميزات مخصّصة؟ " : "Need a larger herd or custom features? "}
+          <a href="#demo" className="font-medium text-primary underline-offset-2 hover:underline">
+            {ar ? "تواصل معنا" : "Talk to us"}
+          </a>
+        </p>
       </section>
 
       {/* --------------------------- Request a demo ------------------------- */}
