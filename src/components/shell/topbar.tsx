@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bell, Languages, Menu, Moon, QrCode, Search, Sun } from "lucide-react";
+import { Languages, Menu, Moon, QrCode, Search, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogTitle, SheetContent } from "@/components/ui/dialog";
@@ -26,7 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/menu";
 import { useI18n } from "@/lib/i18n/provider";
-import { useAlerts, useFarm } from "@/hooks/use-farm-data";
+import { useFarm } from "@/hooks/use-farm-data";
 import { useAuth } from "@/lib/auth/provider";
 import { allNavItems } from "@/lib/nav";
 import { SidebarNav } from "./sidebar";
@@ -52,8 +52,6 @@ export function Topbar() {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const { online, pending } = useSyncStatus();
-  const { data: alerts } = useAlerts();
-  const unread = alerts?.filter((a) => !a.read).length ?? 0;
 
   React.useEffect(() => setMounted(true), []);
 
@@ -146,15 +144,6 @@ export function Topbar() {
               onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
             >
               {mounted && resolvedTheme === "dark" ? <Sun /> : <Moon />}
-            </Button>
-
-            <Button variant="ghost" size="icon" className="relative" asChild>
-              <Link href="/notifications" aria-label={t("nav.notifications")}>
-                <Bell />
-                {unread > 0 && (
-                  <span className="absolute end-1.5 top-1.5 size-2 rounded-full bg-destructive ring-2 ring-background" />
-                )}
-              </Link>
             </Button>
 
             <DropdownMenu>

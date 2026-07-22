@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/primitives";
 import { useI18n } from "@/lib/i18n/provider";
-import { useAuth } from "@/lib/auth/provider";
+import { useAuth, REMEMBER_KEY } from "@/lib/auth/provider";
 
 /** Google's mark, inlined — the brand guidelines require the four colours. */
 function GoogleMark() {
@@ -53,6 +53,16 @@ export default function SignInPage() {
   const { signInWithEmail, signInWithGoogle, bypassed, user, needsOnboarding } = useAuth();
   const [pending, setPending] = React.useState<"email" | "google" | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [remember, setRemember] = React.useState(true);
+
+  // Load the saved "remember me" preference (default on) and keep it in sync.
+  React.useEffect(() => {
+    setRemember(window.localStorage.getItem(REMEMBER_KEY) !== "0");
+  }, []);
+  const toggleRemember = (v: boolean) => {
+    setRemember(v);
+    window.localStorage.setItem(REMEMBER_KEY, v ? "1" : "0");
+  };
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -208,6 +218,16 @@ export default function SignInPage() {
               {error || form.formState.errors.email || form.formState.errors.password ? (
                 <p className="text-[12px] text-destructive">{error ?? t("auth.invalid")}</p>
               ) : null}
+
+              <label className="flex cursor-pointer select-none items-center gap-2 text-[13px] text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={(e) => toggleRemember(e.target.checked)}
+                  className="size-4 rounded border-input accent-primary"
+                />
+                {locale === "ar" ? "تذكّرني على هذا الجهاز" : "Remember me on this device"}
+              </label>
 
               <Button type="submit" size="lg" className="w-full" disabled={pending !== null}>
                 {pending === "email" ? <Loader2 className="animate-spin" /> : null}

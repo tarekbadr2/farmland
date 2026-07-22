@@ -98,17 +98,32 @@ const APP_DIR = app.isPackaged
 // HERDOS_URL still overrides for testing against a hosted deployment.
 let appUrl = process.env.HERDOS_URL || null;
 
+// Serve on a FIXED port. Firebase's auth session (and IndexedDB) is scoped to
+// the page origin, so a random port each launch would change the origin and lose
+// the login every time — the fixed port keeps the origin stable so users stay
+// signed in. If it's ever busy we fall back to an ephemeral port (the app still
+// opens; only that session may need a fresh sign-in).
+const APP_PORT = 43117;
+
 function startServer() {
   if (appUrl) return Promise.resolve();
   return new Promise((resolve, reject) => {
-    const server = http.createServer((req, res) =>
-      handler(req, res, { public: APP_DIR, directoryListing: false }),
-    );
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
+    const serve = (req, res) => handler(req, res, { public: APP_DIR, directoryListing: false });
+    const done = (server) => {
       appUrl = `http://localhost:${server.address().port}/`;
       resolve();
+    };
+    const server = http.createServer(serve);
+    server.once("error", (err) => {
+      if (err && err.code === "EADDRINUSE") {
+        const fallback = http.createServer(serve);
+        fallback.once("error", reject);
+        fallback.listen(0, "127.0.0.1", () => done(fallback));
+      } else {
+        reject(err);
+      }
     });
+    server.listen(APP_PORT, "127.0.0.1", () => done(server));
   });
 }
 

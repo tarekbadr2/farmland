@@ -3,7 +3,10 @@
 import * as React from "react";
 import {
   GoogleAuthProvider,
+  browserLocalPersistence,
+  browserSessionPersistence,
   onAuthStateChanged,
+  setPersistence,
   signInWithCredential,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -50,6 +53,27 @@ const DEMO_USER: SessionUser = {
 };
 
 const AuthContext = React.createContext<AuthValue | null>(null);
+
+/** localStorage key for the "remember me" preference. Default is to remember. */
+export const REMEMBER_KEY = "herdos.remember";
+
+/**
+ * Apply the "remember me" choice before signing in.
+ *
+ * Local persistence keeps the session across app restarts (the default so users
+ * aren't asked to sign in every launch); session persistence clears it when the
+ * app/tab closes — for a shared machine. Must be set before the sign-in call.
+ */
+async function applyRememberPersistence() {
+  const { auth } = getFirebase();
+  const remember =
+    typeof window === "undefined" || window.localStorage.getItem(REMEMBER_KEY) !== "0";
+  try {
+    await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+  } catch {
+    /* non-fatal — fall back to the SDK default (local) */
+  }
+}
 
 /**
  * Membership lookup.
@@ -162,10 +186,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       bypassed: !enabled,
       signInWithEmail: async (email, password) => {
         const { auth } = getFirebase();
+        await applyRememberPersistence();
         await signInWithEmailAndPassword(auth, email, password);
       },
       signInWithGoogle: async () => {
         const { auth } = getFirebase();
+        await applyRememberPersistence();
         // In the desktop app, Google sign-in runs in the user's real browser
         // (Google blocks OAuth in embedded app windows). The preload bridge
         // returns a Google id token, which we exchange for a Firebase session.

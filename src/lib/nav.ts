@@ -38,6 +38,7 @@ export const navGroups: NavGroup[] = [
     labelKey: "nav.overview",
     items: [
       { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, primary: true },
+      { href: "/notifications", labelKey: "nav.notifications", icon: Bell },
       { href: "/map", labelKey: "nav.map", icon: MapIcon },
     ],
   },
@@ -77,7 +78,6 @@ export const navGroups: NavGroup[] = [
     items: [
       { href: "/analytics", labelKey: "nav.analytics", icon: BarChart3 },
       { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles },
-      { href: "/notifications", labelKey: "nav.notifications", icon: Bell },
       { href: "/settings", labelKey: "nav.settings", icon: Settings },
     ],
   },
