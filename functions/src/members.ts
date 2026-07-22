@@ -1,6 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { REGION, db } from "./shared";
+import { sendEmail, welcomeEmail } from "./email";
 
 /**
  * Turns a pending invite into a real membership on first sign-in.
@@ -134,5 +135,17 @@ export const createFarm = onCall({ region: REGION }, async (req) => {
 
   await batch.commit();
   logger.info("farm created", { farmId, uid });
+
+  // Welcome email (best-effort — never fails farm creation; no-op if email
+  // isn't configured).
+  if (email) {
+    try {
+      const { subject, html } = welcomeEmail(name);
+      await sendEmail(email, subject, html);
+    } catch (err) {
+      logger.warn("welcome email failed", err);
+    }
+  }
+
   return { farmId, existed: false };
 });

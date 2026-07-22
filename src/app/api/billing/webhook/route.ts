@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/server/firebase-admin";
 import { verifyWebhook, parseMerchantOrderId } from "@/lib/billing/paymob";
 import { getPlan } from "@/lib/billing/plans";
+import { sendEmail, receiptEmail } from "@/lib/server/email";
 
 /**
  * Paymob transaction webhook.
@@ -59,6 +60,23 @@ export async function POST(req: Request) {
     },
     { merge: true },
   );
+
+  // Emailed receipt (best-effort; no-op if email isn't configured).
+  try {
+    const owner = await db
+      .collection(`farms/${parsed.farmId}/members`)
+      .where("role", "==", "owner")
+      .limit(1)
+      .get();
+    const email = owner.docs[0]?.data()?.email as string | undefined;
+    if (email) {
+      const amountEgp = Math.round(Number(obj.amount_cents ?? plan.amount) / 100);
+      const { subject, html } = receiptEmail(plan.en.name, amountEgp, String(obj.id ?? ""));
+      await sendEmail(email, subject, html);
+    }
+  } catch (err) {
+    console.error("[billing/webhook] receipt email failed", err);
+  }
 
   return NextResponse.json({ ok: true, applied: true });
 }
