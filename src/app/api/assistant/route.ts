@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 
-import { verifyBearer } from "@/lib/server/firebase-admin";
+import type { DocumentReference } from "firebase-admin/firestore";
+
+import { verifyBearer, adminDb } from "@/lib/server/firebase-admin";
+import { resolveEntitlement, isBillingEnforced, isoMonth } from "@/lib/billing/status";
+import type { Farm } from "@/core/domain/types";
 
 /**
  * The AI advisor endpoint.
@@ -97,6 +101,33 @@ export async function POST(req: Request) {
     return json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // Resolve the caller's farm so AI usage can be metered against the plan quota.
+  // A metering hiccup must never block a paying user, so failures here are
+  // swallowed and the answer proceeds.
+  let farmRef: DocumentReference | null = null;
+  let farm: Farm | undefined;
+  try {
+    const db = await adminDb();
+    const userSnap = await db.doc(`users/${caller.uid}`).get();
+    const farmId = userSnap.exists ? (userSnap.data()!.farmId as string) : null;
+    if (farmId) {
+      farmRef = db.doc(`farms/${farmId}`);
+      const farmSnap = await farmRef.get();
+      if (farmSnap.exists) farm = { id: farmSnap.id, ...farmSnap.data() } as Farm;
+    }
+  } catch {
+    /* metering unavailable — proceed without it */
+  }
+
+  // Enforce the monthly quota only when billing enforcement is on (off until
+  // Paymob is live). Usage is still counted below either way.
+  if (farm && isBillingEnforced()) {
+    const ent = resolveEntitlement(farm);
+    if (ent.aiExhausted) {
+      return json({ error: "quota-exceeded", quota: ent.aiQuota, used: ent.aiUsed }, { status: 402 });
+    }
+  }
+
   const client = new Anthropic({ apiKey });
 
   try {
@@ -114,6 +145,25 @@ export async function POST(req: Request) {
 
     const answer = textOf(message);
     if (!answer) return json({ fallback: true, reason: "empty" });
+
+    // Count this question against the month's quota (best-effort, transactional
+    // so concurrent questions don't clobber the counter).
+    if (farmRef) {
+      const ref = farmRef;
+      const month = isoMonth();
+      try {
+        const db = await adminDb();
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(ref);
+          const cur = snap.data()?.aiUsage as { month?: string; count?: number } | undefined;
+          const count = cur?.month === month ? (cur.count ?? 0) + 1 : 1;
+          tx.set(ref, { aiUsage: { month, count } }, { merge: true });
+        });
+      } catch {
+        /* best-effort metering */
+      }
+    }
+
     return json({ answer });
   } catch (err) {
     console.error("[assistant] Claude call failed:", err);

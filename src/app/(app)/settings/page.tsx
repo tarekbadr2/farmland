@@ -7,6 +7,7 @@ import {
   Bell,
   Building2,
   CloudDownload,
+  CreditCard,
   Database,
   Globe,
   Moon,
@@ -31,6 +32,7 @@ import { useFarm } from "@/hooks/use-farm-data";
 import { downloadJson } from "@/lib/export";
 import { getDataset } from "@/core/data/seed";
 import { TeamManager } from "@/components/settings/team-manager";
+import { BillingSettings } from "@/components/settings/billing-settings";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/core/domain/types";
 
@@ -56,21 +58,31 @@ const INTEGRATIONS = [
 
 export default function SettingsPage() {
   const { t, locale, setLocale, formatNumber } = useI18n();
+  const ar = locale === "ar";
   const { theme, setTheme } = useTheme();
   const { data: farm } = useFarm();
 
   const [offline, setOffline] = React.useState(true);
   const [realtime, setRealtime] = React.useState(true);
   const [channels, setChannels] = React.useState({ push: true, sms: true, email: false });
+  const [tab, setTab] = React.useState("farm");
+
+  // The trial banner / paywall link to /settings#billing — honour the hash.
+  React.useEffect(() => {
+    if (window.location.hash === "#billing") setTab("billing");
+  }, []);
 
   return (
     <>
       <PageHeader title={t("settings.title")} subtitle={t("settings.subtitle")} />
 
-      <Tabs defaultValue="farm">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-4 flex w-full overflow-x-auto lg:w-auto">
           <TabsTrigger value="farm">
             <Building2 /> {t("settings.farm")}
+          </TabsTrigger>
+          <TabsTrigger value="billing">
+            <CreditCard /> {ar ? "الفوترة" : "Billing"}
           </TabsTrigger>
           <TabsTrigger value="appearance">
             <Palette /> {t("settings.appearance")}
@@ -159,30 +171,13 @@ export default function SettingsPage() {
                           {t("settings.animalLimit")}: {formatNumber(farm?.animalLimit ?? 0)}
                         </p>
                       </div>
-                      <Badge variant="default">Active</Badge>
+                      <Badge variant="default">{ar ? "نشط" : "Active"}</Badge>
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    {[
-                      { label: "Starter", limit: 500 },
-                      { label: "Growth", limit: 5000 },
-                      { label: "Enterprise", limit: 50000 },
-                    ].map((p) => (
-                      <div
-                        key={p.label}
-                        className={cn(
-                          "flex items-center justify-between rounded-lg border border-border/70 px-3 py-2.5",
-                          farm?.plan === p.label.toLowerCase() && "border-primary/40 bg-accent/40",
-                        )}
-                      >
-                        <span className="text-[13px] font-medium">{p.label}</span>
-                        <span className="tabular text-[12px] text-muted-foreground">
-                          {formatNumber(p.limit)} {t("common.head")}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  <Button variant="outline" className="w-full" onClick={() => setTab("billing")}>
+                    <CreditCard /> {ar ? "إدارة الاشتراك والفوترة" : "Manage subscription & billing"}
+                  </Button>
 
                   <p className="text-[11.5px] leading-relaxed text-muted-foreground">
                     {locale === "ar"
@@ -192,6 +187,13 @@ export default function SettingsPage() {
                 </CardContent>
               </Card>
             </motion.div>
+          </motion.div>
+        </TabsContent>
+
+        {/* --------------------------------- Billing ------------------------------- */}
+        <TabsContent value="billing">
+          <motion.div variants={cardIn} initial="hidden" animate="show">
+            <BillingSettings />
           </motion.div>
         </TabsContent>
 

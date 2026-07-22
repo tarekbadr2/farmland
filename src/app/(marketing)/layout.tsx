@@ -19,9 +19,9 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
   const ar = locale === "ar";
 
   const nav = [
-    { href: "#features", en: "Features", ar: "المميزات" },
-    { href: "#pricing", en: "Pricing", ar: "الأسعار" },
-    { href: "#demo", en: "Request a demo", ar: "اطلب عرضًا" },
+    { href: "/welcome#features", en: "Features", ar: "المميزات" },
+    { href: "/welcome#pricing", en: "Pricing", ar: "الأسعار" },
+    { href: "/welcome#demo", en: "Request a demo", ar: "اطلب عرضًا" },
   ];
 
   return (
@@ -72,6 +72,15 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
               ? "نظام إدارة مزارع الجاموس — الحليب والتكاثر والصحة والأعلاف والمالية في مكان واحد."
               : "Enterprise herd management for buffalo dairies — milk, breeding, health, feed and finance in one place."}
           </p>
+          <div className="flex items-center gap-4 text-[12px]">
+            <Link href="/legal/terms" className="text-muted-foreground transition hover:text-foreground">
+              {ar ? "شروط الخدمة" : "Terms of Service"}
+            </Link>
+            <span className="text-muted-foreground/40">·</span>
+            <Link href="/legal/privacy" className="text-muted-foreground transition hover:text-foreground">
+              {ar ? "سياسة الخصوصية" : "Privacy Policy"}
+            </Link>
+          </div>
           <p className="text-[11.5px] text-muted-foreground/70">
             © {2026} Herd OS · {ar ? "صُنع لمزارع مصر" : "Built for Egyptian farms"}
           </p>

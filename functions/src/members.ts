@@ -77,7 +77,10 @@ export const createFarm = onCall({ region: REGION }, async (req) => {
   const nameAr = String(req.data?.nameAr ?? "").trim().slice(0, 120) || name;
 
   const farmId = `farm_${uid.slice(0, 10).toLowerCase()}`;
-  const now = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
+  // 7-day free trial from creation; the paywall takes over when it lapses.
+  const trialEndsAt = new Date(now.getTime() + 7 * 86_400_000).toISOString();
 
   const batch = db.batch();
   batch.set(db.doc(`farms/${farmId}`), {
@@ -89,17 +92,26 @@ export const createFarm = onCall({ region: REGION }, async (req) => {
     currency: "EGP",
     plan: "starter",
     animalLimit: 1000,
-    createdAt: now,
+    createdAt: nowIso,
     ownerId: uid,
     coordinates: { lat: 30.04, lng: 31.24 },
     counts: { total: 0, lactating: 0, dry: 0, calves: 0, pregnant: 0, bulls: 0, healthy: 0, sick: 0 },
+    subscription: {
+      status: "trialing",
+      tier: "starter",
+      trialEndsAt,
+      currentPeriodEnd: null,
+      provider: null,
+      providerRef: null,
+    },
+    aiUsage: { month: nowIso.slice(0, 7), count: 0 },
   });
   batch.set(db.doc(`farms/${farmId}/members/${uid}`), {
     email,
     role: "owner",
     name: req.auth?.token?.name ?? email.split("@")[0] ?? "Owner",
     permissions: ["*"],
-    grantedAt: now,
+    grantedAt: nowIso,
   });
   batch.set(db.doc(`users/${uid}`), { farmId, role: "owner" });
 

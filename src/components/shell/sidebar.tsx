@@ -67,6 +67,7 @@ export function SidebarNav({
                   <Link
                     href={item.href}
                     onClick={onNavigate}
+                    data-tour={`nav:${item.href}`}
                     className={cn(
                       "group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
                       collapsed && "justify-center px-0",

@@ -22,6 +22,28 @@ export interface Farm {
   createdAt: string;
   logoUrl?: string;
   coordinates: { lat: number; lng: number };
+  /** Set while the farm holds tutorial sample data (drives the banner + tour). */
+  isSample?: boolean;
+  /** Billing state. Absent on farms created before billing existed — treated as
+   *  grandfathered/active so no one is locked out. */
+  subscription?: Subscription;
+  /** AI advisor usage for the current calendar month (metered against the plan's
+   *  quota). Server-maintained; resets when `month` rolls over. */
+  aiUsage?: { month: string; count: number };
+}
+
+export type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled";
+
+export interface Subscription {
+  status: SubscriptionStatus;
+  tier: "starter" | "growth" | "enterprise";
+  /** ISO date the free trial ends (while status is "trialing"). */
+  trialEndsAt?: string | null;
+  /** ISO date the current paid period ends (while status is "active"). */
+  currentPeriodEnd?: string | null;
+  provider?: "paymob" | null;
+  /** Opaque reference from the payment provider (order/subscription id). */
+  providerRef?: string | null;
 }
 
 export type Role = "owner" | "manager" | "veterinarian" | "worker" | "accountant";

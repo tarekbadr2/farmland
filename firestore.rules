@@ -47,7 +47,14 @@ service cloud.firestore {
     // ----------------------------- Farm root ------------------------------
     match /farms/{farmId} {
       allow read: if isMember(farmId);
-      allow update: if canManage(farmId);
+      // Managers may edit farm settings, but billing state is server-only:
+      // `subscription` and `aiUsage` can never be changed by a client (that
+      // would let an owner self-grant a paid plan or reset their AI usage).
+      // The Cloud Functions / API routes write those with admin credentials,
+      // which bypass these rules.
+      allow update: if canManage(farmId)
+        && request.resource.data.subscription == resource.data.subscription
+        && request.resource.data.aiUsage == resource.data.aiUsage;
       allow create, delete: if false;   // provisioned server-side only
 
       // ------------------------- Membership --------------------------

@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { MilkStatusPill, ReproStatusPill } from "@/components/common/status-pill";
 import { useI18n } from "@/lib/i18n/provider";
+import { toast } from "sonner";
 import { WEB_ORIGIN } from "@/lib/download";
 
 // The bundled desktop app has no local server, so it calls the hosted metered
@@ -133,11 +134,21 @@ export default function AssistantPage() {
           },
           body: JSON.stringify({ question, brief: buildAdvisorBrief(ctx), locale }),
         });
-        const data = (await res.json().catch(() => null)) as { answer?: string } | null;
+        const data = (await res.json().catch(() => null)) as
+          | { answer?: string; error?: string }
+          | null;
 
         if (res.ok && data?.answer) {
           setAnswer({ matched: true, summary: data.answer, summaryAr: data.answer, source: "ai" });
         } else {
+          // Monthly AI quota reached — answer locally but nudge toward an upgrade.
+          if (res.status === 402 && data?.error === "quota-exceeded") {
+            toast.info(
+              locale === "ar"
+                ? "استُنفدت حصة المساعد الذكي لهذا الشهر. رقِّ خطتك للمزيد."
+                : "You've used this month's AI questions. Upgrade for more.",
+            );
+          }
           setAnswer(local());
         }
       } catch {

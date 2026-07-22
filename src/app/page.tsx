@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useForm } from "react-hook-form";
@@ -245,6 +246,15 @@ export default function SignInPage() {
 
             <p className="mt-8 text-center text-[11px] leading-relaxed text-muted-foreground">
               {bypassed ? t("app.demoDataHint") : t("app.liveDataHint")}
+            </p>
+            <p className="mt-3 text-center text-[11px] text-muted-foreground/80">
+              <Link href="/legal/terms" className="underline-offset-2 hover:underline">
+                {locale === "ar" ? "شروط الخدمة" : "Terms"}
+              </Link>
+              <span className="mx-1.5 text-muted-foreground/40">·</span>
+              <Link href="/legal/privacy" className="underline-offset-2 hover:underline">
+                {locale === "ar" ? "سياسة الخصوصية" : "Privacy"}
+              </Link>
             </p>
           </motion.div>
         </div>

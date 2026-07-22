@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowRight, Loader2, LogOut } from "lucide-react";
 
@@ -12,6 +13,7 @@ import { useAuth } from "@/lib/auth/provider";
 import { useI18n } from "@/lib/i18n/provider";
 import { createFarm } from "@/infrastructure/firebase/client";
 import { setActiveFarm } from "@/infrastructure/firebase/tenant";
+import { seedSampleFarm } from "@/core/data/sample";
 
 /**
  * Create-your-farm onboarding.
@@ -28,21 +30,30 @@ export function Onboarding() {
 
   const [name, setName] = React.useState("");
   const [nameAr, setNameAr] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
+  const [busy, setBusy] = React.useState<null | "creating" | "seeding">(null);
   const [error, setError] = React.useState<string | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    setBusy(true);
+    setBusy("creating");
     setError(null);
     try {
       const farmId = await createFarm(name.trim(), nameAr.trim() || undefined);
       setActiveFarm(farmId);
+      // Fill the fresh farm with a compact demo herd so every screen has content
+      // to explore. A seed hiccup shouldn't strand onboarding — they just land
+      // on an empty farm, which is still valid.
+      setBusy("seeding");
+      try {
+        await seedSampleFarm(farmId);
+      } catch {
+        /* non-fatal — proceed with an empty farm */
+      }
       await refreshSession(); // sets the user → the guard swaps to the app
     } catch {
       setError(ar ? "تعذّر إنشاء المزرعة. حاول مرة أخرى." : "Couldn't create the farm. Try again.");
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -61,8 +72,8 @@ export function Onboarding() {
           </h1>
           <p className="mt-2 text-[13.5px] text-muted-foreground">
             {ar
-              ? "سمِّ مزرعتك للبدء. سنجهّز الحظائر الافتراضية، ثم يمكنك استيراد القطيع ودعوة فريقك."
-              : "Name your farm to get started. We'll set up default pens — then you can import your herd and invite your team."}
+              ? "سمِّ مزرعتك للبدء. سنملؤها ببيانات تجريبية لتتصفّحها مع جولة إرشادية، ثم يمكنك مسحها وإضافة قطيعك الحقيقي."
+              : "Name your farm to get started. We'll fill it with sample data and a quick guided tour — then you can clear it and add your real herd."}
           </p>
         </div>
 
@@ -83,10 +94,31 @@ export function Onboarding() {
 
           {error && <p className="text-[12.5px] text-destructive">{error}</p>}
 
-          <Button type="submit" size="lg" className="w-full" disabled={busy || !name.trim()}>
+          <Button type="submit" size="lg" className="w-full" disabled={!!busy || !name.trim()}>
             {busy ? <Loader2 className="animate-spin" /> : <ArrowRight className="rtl:-scale-x-100" />}
-            {ar ? "إنشاء المزرعة" : "Create farm"}
+            {busy === "seeding"
+              ? ar
+                ? "نجهّز بياناتك التجريبية…"
+                : "Preparing your sample data…"
+              : busy === "creating"
+                ? ar
+                  ? "ننشئ مزرعتك…"
+                  : "Creating your farm…"
+                : ar
+                  ? "إنشاء المزرعة"
+                  : "Create farm"}
           </Button>
+
+          <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
+            {ar ? "بإنشائك مزرعة فإنك توافق على " : "By creating a farm you agree to our "}
+            <Link href="/legal/terms" className="underline underline-offset-2 hover:text-foreground">
+              {ar ? "شروط الخدمة" : "Terms"}
+            </Link>
+            {ar ? " و" : " & "}
+            <Link href="/legal/privacy" className="underline underline-offset-2 hover:text-foreground">
+              {ar ? "سياسة الخصوصية" : "Privacy Policy"}
+            </Link>
+          </p>
         </form>
 
         <button

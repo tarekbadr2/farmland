@@ -32,6 +32,12 @@ async function adminApp(): Promise<App> {
   return cached;
 }
 
+/** Admin Firestore handle for server routes (billing metering, webhooks). */
+export async function adminDb() {
+  const { getFirestore } = await import("firebase-admin/firestore");
+  return getFirestore(await adminApp());
+}
+
 export interface VerifiedCaller {
   uid: string;
   email?: string;
