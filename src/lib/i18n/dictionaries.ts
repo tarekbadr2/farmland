@@ -647,7 +647,13 @@ export const en = {
     financialStatement: "Financial statement",
     breedingRegister: "Breeding register",
     feedUsage: "Feed usage report",
+    profitability: "Per-animal profitability",
     payrollReport: "Payroll summary",
+  },
+  animalPurpose: {
+    dairy: "Dairy",
+    meat: "Meat",
+    breeding: "Breeding",
   },
   notifications: {
     title: "Notifications",
@@ -1485,7 +1491,13 @@ export const ar: DeepPartialSame<typeof en> = {
     financialStatement: "القائمة المالية",
     breedingRegister: "سجل التناسل",
     feedUsage: "تقرير استهلاك الأعلاف",
+    profitability: "ربحية كل حيوان",
     payrollReport: "ملخص الرواتب",
+  },
+  animalPurpose: {
+    dairy: "حليب",
+    meat: "لحم",
+    breeding: "تربية",
   },
   notifications: {
     title: "الإشعارات",

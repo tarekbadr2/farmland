@@ -28,6 +28,7 @@ import {
   useMilkDaily,
   useTransactions,
 } from "@/hooks/use-farm-data";
+import { animalEconomics } from "@/core/services/metrics";
 import { TODAY } from "@/core/data/seed";
 import { addDays, formatDate } from "@/lib/date";
 import { downloadCsv, downloadPdf, downloadXlsx, printReport, type ReportDoc } from "@/lib/export";
@@ -39,11 +40,13 @@ type ReportKey =
   | "healthRegister"
   | "financialStatement"
   | "breedingRegister"
-  | "feedUsage";
+  | "feedUsage"
+  | "profitability";
 
 const REPORTS: { key: ReportKey; icon: typeof FileText; period: TKey }[] = [
   { key: "dailyProduction", icon: FileBarChart, period: "reports.daily" },
   { key: "herdInventory", icon: FileText, period: "reports.monthly" },
+  { key: "profitability", icon: FileSpreadsheet, period: "reports.monthly" },
   { key: "healthRegister", icon: FileText, period: "reports.monthly" },
   { key: "financialStatement", icon: FileSpreadsheet, period: "reports.monthly" },
   { key: "breedingRegister", icon: FileText, period: "reports.monthly" },
@@ -210,6 +213,52 @@ export default function ReportsPage() {
             heads: c.heads,
             cost: c.cost,
           })),
+        };
+      case "profitability":
+        return {
+          ...base("profitability", t("reports.profitability")),
+          columns: [
+            "tag", "name", "purpose", "status", "days", "purchase", "feed", "health",
+            "total_cost", "start_kg", "end_kg", "gain_kg", "cost_per_kg_live",
+            "cost_per_kg_gain", "litres", "cost_per_litre", "proceeds", "profit",
+          ],
+          headers: H(
+            ["Tag", "Name", "Raised for", "Status", "Days", "Purchase", "Feed", "Meds",
+              "Total cost", "Start kg", "End kg", "Gain kg", "Cost/kg live",
+              "Cost/kg gain", "Litres", "Cost/litre", "Sale price", "Profit"],
+            ["الرقم", "الاسم", "الغرض", "الحالة", "أيام", "الشراء", "العلف", "العلاج",
+              "إجمالي التكلفة", "وزن البداية", "وزن النهاية", "الزيادة", "تكلفة/كجم حي",
+              "تكلفة/كجم زيادة", "لتر", "تكلفة/لتر", "قيمة البيع", "الربح"],
+          ),
+          rows: (animalPage?.items ?? []).map((a) => {
+            const e = animalEconomics({
+              animal: a,
+              health,
+              feedConsumption: feedCons,
+              litres: a.lifetimeMilkL,
+              today: TODAY,
+            });
+            return {
+              tag: a.tag,
+              name: ar ? a.nameAr : a.name,
+              purpose: E("animalPurpose", e.purpose),
+              status: E("status", a.status),
+              days: e.daysOnFarm,
+              purchase: e.purchaseCost,
+              feed: e.feedCost,
+              health: e.healthCost,
+              total_cost: e.totalCost,
+              start_kg: e.startWeightKg,
+              end_kg: e.currentWeightKg,
+              gain_kg: e.gainKg,
+              cost_per_kg_live: e.costPerKgLive,
+              cost_per_kg_gain: e.costPerKgGain,
+              litres: e.litres,
+              cost_per_litre: e.costPerLitre,
+              proceeds: e.proceeds,
+              profit: e.sold ? e.profit : "",
+            };
+          }),
         };
     }
   };
