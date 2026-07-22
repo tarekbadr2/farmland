@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { ChevronsLeft, Sparkles } from "lucide-react";
-import { navGroups, isNavActive } from "@/lib/nav";
+import { navGroups, webNavGroups, isNavActive } from "@/lib/nav";
+import { IS_DESKTOP } from "@/lib/platform";
 import { useI18n } from "@/lib/i18n/provider";
 import { useAuth } from "@/lib/auth/provider";
 import { useAlerts, useFarm } from "@/hooks/use-farm-data";
@@ -51,7 +52,7 @@ export function SidebarNav({
       </div>
 
       <nav className="no-scrollbar flex-1 overflow-y-auto px-2 pb-4">
-        {navGroups.map((group) => (
+        {(!IS_DESKTOP && !bypassed ? webNavGroups : navGroups).map((group) => (
           <div key={group.labelKey} className="mb-4">
             {!collapsed && (
               <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">

@@ -2,12 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Download, Languages } from "lucide-react";
+import { Languages } from "lucide-react";
 
 import { Logo } from "@/components/shell/logo";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n/provider";
-import { DOWNLOAD_URL } from "@/lib/download";
 
 /**
  * Public marketing chrome — the product's front door. No auth, no app shell;
@@ -49,14 +48,8 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
             <Button variant="ghost" size="icon" onClick={toggleLocale} aria-label="Toggle language">
               <Languages className="size-4" />
             </Button>
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/login">{ar ? "تسجيل الدخول" : "Sign in"}</Link>
-            </Button>
             <Button asChild size="sm">
-              <a href={DOWNLOAD_URL} download>
-                <Download className="size-4" />
-                {ar ? "حمّل التطبيق" : "Download"}
-              </a>
+              <Link href="/login">{ar ? "تسجيل الدخول" : "Sign in"}</Link>
             </Button>
           </div>
         </div>

@@ -4,18 +4,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
-import { primaryNavItems, isNavActive } from "@/lib/nav";
+import { primaryNavItems, webNavGroups, isNavActive } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n/provider";
+import { useAuth } from "@/lib/auth/provider";
+import { IS_DESKTOP } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 
 /** Thumb-reachable bar. Five destinations max — anything more is a menu. */
 export function MobileTabBar() {
   const pathname = usePathname();
   const { t } = useI18n();
-  const items = [
-    ...primaryNavItems,
-    { href: "/assistant", labelKey: "nav.assistant" as const, icon: Sparkles },
-  ];
+  const { bypassed } = useAuth();
+  const items =
+    !IS_DESKTOP && !bypassed
+      ? webNavGroups.flatMap((g) => g.items)
+      : [
+          ...primaryNavItems,
+          { href: "/assistant", labelKey: "nav.assistant" as const, icon: Sparkles },
+        ];
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 glass pb-[env(safe-area-inset-bottom)] lg:hidden">

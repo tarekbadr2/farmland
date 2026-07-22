@@ -91,6 +91,18 @@ export const navGroups: NavGroup[] = [
 export const allNavItems: NavItem[] = navGroups.flatMap((g) => g.items);
 export const primaryNavItems: NavItem[] = allNavItems.filter((i) => i.primary);
 
+/** The trimmed nav for the website (view-only): overview + subscription. The
+ *  full operational nav is desktop-only. */
+export const webNavGroups: NavGroup[] = [
+  {
+    labelKey: "nav.overview",
+    items: [
+      { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, primary: true },
+      { href: "/settings", labelKey: "nav.settings", icon: Settings, primary: true },
+    ],
+  },
+];
+
 /** Whether a nav item is the active route. The animal profile lives at /animal
  *  (a query-param route) but belongs under the Animals item. */
 export function isNavActive(pathname: string, href: string): boolean {
