@@ -131,6 +131,14 @@ live, add one more Vercel env var and redeploy:
 Until all four `PAYMOB_*` values are set, checkout shows an honest "coming soon"
 message and nothing is ever charged — safe to deploy at any point.
 
+> **Security — do this before you flip billing on.** The webhook currently grants
+> the plan from the callback's `merchant_order_id`, which Paymob does **not**
+> HMAC-sign (only `order.id` and `amount_cents` are signed). Forging it is
+> impractical (secret is server-only, callback is server-to-server over HTTPS),
+> but for defence-in-depth, verify each paid transaction by calling Paymob's
+> retrieve-transaction API with the signed `order.id` and grant the tier from
+> that authoritative response. Tell me when Paymob is live and I'll wire it.
+
 > **Also redeploy Firebase once for this release:** the trial + the billing
 > security rules are new. Run `firebase deploy --only firestore:rules,functions`
 > so new farms get a 7-day trial and clients can't grant themselves a plan.

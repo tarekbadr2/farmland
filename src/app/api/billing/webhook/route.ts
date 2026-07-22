@@ -38,6 +38,15 @@ export async function POST(req: Request) {
   const merchantOrderId = order?.merchant_order_id as string | undefined;
   const parsed = merchantOrderId ? parseMerchantOrderId(merchantOrderId) : null;
 
+  // SECURITY (go-live hardening): `merchant_order_id` — which carries the farm +
+  // tier we grant — is NOT part of Paymob's HMAC-signed field set (only the
+  // numeric `order.id` and `amount_cents` are). Forging this body is impractical
+  // (the HMAC secret is server-only and the callback is server-to-server), but
+  // before enforcing billing, verify the transaction server-side via Paymob's
+  // retrieve-transaction API using the signed `order.id`, and grant the tier from
+  // that authoritative response rather than trusting the POST body. See
+  // DEPLOYMENT.md §7.
+
   if (!success || !parsed) {
     return NextResponse.json({ ok: true, applied: false });
   }

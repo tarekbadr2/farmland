@@ -41,6 +41,14 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
   }
 }
 
+/** Escape user-supplied text before it goes into email HTML. */
+function esc(s: string): string {
+  return s.replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string,
+  );
+}
+
 /** Minimal branded wrapper — bilingual (EN + AR), inline-styled for email clients. */
 function layout(bodyHtml: string): string {
   return `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#12332a">
@@ -52,21 +60,23 @@ function layout(bodyHtml: string): string {
 }
 
 export function welcomeEmail(farmName: string): { subject: string; html: string } {
+  const name = esc(farmName);
   return {
     subject: "Welcome to Herd OS · مرحبًا بك في Herd OS",
     html: layout(
-      `<p style="font-size:15px">Your farm <b>${farmName}</b> is ready. Your 7-day free trial has started — download the desktop app to manage your herd, milk, health and finances.</p>
-       <p style="font-size:15px" dir="rtl">مزرعتك <b>${farmName}</b> جاهزة. بدأت فترتك التجريبية المجانية لمدة 7 أيام — حمّل تطبيق سطح المكتب لإدارة قطيعك والحليب والصحة والحسابات.</p>`,
+      `<p style="font-size:15px">Your farm <b>${name}</b> is ready. Your 7-day free trial has started — download the desktop app to manage your herd, milk, health and finances.</p>
+       <p style="font-size:15px" dir="rtl">مزرعتك <b>${name}</b> جاهزة. بدأت فترتك التجريبية المجانية لمدة 7 أيام — حمّل تطبيق سطح المكتب لإدارة قطيعك والحليب والصحة والحسابات.</p>`,
     ),
   };
 }
 
 export function trialEndingEmail(farmName: string, daysLeft: number): { subject: string; html: string } {
+  const name = esc(farmName);
   return {
     subject: `Your Herd OS trial ends in ${daysLeft} ${daysLeft === 1 ? "day" : "days"}`,
     html: layout(
-      `<p style="font-size:15px">Your free trial for <b>${farmName}</b> ends in <b>${daysLeft} ${daysLeft === 1 ? "day" : "days"}</b>. Choose a plan to keep managing your farm without interruption — your data stays exactly as it is.</p>
-       <p style="font-size:15px" dir="rtl">تنتهي فترتك التجريبية المجانية لمزرعة <b>${farmName}</b> خلال <b>${daysLeft} ${daysLeft === 1 ? "يوم" : "أيام"}</b>. اختر خطة لمواصلة إدارة مزرعتك دون انقطاع — بياناتك تبقى كما هي.</p>`,
+      `<p style="font-size:15px">Your free trial for <b>${name}</b> ends in <b>${daysLeft} ${daysLeft === 1 ? "day" : "days"}</b>. Choose a plan to keep managing your farm without interruption — your data stays exactly as it is.</p>
+       <p style="font-size:15px" dir="rtl">تنتهي فترتك التجريبية المجانية لمزرعة <b>${name}</b> خلال <b>${daysLeft} ${daysLeft === 1 ? "يوم" : "أيام"}</b>. اختر خطة لمواصلة إدارة مزرعتك دون انقطاع — بياناتك تبقى كما هي.</p>`,
     ),
   };
 }
