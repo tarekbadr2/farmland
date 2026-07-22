@@ -19,7 +19,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     // Bounce to login only when truly signed out. A signed-in user with no farm
     // gets the create-farm flow below, not the login screen.
-    if (!bypassed && !loading && !user && !needsOnboarding) router.replace("/");
+    if (!bypassed && !loading && !user && !needsOnboarding) router.replace("/login");
   }, [bypassed, loading, user, needsOnboarding, router]);
 
   if (!bypassed && loading) {

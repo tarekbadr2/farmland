@@ -34,6 +34,7 @@ import { TODAY } from "@/core/data/seed";
 import { herdComposition } from "@/core/services/metrics";
 import type { Animal } from "@/core/domain/types";
 import { downloadTableXlsx } from "@/lib/export";
+import { ScanTagDialog } from "@/components/animals/scan-tag-dialog";
 import { Beef, Droplets, Baby, Activity } from "lucide-react";
 
 const PAGE_SIZE = 25;
@@ -240,9 +241,13 @@ export default function AnimalsPage() {
             >
               <Download /> {t("common.export")}
             </Button>
-            <Button variant="outline" size="sm">
-              <QrCode /> {t("animals.scanTag")}
-            </Button>
+            <ScanTagDialog
+              trigger={
+                <Button variant="outline" size="sm">
+                  <QrCode /> {t("animals.scanTag")}
+                </Button>
+              }
+            />
             <ImportAnimalsDialog />
             <AnimalFormDialog
               trigger={

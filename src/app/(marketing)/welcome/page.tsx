@@ -101,6 +101,13 @@ export default function LandingPage() {
             </Button>
           </motion.div>
 
+          <p className="mt-4 text-[12.5px] text-muted-foreground">
+            {ar ? "لديك حساب بالفعل؟ " : "Already have an account? "}
+            <a href="/login" className="font-medium text-primary underline-offset-2 hover:underline">
+              {ar ? "تسجيل الدخول" : "Sign in"}
+            </a>
+          </p>
+
           <p className="mt-4 text-[12px] text-muted-foreground">
             {ar ? "ويندوز 10 و11 · تثبيت بنقرة واحدة" : "Windows 10 & 11 · one-click installer"}
           </p>

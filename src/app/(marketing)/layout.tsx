@@ -49,6 +49,9 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
             <Button variant="ghost" size="icon" onClick={toggleLocale} aria-label="Toggle language">
               <Languages className="size-4" />
             </Button>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/login">{ar ? "تسجيل الدخول" : "Sign in"}</Link>
+            </Button>
             <Button asChild size="sm">
               <a href={DOWNLOAD_URL} download>
                 <Download className="size-4" />

@@ -9,14 +9,7 @@ import { Languages, Menu, Moon, QrCode, Search, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogTitle, SheetContent } from "@/components/ui/dialog";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/primitives";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/primitives";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +27,7 @@ import { CommandPalette } from "./command-palette";
 import { useSyncStatus } from "@/hooks/use-sync-status";
 import { SyncStatus } from "@/components/shell/sync-status";
 import { InstallButton } from "@/components/shell/install-button";
+import { ScanTagDialog } from "@/components/animals/scan-tag-dialog";
 
 export function Topbar() {
   const pathname = usePathname();
@@ -110,16 +104,13 @@ export function Topbar() {
               <Search />
             </Button>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label={t("animals.scanTag")} asChild>
-                  <Link href="/animals?scan=1">
-                    <QrCode />
-                  </Link>
+            <ScanTagDialog
+              trigger={
+                <Button variant="ghost" size="icon" aria-label={t("animals.scanTag")}>
+                  <QrCode />
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t("animals.scanTag")}</TooltipContent>
-            </Tooltip>
+              }
+            />
 
             <InstallButton />
             <SyncStatus className="hidden sm:flex" />
