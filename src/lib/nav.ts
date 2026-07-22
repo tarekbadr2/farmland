@@ -12,6 +12,7 @@ import {
   Wallet,
   Handshake,
   Building2,
+  Users,
   FileBarChart,
   Sparkles,
   BarChart3,
@@ -64,6 +65,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { href: "/tasks", labelKey: "nav.tasks", icon: ListChecks, primary: true },
       { href: "/inventory", labelKey: "nav.inventory", icon: Package },
+      { href: "/employees", labelKey: "nav.payroll", icon: Users },
     ],
   },
   {
