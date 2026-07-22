@@ -22,7 +22,12 @@ jobs:
     # in firestore.rules). Baked into the static export at build time.
     env:
       NEXT_PUBLIC_DATA_SOURCE: firebase
-      NEXT_PUBLIC_FARM_ID: farm_nile_delta
+      # The bundled app is for fresh SaaS customers, who always onboard into
+      # their own farm. Its fallback tenant must NOT be a real farm — this
+      # sentinel id belongs to no one, so any query before a farm is resolved is
+      # denied by the rules instead of touching another tenant's data. (Must be a
+      # valid Firestore id — no leading/trailing "__", which Firestore reserves.)
+      NEXT_PUBLIC_FARM_ID: unassigned
       NEXT_PUBLIC_FIREBASE_API_KEY: AIzaSyA2O6hqukbr_qSBlMG6RCQ2elGDVdwcvP4
       NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: studio-5814781224-899ee.firebaseapp.com
       NEXT_PUBLIC_FIREBASE_PROJECT_ID: studio-5814781224-899ee

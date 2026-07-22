@@ -12,7 +12,15 @@
  * active farm, everything follows it.
  */
 
-/** The seed / fallback farm — used before login and by admin tooling. */
+/**
+ * The seed / fallback farm — used before login and by admin tooling.
+ *
+ * Only ever used when no farm has been resolved yet; a signed-in user is scoped
+ * to their own farm via the membership mapping. In the SaaS/desktop build this
+ * is set to a non-real sentinel (`unassigned`) so a stray pre-resolution query
+ * is denied by the rules rather than touching a real tenant; the dev default
+ * stays the seed farm so local tooling keeps working.
+ */
 export const DEFAULT_FARM = process.env.NEXT_PUBLIC_FARM_ID || "farm_nile_delta";
 
 let active: string | null = null;
