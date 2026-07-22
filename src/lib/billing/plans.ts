@@ -8,7 +8,7 @@
  * (EGP × 100) because Paymob — like most processors — charges in the minor unit.
  */
 
-export type PlanTier = "starter" | "growth" | "enterprise";
+export type PlanTier = "starter" | "growth" | "pro" | "enterprise" | "scale";
 
 export interface Plan {
   tier: PlanTier;
@@ -27,8 +27,8 @@ export interface Plan {
 export const PLANS: Record<PlanTier, Plan> = {
   starter: {
     tier: "starter",
-    amount: 149_900, // EGP 1,499 / mo
-    herdLimit: 200,
+    amount: 150_000, // EGP 1,500 / mo
+    herdLimit: 500,
     aiQuota: 100,
     seats: 3,
     en: { name: "Starter", tagline: "Small herds getting organized." },
@@ -36,25 +36,43 @@ export const PLANS: Record<PlanTier, Plan> = {
   },
   growth: {
     tier: "growth",
-    amount: 399_900, // EGP 3,999 / mo
-    herdLimit: 1_000,
-    aiQuota: 500,
+    amount: 400_000, // EGP 4,000 / mo
+    herdLimit: 2_500,
+    aiQuota: 300,
     seats: 10,
-    en: { name: "Growth", tagline: "Scaling farms with a full team." },
-    ar: { name: "النمو", tagline: "للمزارع المتوسّعة بفريق كامل." },
+    en: { name: "Growth", tagline: "Growing farms with a full team." },
+    ar: { name: "النمو", tagline: "للمزارع المتنامية بفريق كامل." },
+  },
+  pro: {
+    tier: "pro",
+    amount: 700_000, // EGP 7,000 / mo
+    herdLimit: 5_000,
+    aiQuota: 700,
+    seats: 25,
+    en: { name: "Professional", tagline: "Serious multi-pen operations." },
+    ar: { name: "احترافي", tagline: "لعمليات متعددة الحظائر." },
   },
   enterprise: {
     tier: "enterprise",
-    amount: 899_900, // EGP 8,999 / mo
-    herdLimit: 100_000,
+    amount: 1_500_000, // EGP 15,000 / mo
+    herdLimit: 15_000,
     aiQuota: 2_000,
+    seats: 100,
+    en: { name: "Enterprise", tagline: "Large operations, many sites." },
+    ar: { name: "المؤسسات", tagline: "للعمليات الكبيرة متعددة المواقع." },
+  },
+  scale: {
+    tier: "scale",
+    amount: 4_000_000, // EGP 40,000 / mo
+    herdLimit: 50_000,
+    aiQuota: 6_000,
     seats: 1_000,
-    en: { name: "Enterprise", tagline: "Large operations, unlimited scale." },
-    ar: { name: "المؤسسات", tagline: "للعمليات الكبيرة بلا حدود." },
+    en: { name: "Scale", tagline: "Nationwide herds at full scale." },
+    ar: { name: "التوسّع", tagline: "لأكبر القطعان على مستوى وطني." },
   },
 };
 
-export const PLAN_ORDER: PlanTier[] = ["starter", "growth", "enterprise"];
+export const PLAN_ORDER: PlanTier[] = ["starter", "growth", "pro", "enterprise", "scale"];
 
 export const TRIAL_DAYS = 7;
 

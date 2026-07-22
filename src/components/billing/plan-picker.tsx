@@ -23,7 +23,7 @@ import { startCheckout } from "@/lib/billing/checkout";
  */
 export function PlanPicker({
   currentTier,
-  highlight = "growth",
+  highlight = "pro",
   paidActive = false,
   periodEndsAt = null,
 }: {
@@ -66,7 +66,7 @@ export function PlanPicker({
   };
 
   return (
-    <div className="grid gap-4 sm:grid-cols-3" dir={ar ? "rtl" : "ltr"}>
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" dir={ar ? "rtl" : "ltr"}>
       {PLAN_ORDER.map((tier) => {
         const plan = PLANS[tier];
         const meta = ar ? plan.ar : plan.en;

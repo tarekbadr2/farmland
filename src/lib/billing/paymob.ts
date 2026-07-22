@@ -1,7 +1,7 @@
 import "server-only";
 
 import crypto from "node:crypto";
-import { getPlan, type PlanTier } from "./plans";
+import { getPlan, PLAN_ORDER, type PlanTier } from "./plans";
 
 /**
  * Paymob integration seam (server-only).
@@ -113,7 +113,7 @@ export function verifyWebhook(obj: Record<string, unknown>, hmac: string): boole
 /** Parse `merchant_order_id` = "farmId:tier:ts" back into its parts. */
 export function parseMerchantOrderId(id: string): { farmId: string; tier: PlanTier } | null {
   const [farmId, tier] = String(id).split(":");
-  if (!farmId || !["starter", "growth", "enterprise"].includes(tier)) return null;
+  if (!farmId || !(PLAN_ORDER as string[]).includes(tier)) return null;
   return { farmId, tier: tier as PlanTier };
 }
 

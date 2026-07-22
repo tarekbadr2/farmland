@@ -17,7 +17,7 @@ export interface Farm {
   city: string;
   timezone: string;
   currency: "EGP" | "SAR" | "AED" | "USD";
-  plan: "starter" | "growth" | "enterprise";
+  plan: "starter" | "growth" | "pro" | "enterprise" | "scale";
   animalLimit: number;
   createdAt: string;
   logoUrl?: string;
@@ -39,7 +39,7 @@ export type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled"
 
 export interface Subscription {
   status: SubscriptionStatus;
-  tier: "starter" | "growth" | "enterprise";
+  tier: "starter" | "growth" | "pro" | "enterprise" | "scale";
   /** ISO date the free trial ends (while status is "trialing"). */
   trialEndsAt?: string | null;
   /** ISO date the current paid period ends (while status is "active"). */

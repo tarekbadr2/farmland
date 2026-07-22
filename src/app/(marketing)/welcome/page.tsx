@@ -164,11 +164,11 @@ export default function LandingPage() {
           </p>
         </div>
 
-        <div className="mx-auto mt-10 grid max-w-5xl gap-5 sm:grid-cols-3">
+        <div className="mx-auto mt-10 grid max-w-6xl gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {PLAN_ORDER.map((tier) => {
             const plan = PLANS[tier];
             const meta = ar ? plan.ar : plan.en;
-            const featured = tier === "growth";
+            const featured = tier === "pro";
             const nf = (v: number) => v.toLocaleString(ar ? "ar-EG" : "en-US");
             return (
               <div
