@@ -58,6 +58,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { href: "/milk", labelKey: "nav.milk", icon: Milk, primary: true },
       { href: "/feed", labelKey: "nav.feed", icon: Wheat },
+      { href: "/meat", labelKey: "nav.meat", icon: Beef },
     ],
   },
   {
