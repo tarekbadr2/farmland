@@ -51,6 +51,7 @@ import {
   monthlyFinance,
   monthlyMilk,
   sustainabilityMetrics,
+  utilityCostSummary,
 } from "@/core/services/metrics";
 import { groupBy, round, sum } from "@/lib/utils";
 import { downloadTableXlsx } from "@/lib/export";
@@ -89,6 +90,7 @@ export default function AnalyticsPage() {
     () => sustainabilityMetrics(utilities, milkDaily, animals),
     [utilities, milkDaily, animals],
   );
+  const utilCost = React.useMemo(() => utilityCostSummary(utilities, TODAY), [utilities]);
 
   /* Year-on-year comparison: same calendar month, this year vs last. */
   const yoy = React.useMemo(() => {
@@ -489,6 +491,36 @@ export default function AnalyticsPage() {
                   <Area type="monotone" dataKey="co2" name={t("analytics.co2")} stroke="var(--chart-3)" fill="var(--chart-3)" fillOpacity={0.25} strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
+            </ChartCard>
+
+            {/* Utilities as money — last 30 days */}
+            <ChartCard
+              title={locale === "ar" ? "تكلفة المرافق" : "Utility costs"}
+              description={locale === "ar" ? "آخر 30 يومًا (بأسعار تقديرية)" : "Last 30 days (estimated tariffs)"}
+              className="xl:col-span-2"
+            >
+              <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-5">
+                {[
+                  { k: locale === "ar" ? "الكهرباء" : "Electricity", v: utilCost.electricity },
+                  { k: locale === "ar" ? "المياه" : "Water", v: utilCost.water },
+                  { k: locale === "ar" ? "الغاز" : "Gas", v: utilCost.gas },
+                  { k: locale === "ar" ? "الديزل" : "Diesel", v: utilCost.diesel },
+                  { k: locale === "ar" ? "توفير الطاقة الشمسية" : "Solar savings", v: -utilCost.solarSavings },
+                ].map((row) => (
+                  <div key={row.k}>
+                    <p className="text-[11px] text-muted-foreground">{row.k}</p>
+                    <p className={"text-[15px] font-semibold " + (row.v < 0 ? "text-emerald-600 dark:text-emerald-500" : "")}>
+                      {row.v < 0 ? "−" : ""}{formatCurrency(Math.abs(row.v))}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 flex items-center justify-between border-t border-border/60 pt-3">
+                <span className="text-[13px] font-medium">
+                  {locale === "ar" ? "صافي فاتورة المرافق (شهريًا)" : "Net utility bill (monthly)"}
+                </span>
+                <span className="text-[17px] font-semibold text-primary">{formatCurrency(utilCost.net)}</span>
+              </div>
             </ChartCard>
           </div>
         </TabsContent>

@@ -708,6 +708,34 @@ export function assetsSummary(assets: Asset[], today: string) {
   return { count: active.length, cost, bookValue, depreciation: round(cost - bookValue), byCategory };
 }
 
+/* ------------------------------- Utility costs ----------------------------- */
+
+/** Default utility tariffs (EGP per unit) — an Egyptian-farm ballpark; edit to
+ *  match the actual bills. */
+export const UTILITY_TARIFFS = {
+  waterPerM3: 8,
+  electricityPerKwh: 2.2,
+  gasPerM3: 5,
+  dieselPerL: 13,
+};
+
+/** Turns utility readings into money over the last `days`. Solar generation is
+ *  credited back at the electricity tariff as a saving; `net` is the bill after
+ *  that offset. */
+export function utilityCostSummary(readings: UtilityReading[], today: string, days = 30) {
+  const recent = readings.filter((u) => {
+    const d = diffDays(today, u.date);
+    return d >= 0 && d <= days;
+  });
+  const water = round(sum(recent.map((u) => u.waterM3)) * UTILITY_TARIFFS.waterPerM3);
+  const electricity = round(sum(recent.map((u) => u.electricityKwh)) * UTILITY_TARIFFS.electricityPerKwh);
+  const gas = round(sum(recent.map((u) => u.gasM3 ?? 0)) * UTILITY_TARIFFS.gasPerM3);
+  const diesel = round(sum(recent.map((u) => u.dieselL)) * UTILITY_TARIFFS.dieselPerL);
+  const solarSavings = round(sum(recent.map((u) => u.solarKwh ?? 0)) * UTILITY_TARIFFS.electricityPerKwh);
+  const gross = round(water + electricity + gas + diesel);
+  return { days, water, electricity, gas, diesel, solarSavings, gross, net: round(gross - solarSavings) };
+}
+
 /* --------------------------------- Alerts --------------------------------- */
 
 export function alertCounts(alerts: Alert[]) {

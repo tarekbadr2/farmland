@@ -662,6 +662,10 @@ export interface UtilityReading {
   waterM3: number;
   electricityKwh: number;
   dieselL: number;
+  /** Natural gas / LPG consumption (m³). */
+  gasM3?: number;
+  /** Solar generation (kWh) — offsets grid electricity cost as a saving. */
+  solarKwh?: number;
   outageMinutes: number;
   co2eKg: number;
 }

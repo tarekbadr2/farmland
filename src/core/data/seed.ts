@@ -1137,11 +1137,16 @@ function build(): FarmDataset {
     const waterM3 = round(between(r, 78, 132), 1);
     const electricityKwh = round(between(r, 1400, 2600), 0);
     const dieselL = round(between(r, 60, 220), 0);
+    const gasM3 = round(between(r, 20, 60), 0);
+    // More solar mid-day / summer; a rough daily generation figure.
+    const solarKwh = round(between(r, 300, 900), 0);
     return {
       date,
       waterM3,
       electricityKwh,
       dieselL,
+      gasM3,
+      solarKwh,
       outageMinutes: r() > 0.82 ? Math.round(between(r, 10, 180)) : 0,
       // 0.45 kg CO2e/kWh grid factor + 2.68 kg/L diesel + enteric methane proxy.
       co2eKg: round(electricityKwh * 0.45 + dieselL * 2.68 + animals.length * 11.5, 0),
