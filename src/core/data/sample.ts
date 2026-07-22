@@ -14,6 +14,7 @@ import {
   collection,
   doc,
   getDocs,
+  setDoc,
   writeBatch,
   type Firestore,
 } from "firebase/firestore";
@@ -74,6 +75,14 @@ export async function seedSampleFarm(farmId: string): Promise<void> {
   const flag = writeBatch(db);
   flag.set(doc(db, paths.farm(farmId)), { isSample: true }, { merge: true });
   await flag.commit();
+}
+
+/** Records that the guided tour has run for this farm, so it never auto-starts
+ *  again (on any device). Best-effort — a failure just falls back to the
+ *  per-device localStorage guard. */
+export async function markTourSeen(farmId: string): Promise<void> {
+  const { db } = getFirebase();
+  await setDoc(doc(db, paths.farm(farmId)), { tourSeenAt: new Date().toISOString() }, { merge: true });
 }
 
 const DEFAULT_PENS = [

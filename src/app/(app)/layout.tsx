@@ -7,6 +7,7 @@ import { TourProvider } from "@/components/shell/tour";
 import { SampleFarmBanner } from "@/components/shell/sample-banner";
 import { BillingGate } from "@/components/shell/billing-gate";
 import { WebGate } from "@/components/shell/web-gate";
+import { WebDownloadBanner } from "@/components/shell/web-download-banner";
 import { TrialBanner } from "@/components/billing/trial-banner";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -18,6 +19,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <DesktopSidebar />
             <div className="flex min-w-0 flex-1 flex-col">
               <Topbar />
+              <WebDownloadBanner />
               <TrialBanner />
               <SampleFarmBanner />
               <main className="flex-1 px-3 pb-24 pt-4 sm:px-5 sm:pb-8 lg:px-7">

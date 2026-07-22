@@ -28,12 +28,14 @@ import { useSyncStatus } from "@/hooks/use-sync-status";
 import { SyncStatus } from "@/components/shell/sync-status";
 import { InstallButton } from "@/components/shell/install-button";
 import { ScanTagDialog } from "@/components/animals/scan-tag-dialog";
+import { IS_DESKTOP } from "@/lib/platform";
 
 export function Topbar() {
   const pathname = usePathname();
   const router = useRouter();
   const { t, ln, locale, toggleLocale } = useI18n();
-  const { user, signOut } = useAuth();
+  const { user, signOut, bypassed } = useAuth();
+  const webView = !IS_DESKTOP && !bypassed;
   const { data: farm } = useFarm();
   const initials = (user?.name ?? "?")
     .split(" ")
@@ -104,13 +106,15 @@ export function Topbar() {
               <Search />
             </Button>
 
-            <ScanTagDialog
-              trigger={
-                <Button variant="ghost" size="icon" aria-label={t("animals.scanTag")}>
-                  <QrCode />
-                </Button>
-              }
-            />
+            {!webView && (
+              <ScanTagDialog
+                trigger={
+                  <Button variant="ghost" size="icon" aria-label={t("animals.scanTag")}>
+                    <QrCode />
+                  </Button>
+                }
+              />
+            )}
 
             <InstallButton />
             <SyncStatus className="hidden sm:flex" />

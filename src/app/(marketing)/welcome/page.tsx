@@ -159,8 +159,8 @@ export default function LandingPage() {
           <h2 className="text-3xl font-semibold tracking-tight">{ar ? "الأسعار" : "Pricing"}</h2>
           <p className="mt-3 text-[14px] text-muted-foreground">
             {ar
-              ? `تسعير حسب حجم القطيع. ابدأ بتجربة مجانية ${TRIAL_DAYS} أيام — بدون بطاقة.`
-              : `Priced by herd size. Start with a ${TRIAL_DAYS}-day free trial — no card required.`}
+              ? `تسعير حسب حجم القطيع. ابدأ بتجربة مجانية ${TRIAL_DAYS} أيام — بدون بطاقة. الإدارة الكاملة في تطبيق سطح المكتب.`
+              : `Priced by herd size. Start a ${TRIAL_DAYS}-day free trial — no card required. Full management in the desktop app.`}
           </p>
         </div>
 

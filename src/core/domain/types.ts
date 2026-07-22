@@ -24,6 +24,9 @@ export interface Farm {
   coordinates: { lat: number; lng: number };
   /** Set while the farm holds tutorial sample data (drives the banner + tour). */
   isSample?: boolean;
+  /** ISO time the guided tour first ran — so it auto-starts once ever, on the
+   *  first open of the farm, not every visit or on another device. */
+  tourSeenAt?: string;
   /** Billing state. Absent on farms created before billing existed — treated as
    *  grandfathered/active so no one is locked out. */
   subscription?: Subscription;

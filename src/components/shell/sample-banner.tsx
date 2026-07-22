@@ -27,7 +27,8 @@ import { useFarm } from "@/hooks/use-farm-data";
 import { useI18n } from "@/lib/i18n/provider";
 import { useAuth } from "@/lib/auth/provider";
 import { useTour } from "@/components/shell/tour";
-import { clearFarmData } from "@/core/data/sample";
+import { clearFarmData, markTourSeen } from "@/core/data/sample";
+import { IS_DESKTOP } from "@/lib/platform";
 
 export function SampleFarmBanner() {
   const { data: farm } = useFarm();
@@ -41,22 +42,28 @@ export function SampleFarmBanner() {
   const [clearing, setClearing] = React.useState(false);
   const startedRef = React.useRef(false);
 
+  // The tutorial (sample banner + guided tour) is a desktop experience — the web
+  // is view-only, so it neither shows the banner nor runs the tour there.
+  const webView = !IS_DESKTOP && !bypassed;
   const isSample = !bypassed && !!farm?.isSample;
   const farmId = farm?.id;
+  const tourSeen = !!farm?.tourSeenAt;
 
-  // Auto-run the tour once per farm, the first time the owner lands on a fresh
-  // sample farm. `startedRef` guards against re-firing within the session.
+  // Auto-run the tour once ever — the first time the owner opens a fresh sample
+  // farm. Guarded three ways: a session ref, a server flag (`tourSeenAt`, so it
+  // never repeats on any device), and a per-device localStorage fallback.
   React.useEffect(() => {
-    if (!isSample || !farmId || startedRef.current) return;
+    if (webView || !isSample || !farmId || tourSeen || startedRef.current) return;
     const key = `herdos.tour.${farmId}`;
     if (window.localStorage.getItem(key)) return;
     startedRef.current = true;
     window.localStorage.setItem(key, "1");
+    void markTourSeen(farmId);
     const id = window.setTimeout(() => start(), 600); // let the shell settle first
     return () => window.clearTimeout(id);
-  }, [isSample, farmId, start]);
+  }, [webView, isSample, farmId, tourSeen, start]);
 
-  if (!isSample || !farmId) return null;
+  if (!isSample || !farmId || webView) return null;
 
   const clear = async () => {
     setClearing(true);
