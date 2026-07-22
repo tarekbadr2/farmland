@@ -736,6 +736,104 @@ export function utilityCostSummary(readings: UtilityReading[], today: string, da
   return { days, water, electricity, gas, diesel, solarSavings, gross, net: round(gross - solarSavings) };
 }
 
+/* ----------------------------- Enterprise P&L ------------------------------ */
+
+const isMeatAnimal = (a: Animal) => a.purpose === "meat" || (!a.purpose && a.sex === "male");
+
+/**
+ * Splits the farm's money into its two enterprises — dairy (milk) and meat
+ * (fattening) — over the last `days`.
+ *
+ * Revenue is direct: milk sales → dairy; animal sales → the sold animal's
+ * enterprise (untagged sales default to meat). Direct costs are allocated:
+ * feed by each herd's share of liveweight, meds/vet by each herd's share of
+ * recorded health cost. Everything else (labour, utilities, fuel, rent, …) is
+ * shared overhead, shown once rather than force-split. So each enterprise gets a
+ * gross margin, and the farm nets out after shared overhead and other income.
+ */
+export function enterprisePnl(
+  transactions: Transaction[],
+  animals: Animal[],
+  health: HealthEvent[],
+  today: string,
+  days = 365,
+) {
+  const inWindow = (d: string) => {
+    const x = diffDays(today, d);
+    return x >= 0 && x <= days;
+  };
+  const txns = transactions.filter((t) => inWindow(t.date));
+
+  // Liveweight drivers (feed allocation).
+  const live = animals.filter((a) => a.status === "active" || a.status === "quarantine");
+  const meatW = sum(live.filter(isMeatAnimal).map((a) => a.weightKg));
+  const dairyW = sum(live.filter((a) => !isMeatAnimal(a)).map((a) => a.weightKg));
+  const totalW = meatW + dairyW || 1;
+
+  // Health-cost drivers (meds allocation).
+  const purposeOf = (id?: string): "meat" | "dairy" => {
+    const a = id ? animals.find((x) => x.id === id) : undefined;
+    return a && isMeatAnimal(a) ? "meat" : "dairy";
+  };
+  const hIn = health.filter((h) => inWindow(h.date));
+  const meatHealth = sum(hIn.filter((h) => purposeOf(h.animalId) === "meat").map((h) => h.cost ?? 0));
+  const dairyHealth = sum(hIn.filter((h) => purposeOf(h.animalId) === "dairy").map((h) => h.cost ?? 0));
+  const totalHealth = meatHealth + dairyHealth;
+
+  const byCat = (cats: string[], kind: "income" | "expense") =>
+    sum(txns.filter((t) => t.kind === kind && cats.includes(t.category)).map((t) => t.amount));
+
+  const milkRev = byCat(["milk_sales"], "income");
+  const otherIncome = byCat(["manure_sales", "other_income"], "income");
+
+  // Animal sales → the sold animal's enterprise; untagged default to meat.
+  const saleEnterprise = (t: Transaction): "meat" | "dairy" => {
+    const a = t.animalId ? animals.find((x) => x.id === t.animalId) : undefined;
+    return a ? (isMeatAnimal(a) ? "meat" : "dairy") : "meat";
+  };
+  const animalSaleTxns = txns.filter((t) => t.kind === "income" && t.category === "animal_sales");
+  const meatSales = sum(animalSaleTxns.filter((t) => saleEnterprise(t) === "meat").map((t) => t.amount));
+  const dairySales = sum(animalSaleTxns.filter((t) => saleEnterprise(t) === "dairy").map((t) => t.amount));
+
+  const feedExpense = byCat(["feed"], "expense");
+  const medExpense = byCat(["medicine", "veterinary"], "expense");
+  const overhead = byCat(
+    ["labor", "fuel", "utilities", "maintenance", "rent", "transport", "other_expense"],
+    "expense",
+  );
+
+  const dairyFeed = round(feedExpense * (dairyW / totalW));
+  const meatFeed = round(feedExpense - dairyFeed);
+  const dairyMedShare = totalHealth > 0 ? dairyHealth / totalHealth : dairyW / totalW;
+  const dairyMeds = round(medExpense * dairyMedShare);
+  const meatMeds = round(medExpense - dairyMeds);
+
+  const dairyRevenue = round(milkRev + dairySales);
+  const meatRevenue = round(meatSales);
+
+  const dairy = {
+    revenue: dairyRevenue,
+    feed: dairyFeed,
+    meds: dairyMeds,
+    grossMargin: round(dairyRevenue - dairyFeed - dairyMeds),
+  };
+  const meat = {
+    revenue: meatRevenue,
+    feed: meatFeed,
+    meds: meatMeds,
+    grossMargin: round(meatRevenue - meatFeed - meatMeds),
+  };
+
+  return {
+    days,
+    dairy,
+    meat,
+    sharedOverhead: round(overhead),
+    otherIncome: round(otherIncome),
+    net: round(dairy.grossMargin + meat.grossMargin + otherIncome - overhead),
+  };
+}
+
 /* --------------------------------- Alerts --------------------------------- */
 
 export function alertCounts(alerts: Alert[]) {

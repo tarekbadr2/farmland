@@ -29,23 +29,30 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/primitives";
 import { useI18n } from "@/lib/i18n/provider";
-import { useInvoices, useMilkDaily, usePartners, useTransactions } from "@/hooks/use-farm-data";
+import { useAnimals, useHealth, useInvoices, useMilkDaily, usePartners, useTransactions } from "@/hooks/use-farm-data";
 import { TODAY } from "@/core/data/seed";
 import { diffDays, formatDate, formatMonth } from "@/lib/date";
-import { expenseBreakdown, financeMetrics, monthlyFinance } from "@/core/services/metrics";
+import { enterprisePnl, expenseBreakdown, financeMetrics, monthlyFinance } from "@/core/services/metrics";
 import { downloadTableXlsx } from "@/lib/export";
 import { round, sum } from "@/lib/utils";
 import type { Invoice, Transaction } from "@/core/domain/types";
 
 export default function FinancePage() {
   const { t, ln, locale, formatNumber, formatCurrency, formatCompact } = useI18n();
+  const ar = locale === "ar";
   const { data: txns = [], isLoading } = useTransactions();
   const { data: invoices = [] } = useInvoices();
   const { data: partners = [] } = usePartners();
   const { data: daily = [] } = useMilkDaily();
+  const { data: animalPage } = useAnimals({ pageSize: 100000 });
+  const { data: health = [] } = useHealth();
 
   const milk30 = sum(daily.slice(-30).map((d) => d.totalL));
   const m = React.useMemo(() => financeMetrics(txns, TODAY, milk30), [txns, milk30]);
+  const pnl = React.useMemo(
+    () => enterprisePnl(txns, animalPage?.items ?? [], health, TODAY, 365),
+    [txns, animalPage, health],
+  );
   const series = React.useMemo(() => monthlyFinance(txns, 12), [txns]);
   const breakdown = React.useMemo(() => expenseBreakdown(txns, TODAY, 30), [txns]);
 
@@ -248,6 +255,54 @@ export default function FinancePage() {
           tone={overdue.length ? "destructive" : "default"}
           hint={`${formatNumber(overdue.length)} ${t("finance.overdue").toLowerCase()}`}
         />
+      </motion.div>
+
+      {/* Enterprise P&L — dairy vs meat */}
+      <motion.div variants={cardIn} initial="hidden" animate="show" className="mt-4">
+        <Card>
+          <div className="px-5 pb-2 pt-4">
+            <CardTitle>{ar ? "الربحية حسب النشاط" : "Profitability by enterprise"}</CardTitle>
+            <CardDescription>
+              {ar ? "الحليب مقابل اللحم — آخر ١٢ شهرًا (تكاليف موزّعة)" : "Dairy vs. meat — last 12 months (allocated costs)"}
+            </CardDescription>
+          </div>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {([
+                { label: ar ? "الحليب" : "Dairy", d: pnl.dairy },
+                { label: ar ? "اللحم" : "Meat", d: pnl.meat },
+              ] as const).map((col) => (
+                <div key={col.label} className="rounded-xl border border-border/70 p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-[14px] font-semibold">{col.label}</span>
+                    <span className={"text-[15px] font-semibold " + (col.d.grossMargin >= 0 ? "text-emerald-600 dark:text-emerald-500" : "text-destructive")}>
+                      {formatCurrency(col.d.grossMargin)}
+                    </span>
+                  </div>
+                  <ul className="space-y-1 text-[12.5px]">
+                    <li className="flex justify-between"><span className="text-muted-foreground">{ar ? "الإيراد" : "Revenue"}</span><span className="tabular">{formatCurrency(col.d.revenue)}</span></li>
+                    <li className="flex justify-between"><span className="text-muted-foreground">{ar ? "العلف (موزّع)" : "Feed (allocated)"}</span><span className="tabular text-muted-foreground">−{formatCurrency(col.d.feed)}</span></li>
+                    <li className="flex justify-between"><span className="text-muted-foreground">{ar ? "علاج وبيطرة" : "Meds & vet"}</span><span className="tabular text-muted-foreground">−{formatCurrency(col.d.meds)}</span></li>
+                    <li className="mt-1 flex justify-between border-t border-border/50 pt-1 font-medium"><span>{ar ? "هامش المساهمة" : "Gross margin"}</span><span className="tabular">{formatCurrency(col.d.grossMargin)}</span></li>
+                  </ul>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 space-y-1.5 text-[13px]">
+              <div className="flex justify-between"><span className="text-muted-foreground">{ar ? "إيرادات أخرى" : "Other income"}</span><span className="tabular">{formatCurrency(pnl.otherIncome)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">{ar ? "مصاريف مشتركة (عمالة، مرافق…)" : "Shared overhead (labour, utilities…)"}</span><span className="tabular text-muted-foreground">−{formatCurrency(pnl.sharedOverhead)}</span></div>
+              <div className="flex justify-between border-t border-border/60 pt-1.5 text-[14px] font-semibold">
+                <span>{ar ? "صافي ربح المزرعة" : "Farm net profit"}</span>
+                <span className={"tabular " + (pnl.net >= 0 ? "text-emerald-600 dark:text-emerald-500" : "text-destructive")}>{formatCurrency(pnl.net)}</span>
+              </div>
+            </div>
+            <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+              {ar
+                ? "العلف موزّع حسب وزن كل قطيع، والعلاج حسب تكلفته لكل نشاط. المصاريف المشتركة لا تُوزَّع."
+                : "Feed is allocated by each herd's liveweight and meds by each herd's health cost; shared overhead isn't split."}
+            </p>
+          </CardContent>
+        </Card>
       </motion.div>
 
       <motion.div variants={gridStagger} initial="hidden" animate="show" className="mt-4 grid gap-3 xl:grid-cols-3">
