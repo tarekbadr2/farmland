@@ -11,6 +11,7 @@ import {
   Map as MapIcon,
   Wallet,
   Handshake,
+  Building2,
   FileBarChart,
   Sparkles,
   BarChart3,
@@ -69,6 +70,7 @@ export const navGroups: NavGroup[] = [
     labelKey: "nav.business",
     items: [
       { href: "/finance", labelKey: "nav.finance", icon: Wallet },
+      { href: "/assets", labelKey: "nav.assets", icon: Building2 },
       { href: "/partners", labelKey: "nav.customers", icon: Handshake },
       { href: "/reports", labelKey: "nav.reports", icon: FileBarChart },
     ],

@@ -553,6 +553,39 @@ export interface Invoice {
   status: "draft" | "sent" | "partial" | "paid" | "overdue";
 }
 
+/* --------------------------------- Assets ---------------------------------- */
+
+export type AssetCategory =
+  | "land"
+  | "building"
+  | "machine"
+  | "equipment"
+  | "vehicle"
+  | "other";
+
+/** A capital/fixed asset — land, buildings, machinery, vehicles, equipment.
+ *  Livestock is tracked as animals, not here; the herd's book value is summed
+ *  separately. Straight-line depreciation runs off `usefulLifeYears`. */
+export interface Asset {
+  id: ID;
+  farmId: ID;
+  name: string;
+  nameAr?: string;
+  category: AssetCategory;
+  acquiredDate: string;
+  /** Capital cost (EGP). */
+  cost: number;
+  /** Residual value at end of useful life (EGP). */
+  salvageValue?: number;
+  /** Useful life in years for straight-line depreciation. Omit/0 for a
+   *  non-depreciating asset such as land. */
+  usefulLifeYears?: number;
+  serialNo?: string;
+  location?: string;
+  notes?: string;
+  status?: "active" | "disposed";
+}
+
 /* -------------------------------- Customers -------------------------------- */
 
 export type PartnerKind = "milk_buyer" | "animal_buyer" | "supplier" | "veterinarian";

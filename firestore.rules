@@ -201,6 +201,11 @@ service cloud.firestore {
         allow write: if hasRole(farmId, ['owner', 'manager', 'accountant']);
       }
 
+      match /assets/{assetId} {
+        allow read: if isMember(farmId);
+        allow write: if hasRole(farmId, ['owner', 'manager', 'accountant']);
+      }
+
       // ------------------------- Telemetry ---------------------------
       match /alerts/{alertId} {
         allow read: if isMember(farmId);

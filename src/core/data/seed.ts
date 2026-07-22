@@ -15,6 +15,7 @@ import { addDays, diffDays, rangeDays, toISODate } from "@/lib/date";
 import type {
   Alert,
   Animal,
+  Asset,
   Attendance,
   BreedingEvent,
   Breed,
@@ -87,6 +88,7 @@ export interface FarmDataset {
   transactions: Transaction[];
   invoices: Invoice[];
   partners: Partner[];
+  assets: Asset[];
   alerts: Alert[];
   weather: WeatherNow;
   utilities: UtilityReading[];
@@ -1243,6 +1245,16 @@ function build(): FarmDataset {
     },
   ];
 
+  const assets: Asset[] = [
+    { id: "asset_land", farmId: FARM_ID, name: "Farm land (12 feddan)", nameAr: "أرض المزرعة (12 فدان)", category: "land", acquiredDate: "2016-02-01", cost: 6_000_000, status: "active" },
+    { id: "asset_barn", farmId: FARM_ID, name: "Main barn", nameAr: "الحظيرة الرئيسية", category: "building", acquiredDate: "2018-06-15", cost: 1_800_000, usefulLifeYears: 25, salvageValue: 200_000, status: "active" },
+    { id: "asset_parlor", farmId: FARM_ID, name: "Milking parlor", nameAr: "صالة الحلابة", category: "building", acquiredDate: "2019-09-01", cost: 900_000, usefulLifeYears: 20, salvageValue: 80_000, status: "active" },
+    { id: "asset_milksys", farmId: FARM_ID, name: "Milking system", nameAr: "نظام الحلابة", category: "machine", acquiredDate: "2021-03-20", cost: 650_000, usefulLifeYears: 10, salvageValue: 50_000, status: "active" },
+    { id: "asset_mixer", farmId: FARM_ID, name: "Feed mixer wagon", nameAr: "عربة خلط الأعلاف", category: "machine", acquiredDate: "2022-01-10", cost: 420_000, usefulLifeYears: 12, salvageValue: 40_000, status: "active" },
+    { id: "asset_tractor", farmId: FARM_ID, name: "Tractor", nameAr: "جرار", category: "vehicle", acquiredDate: "2020-11-05", cost: 550_000, usefulLifeYears: 15, salvageValue: 70_000, status: "active" },
+    { id: "asset_generator", farmId: FARM_ID, name: "Diesel generator", nameAr: "مولّد ديزل", category: "equipment", acquiredDate: "2021-07-18", cost: 180_000, usefulLifeYears: 8, salvageValue: 15_000, status: "active" },
+  ];
+
   return {
     farm,
     zones,
@@ -1261,6 +1273,7 @@ function build(): FarmDataset {
     transactions,
     invoices,
     partners,
+    assets,
     alerts,
     weather,
     utilities,

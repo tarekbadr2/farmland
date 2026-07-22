@@ -63,6 +63,7 @@ export async function seedSampleFarm(farmId: string): Promise<void> {
   d.transactions.filter((t) => recent(t.date)).forEach((t) => add(paths.transactions(farmId), t.id, t));
   d.invoices.slice(0, 8).forEach((v) => add(paths.invoices(farmId), v.id, v));
   d.partners.forEach((p) => add(paths.partners(farmId), p.id, p));
+  d.assets.forEach((a) => add(paths.assets(farmId), a.id, a));
   d.tasks.filter((t) => diffDays(t.dueAt.slice(0, 10), TODAY) <= 14).slice(0, 12).forEach((t) => add(paths.tasks(farmId), t.id, t));
   d.utilities.slice(-30).forEach((u) => add(paths.utilities(farmId), u.date, u));
   add(paths.telemetry(farmId), "weather", d.weather);
@@ -104,7 +105,7 @@ export async function clearFarmData(farmId: string): Promise<void> {
     paths.animals, paths.zones, paths.milkRecords, paths.milkDaily, paths.breeding,
     paths.health, paths.semen, paths.feedItems, paths.rations, paths.feedConsumption,
     paths.inventory, paths.stockMovements, paths.tasks, paths.transactions,
-    paths.invoices, paths.partners, paths.alerts, paths.utilities, paths.telemetry,
+    paths.invoices, paths.partners, paths.assets, paths.alerts, paths.utilities, paths.telemetry,
     paths.employees, paths.attendance,
   ];
   for (const colFn of cols) await deleteAll(db, colFn(farmId));

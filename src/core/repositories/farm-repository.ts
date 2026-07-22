@@ -10,6 +10,7 @@ import type {
   Alert,
   Animal,
   AnimalDisposal,
+  Asset,
   Attendance,
   BreedingEvent,
   DailyMilkPoint,
@@ -205,6 +206,10 @@ export interface FarmRepository {
    */
   recordInvoicePayment(input: InvoicePaymentInput): Promise<Invoice>;
   getPartners(): Promise<Partner[]>;
+
+  getAssets(): Promise<Asset[]>;
+  saveAsset(asset: EventWrite<Omit<Asset, "id" | "farmId">>): Promise<Asset>;
+  deleteAsset(id: ID): Promise<void>;
 
   getAlerts(): Promise<Alert[]>;
   markAlertRead(id: ID): Promise<void>;

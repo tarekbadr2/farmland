@@ -9,6 +9,7 @@ import { average, groupBy, pct, round, sum } from "@/lib/utils";
 import type {
   Alert,
   Animal,
+  Asset,
   Attendance,
   BreedingEvent,
   DailyMilkPoint,
@@ -659,6 +660,52 @@ export function animalEconomics(input: {
     proceeds: round(proceeds),
     profit: sold ? round(proceeds - totalCost) : 0,
   };
+}
+
+/* --------------------------------- Assets --------------------------------- */
+
+export interface AssetValue {
+  cost: number;
+  annualDepreciation: number;
+  accumulatedDepreciation: number;
+  bookValue: number;
+  ageYears: number;
+}
+
+/** Straight-line book value for one asset. Land (no useful life) never
+ *  depreciates; otherwise (cost − salvage) is written off evenly over the life,
+ *  floored at the salvage value. */
+export function assetBookValue(asset: Asset, today: string): AssetValue {
+  const ageYears = Math.max(0, diffDays(today, asset.acquiredDate) / 365);
+  const salvage = asset.salvageValue ?? 0;
+  const life = asset.usefulLifeYears ?? 0;
+  if (life <= 0) {
+    return { cost: asset.cost, annualDepreciation: 0, accumulatedDepreciation: 0, bookValue: asset.cost, ageYears: round(ageYears, 1) };
+  }
+  const annual = (asset.cost - salvage) / life;
+  const accumulated = Math.min(asset.cost - salvage, annual * ageYears);
+  return {
+    cost: asset.cost,
+    annualDepreciation: round(annual),
+    accumulatedDepreciation: round(accumulated),
+    bookValue: round(asset.cost - accumulated),
+    ageYears: round(ageYears, 1),
+  };
+}
+
+export function assetsSummary(assets: Asset[], today: string) {
+  const active = assets.filter((a) => a.status !== "disposed");
+  const cost = round(sum(active.map((a) => a.cost)));
+  const bookValue = round(sum(active.map((a) => assetBookValue(a, today).bookValue)));
+  const byCategory = Object.entries(groupBy(active, (a) => a.category))
+    .map(([category, list]) => ({
+      category,
+      count: list.length,
+      cost: round(sum(list.map((x) => x.cost))),
+      bookValue: round(sum(list.map((x) => assetBookValue(x, today).bookValue))),
+    }))
+    .sort((a, b) => b.bookValue - a.bookValue);
+  return { count: active.length, cost, bookValue, depreciation: round(cost - bookValue), byCategory };
 }
 
 /* --------------------------------- Alerts --------------------------------- */

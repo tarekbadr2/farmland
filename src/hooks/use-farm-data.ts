@@ -30,6 +30,7 @@ export const qk = {
   transactions: ["transactions"] as const,
   invoices: ["invoices"] as const,
   partners: ["partners"] as const,
+  assets: ["assets"] as const,
   alerts: ["alerts"] as const,
   weather: ["weather"] as const,
   utilities: ["utilities"] as const,
@@ -81,6 +82,7 @@ export const useTransactions = () =>
   useQuery({ queryKey: qk.transactions, queryFn: () => repo.getTransactions() });
 export const useInvoices = () => useQuery({ queryKey: qk.invoices, queryFn: () => repo.getInvoices() });
 export const usePartners = () => useQuery({ queryKey: qk.partners, queryFn: () => repo.getPartners() });
+export const useAssets = () => useQuery({ queryKey: qk.assets, queryFn: () => repo.getAssets() });
 export const useAlerts = () => useQuery({ queryKey: qk.alerts, queryFn: () => repo.getAlerts() });
 export const useWeather = () => useQuery({ queryKey: qk.weather, queryFn: () => repo.getWeather() });
 export const useUtilities = () => useQuery({ queryKey: qk.utilities, queryFn: () => repo.getUtilities() });

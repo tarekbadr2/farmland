@@ -41,6 +41,7 @@ import type {
   Alert,
   Animal,
   AnimalDisposal,
+  Asset,
   Attendance,
   BreedingEvent,
   DailyMilkPoint,
@@ -1001,6 +1002,21 @@ export class FirebaseFarmRepository implements FarmRepository {
   }
 
   getPartners = () => this.all<Partner>(paths.partners(this.farmId), orderBy("name"));
+
+  /* --------------------------------- Assets -------------------------------- */
+
+  getAssets = () => this.all<Asset>(paths.assets(this.farmId), orderBy("acquiredDate", "desc"));
+
+  async saveAsset(asset: EventWrite<Omit<Asset, "id" | "farmId">>): Promise<Asset> {
+    const id = asset.id ?? doc(this.col(paths.assets(this.farmId))).id;
+    const record = { ...asset, id, farmId: this.farmId } as Asset;
+    await setDoc(doc(this.db, paths.assets(this.farmId), id), omitUndefined(record));
+    return record;
+  }
+
+  async deleteAsset(id: ID): Promise<void> {
+    await deleteDoc(doc(this.db, paths.assets(this.farmId), id));
+  }
 
   /* --------------------------------- Alerts -------------------------------- */
 

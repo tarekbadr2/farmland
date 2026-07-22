@@ -100,6 +100,7 @@ function plan() {
   db_.employees.forEach((e) => push("employees", e.id, e));
   db_.attendance.forEach((a) => push("attendance", a.id, a));
   db_.partners.forEach((p) => push("partners", p.id, p));
+  db_.assets.forEach((a) => push("assets", a.id, a));
   db_.feedItems.forEach((f) => push("feedItems", f.id, f));
   db_.rations.forEach((r) => push("rations", r.id, r));
   db_.feedConsumption.forEach((c) => push("feedConsumption", c.id, c));

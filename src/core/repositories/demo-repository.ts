@@ -17,6 +17,7 @@ import {
 import type {
   Animal,
   AnimalDisposal,
+  Asset,
   Attendance,
   BreedingEvent,
   Employee,
@@ -693,6 +694,25 @@ export class DemoFarmRepository implements FarmRepository {
   }
 
   getPartners = () => tick(this.db.partners);
+
+  getAssets = () => tick(this.db.assets);
+
+  async saveAsset(asset: EventWrite<Omit<Asset, "id" | "farmId">>) {
+    const idx = asset.id ? this.db.assets.findIndex((a) => a.id === asset.id) : -1;
+    if (idx >= 0) {
+      this.db.assets[idx] = { ...this.db.assets[idx], ...asset } as Asset;
+      return tick(this.db.assets[idx]);
+    }
+    const created = { ...asset, id: asset.id ?? `asset_${Date.now()}`, farmId: this.db.farm.id } as Asset;
+    this.db.assets.unshift(created);
+    return tick(created);
+  }
+
+  async deleteAsset(id: ID) {
+    this.db.assets = this.db.assets.filter((a) => a.id !== id);
+    return tick(undefined);
+  }
+
   getAlerts = () => tick(this.db.alerts);
 
   async markAlertRead(id: ID) {
