@@ -55,7 +55,16 @@ jobs:
         working-directory: desktop
         run: npm run dist
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false" # unsigned build; no code-sign cert
+          # Code signing. Add two repo secrets to sign the installer:
+          #   WINDOWS_CERT_BASE64     — the code-signing .pfx, base64-encoded
+          #   WINDOWS_CERT_PASSWORD   — its export password
+          # electron-builder signs automatically when CSC_LINK is present.
+          # Without the secrets it builds UNSIGNED (still installs, but Windows
+          # SmartScreen shows an "unknown publisher" warning). See DEPLOYMENT.md.
+          CSC_LINK: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+          # Only search for a cert when one is actually supplied.
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.WINDOWS_CERT_BASE64 != '' }}
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4

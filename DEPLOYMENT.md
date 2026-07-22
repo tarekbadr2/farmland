@@ -158,6 +158,41 @@ Then `firebase deploy --only functions`. The bucket defaults to
 `gs://<project-id>-backups`; override with a `FIRESTORE_BACKUP_BUCKET` env var on
 the function. To restore: `gcloud firestore import gs://<project-id>-backups/firestore/<timestamp>`.
 
+## 9. Code-signing the desktop installer
+
+Unsigned, Windows SmartScreen warns "Windows protected your PC — unknown
+publisher," which scares off installs. Signing (plus a little download
+reputation) removes it. The CI already signs automatically **once you add a
+certificate** — no code changes needed.
+
+**The 2023 reality:** certificate authorities no longer hand out plain `.pfx`
+files for new certs — the key must live on a hardware token or a cloud HSM. So
+pick one of:
+
+- **Azure Trusted Signing (recommended for CI, ~$10/mo, no USB token).** Works
+  natively in GitHub Actions. Eligibility: your org must be 3+ years old, or you
+  complete extra identity validation. It uses electron-builder's `azureSignOptions`
+  rather than the `.pfx` secrets below — **tell me once you have it and I'll wire
+  the workflow for Azure.**
+- **EV certificate** (DigiCert / Sectigo / SSL.com): instant SmartScreen
+  reputation, but needs a hardware token (awkward in CI) or the provider's cloud
+  signing (e.g. SSL.com eSigner).
+- **OV certificate**: cheaper; SmartScreen still warns until the installer builds
+  download reputation over a few weeks.
+
+**If you have an exportable `.pfx`** (an older cert, a cloud-HSM export, or a
+self-signed cert for internal testing), signing is already wired — just add two
+repo secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|--------|-------|
+| `WINDOWS_CERT_BASE64` | the `.pfx` file, base64-encoded |
+| `WINDOWS_CERT_PASSWORD` | the `.pfx` export password |
+
+Base64 the file with `base64 -w0 cert.pfx` (Git Bash) or
+`[Convert]::ToBase64String([IO.File]::ReadAllBytes("cert.pfx"))` (PowerShell),
+then push a `v*` tag — the new installer will be signed.
+
 ## Redeploying later
 
 Push to `main` → Vercel auto-builds and deploys. That's it. Only re-run
