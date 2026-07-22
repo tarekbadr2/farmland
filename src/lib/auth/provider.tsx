@@ -29,6 +29,10 @@ export interface SessionUser {
 interface AuthValue {
   user: SessionUser | null;
   loading: boolean;
+  /** Signed in, but not a member of any farm yet → show the create-farm flow. */
+  needsOnboarding: boolean;
+  /** Re-resolve the session (call after creating/joining a farm). */
+  refreshSession: () => Promise<void>;
   /** True when auth is switched off — the demo build runs wide open. */
   bypassed: boolean;
   signInWithEmail: (email: string, password: string) => Promise<void>;
@@ -102,6 +106,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [enabled] = React.useState(isFirebaseBackend);
   const [user, setUser] = React.useState<SessionUser | null>(enabled ? null : DEMO_USER);
   const [loading, setLoading] = React.useState(enabled);
+  const [needsOnboarding, setNeedsOnboarding] = React.useState(false);
+
+  // Resolve the signed-in user's farm and membership. Reusable so it can be
+  // re-run after the onboarding wizard creates a farm.
+  const resolveSession = React.useCallback(async (fbUser: User) => {
+    // Resolve which farm this user belongs to before reading membership, so
+    // every path below is scoped to their farm.
+    const farmId = await resolveUserFarm(fbUser.uid);
+    setActiveFarm(farmId);
+    let member = await loadMembership(fbUser);
+    // Not a member yet? First sign-in after an invite lands here — ask the
+    // function to promote any pending invite, then look again.
+    if (!member) {
+      try {
+        if ((await claimMembership()) > 0) {
+          setActiveFarm(await resolveUserFarm(fbUser.uid));
+          member = await loadMembership(fbUser);
+        }
+      } catch {
+        /* function unavailable, or nothing to claim */
+      }
+    }
+    setUser(member);
+    // Signed in but part of no farm → onboarding (create your farm), which in a
+    // self-serve product is what any new sign-up should see.
+    setNeedsOnboarding(!member);
+    setLoading(false);
+  }, []);
 
   React.useEffect(() => {
     if (!enabled) return;
@@ -110,32 +142,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!fbUser) {
         setActiveFarm(null);
         setUser(null);
+        setNeedsOnboarding(false);
         setLoading(false);
         return;
       }
-      // Resolve which farm this user belongs to before reading membership, so
-      // every path below is scoped to their farm. null → tenant layer falls back
-      // to the default farm (transition-safe for existing single-farm users).
-      setActiveFarm(await resolveUserFarm(fbUser.uid));
-      let member = await loadMembership(fbUser);
-      // Not a member yet? First sign-in after an invite lands here — ask the
-      // function to promote any pending invite, then look again.
-      if (!member) {
-        try {
-          if ((await claimMembership()) > 0) member = await loadMembership(fbUser);
-        } catch {
-          /* function unavailable, or nothing to claim — treat as no access */
-        }
-      }
-      setUser(member);
-      setLoading(false);
+      await resolveSession(fbUser);
     });
-  }, [enabled]);
+  }, [enabled, resolveSession]);
 
   const value = React.useMemo<AuthValue>(
     () => ({
       user,
       loading,
+      needsOnboarding,
+      refreshSession: async () => {
+        const { auth } = getFirebase();
+        if (auth.currentUser) await resolveSession(auth.currentUser);
+      },
       bypassed: !enabled,
       signInWithEmail: async (email, password) => {
         const { auth } = getFirebase();
@@ -164,7 +187,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user?.permissions.includes(permission) ||
         user?.role === "owner",
     }),
-    [user, loading, enabled],
+    [user, loading, needsOnboarding, enabled, resolveSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

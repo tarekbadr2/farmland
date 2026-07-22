@@ -14,4 +14,4 @@ export { onAnimalWritten, reconcileCounters } from "./counters";
 export { dailyAlerts } from "./alerts";
 export { onAlertCreated } from "./notify";
 export { runAlertsNow, rebuildMilkDaily } from "./admin";
-export { claimMembership } from "./members";
+export { claimMembership, createFarm } from "./members";

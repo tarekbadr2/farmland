@@ -49,7 +49,7 @@ type FormValues = z.infer<typeof schema>;
 export default function SignInPage() {
   const router = useRouter();
   const { t, locale, toggleLocale } = useI18n();
-  const { signInWithEmail, signInWithGoogle, bypassed, user } = useAuth();
+  const { signInWithEmail, signInWithGoogle, bypassed, user, needsOnboarding } = useAuth();
   const [pending, setPending] = React.useState<"email" | "google" | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -62,8 +62,9 @@ export default function SignInPage() {
 
   // Already signed in (or auth is off) — don't make anyone look at a login wall.
   React.useEffect(() => {
-    if (user) router.replace("/dashboard");
-  }, [user, router]);
+    // Signed in — into the app (the guard shows onboarding if there's no farm).
+    if (user || needsOnboarding) router.replace("/dashboard");
+  }, [user, needsOnboarding, router]);
 
   const run = async (kind: "email" | "google", fn: () => Promise<void>) => {
     setPending(kind);

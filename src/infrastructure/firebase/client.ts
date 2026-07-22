@@ -73,6 +73,16 @@ export async function claimMembership(): Promise<number> {
   return res.data.claimed?.length ?? 0;
 }
 
+/** Create the signed-in user's farm (self-serve onboarding). Returns its id. */
+export async function createFarm(name: string, nameAr?: string): Promise<string> {
+  const call = httpsCallable<{ name: string; nameAr?: string }, { farmId: string }>(
+    getFirebase().functions,
+    "createFarm",
+  );
+  const res = await call({ name, nameAr });
+  return res.data.farmId;
+}
+
 /**
  * Firestore layout (multi-tenant, one document tree per farm):
  *

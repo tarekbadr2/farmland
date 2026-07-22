@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth/provider";
+import { Onboarding } from "@/components/shell/onboarding";
 
 /**
  * Client-side gate for the app shell.
@@ -12,12 +13,14 @@ import { useAuth } from "@/lib/auth/provider";
  * an unauthenticated read — a guard in React only decides what to paint.
  */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { user, loading, bypassed } = useAuth();
+  const { user, loading, bypassed, needsOnboarding } = useAuth();
   const router = useRouter();
 
   React.useEffect(() => {
-    if (!bypassed && !loading && !user) router.replace("/");
-  }, [bypassed, loading, user, router]);
+    // Bounce to login only when truly signed out. A signed-in user with no farm
+    // gets the create-farm flow below, not the login screen.
+    if (!bypassed && !loading && !user && !needsOnboarding) router.replace("/");
+  }, [bypassed, loading, user, needsOnboarding, router]);
 
   if (!bypassed && loading) {
     return (
@@ -27,6 +30,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (!bypassed && needsOnboarding) return <Onboarding />;
   if (!bypassed && !user) return null;
 
   return <>{children}</>;
