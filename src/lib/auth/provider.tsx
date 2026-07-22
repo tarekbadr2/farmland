@@ -13,6 +13,7 @@ import {
 import { doc, getDoc } from "firebase/firestore";
 import { claimMembership, getFirebase } from "@/infrastructure/firebase/client";
 import { paths } from "@/infrastructure/firebase/paths";
+import { setActiveFarm } from "@/infrastructure/firebase/tenant";
 import { isFirebaseBackend } from "@/core/repositories";
 import type { Role } from "@/core/domain/types";
 
@@ -79,6 +80,23 @@ async function loadMembership(user: User): Promise<SessionUser | null> {
   };
 }
 
+/**
+ * Which farm this user belongs to. A top-level `users/{uid}` → { farmId } mapping
+ * is written when they join a farm (createFarm / invite claim). Absent for a
+ * brand-new user — the caller then treats them as a member of no farm (→ later,
+ * onboarding). Returns null on absence or a denied read; the tenant layer then
+ * falls back to the default farm, so existing single-farm users keep working.
+ */
+async function resolveUserFarm(uid: string): Promise<string | null> {
+  const { db } = getFirebase();
+  try {
+    const snap = await getDoc(doc(db, "users", uid));
+    return snap.exists() ? ((snap.data().farmId as string) ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Resolved once: it depends only on build-time env, never on render state.
   const [enabled] = React.useState(isFirebaseBackend);
@@ -90,10 +108,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { auth } = getFirebase();
     return onAuthStateChanged(auth, async (fbUser) => {
       if (!fbUser) {
+        setActiveFarm(null);
         setUser(null);
         setLoading(false);
         return;
       }
+      // Resolve which farm this user belongs to before reading membership, so
+      // every path below is scoped to their farm. null → tenant layer falls back
+      // to the default farm (transition-safe for existing single-farm users).
+      setActiveFarm(await resolveUserFarm(fbUser.uid));
       let member = await loadMembership(fbUser);
       // Not a member yet? First sign-in after an invite lands here — ask the
       // function to promote any pending invite, then look again.

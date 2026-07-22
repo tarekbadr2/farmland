@@ -6,33 +6,37 @@
  * "delete one farm" a subtree operation instead of a fleet of filtered queries.
  */
 
-export const FARM_ID = process.env.NEXT_PUBLIC_FARM_ID || "farm_nile_delta";
+import { DEFAULT_FARM, getActiveFarm } from "./tenant";
+
+/** The seed / fallback farm. Kept for admin tooling that targets a fixed farm;
+ *  the app's paths resolve against the signed-in user's active farm instead. */
+export const FARM_ID = DEFAULT_FARM;
 
 export const paths = {
-  farm: (farmId = FARM_ID) => `farms/${farmId}`,
-  members: (farmId = FARM_ID) => `farms/${farmId}/members`,
-  pendingMembers: (farmId = FARM_ID) => `farms/${farmId}/pendingMembers`,
-  animals: (farmId = FARM_ID) => `farms/${farmId}/animals`,
-  zones: (farmId = FARM_ID) => `farms/${farmId}/zones`,
-  milkRecords: (farmId = FARM_ID) => `farms/${farmId}/milkRecords`,
-  milkDaily: (farmId = FARM_ID) => `farms/${farmId}/milkDaily`,
-  breeding: (farmId = FARM_ID) => `farms/${farmId}/breeding`,
-  semen: (farmId = FARM_ID) => `farms/${farmId}/semen`,
-  health: (farmId = FARM_ID) => `farms/${farmId}/health`,
-  feedItems: (farmId = FARM_ID) => `farms/${farmId}/feedItems`,
-  rations: (farmId = FARM_ID) => `farms/${farmId}/rations`,
-  feedConsumption: (farmId = FARM_ID) => `farms/${farmId}/feedConsumption`,
-  inventory: (farmId = FARM_ID) => `farms/${farmId}/inventory`,
-  stockMovements: (farmId = FARM_ID) => `farms/${farmId}/stockMovements`,
-  employees: (farmId = FARM_ID) => `farms/${farmId}/employees`,
-  attendance: (farmId = FARM_ID) => `farms/${farmId}/attendance`,
-  tasks: (farmId = FARM_ID) => `farms/${farmId}/tasks`,
-  transactions: (farmId = FARM_ID) => `farms/${farmId}/transactions`,
-  invoices: (farmId = FARM_ID) => `farms/${farmId}/invoices`,
-  partners: (farmId = FARM_ID) => `farms/${farmId}/partners`,
-  alerts: (farmId = FARM_ID) => `farms/${farmId}/alerts`,
-  utilities: (farmId = FARM_ID) => `farms/${farmId}/utilities`,
-  telemetry: (farmId = FARM_ID) => `farms/${farmId}/telemetry`,
+  farm: (farmId = getActiveFarm()) => `farms/${farmId}`,
+  members: (farmId = getActiveFarm()) => `farms/${farmId}/members`,
+  pendingMembers: (farmId = getActiveFarm()) => `farms/${farmId}/pendingMembers`,
+  animals: (farmId = getActiveFarm()) => `farms/${farmId}/animals`,
+  zones: (farmId = getActiveFarm()) => `farms/${farmId}/zones`,
+  milkRecords: (farmId = getActiveFarm()) => `farms/${farmId}/milkRecords`,
+  milkDaily: (farmId = getActiveFarm()) => `farms/${farmId}/milkDaily`,
+  breeding: (farmId = getActiveFarm()) => `farms/${farmId}/breeding`,
+  semen: (farmId = getActiveFarm()) => `farms/${farmId}/semen`,
+  health: (farmId = getActiveFarm()) => `farms/${farmId}/health`,
+  feedItems: (farmId = getActiveFarm()) => `farms/${farmId}/feedItems`,
+  rations: (farmId = getActiveFarm()) => `farms/${farmId}/rations`,
+  feedConsumption: (farmId = getActiveFarm()) => `farms/${farmId}/feedConsumption`,
+  inventory: (farmId = getActiveFarm()) => `farms/${farmId}/inventory`,
+  stockMovements: (farmId = getActiveFarm()) => `farms/${farmId}/stockMovements`,
+  employees: (farmId = getActiveFarm()) => `farms/${farmId}/employees`,
+  attendance: (farmId = getActiveFarm()) => `farms/${farmId}/attendance`,
+  tasks: (farmId = getActiveFarm()) => `farms/${farmId}/tasks`,
+  transactions: (farmId = getActiveFarm()) => `farms/${farmId}/transactions`,
+  invoices: (farmId = getActiveFarm()) => `farms/${farmId}/invoices`,
+  partners: (farmId = getActiveFarm()) => `farms/${farmId}/partners`,
+  alerts: (farmId = getActiveFarm()) => `farms/${farmId}/alerts`,
+  utilities: (farmId = getActiveFarm()) => `farms/${farmId}/utilities`,
+  telemetry: (farmId = getActiveFarm()) => `farms/${farmId}/telemetry`,
 } as const;
 
 /**

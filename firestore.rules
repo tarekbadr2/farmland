@@ -212,6 +212,14 @@ service cloud.firestore {
       }
     }
 
+    // Which farm a user belongs to. The app reads its own mapping at login to
+    // resolve the active farm; it's written server-side only (createFarm, invite
+    // claim, admin), so a user can't reassign themselves to another farm.
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
     // Public demo-request leads from the marketing site. Anyone may submit one
     // (validated), but nobody can read or change them from the client — the
     // owner reads leads from the console / admin. Create-only, field-checked.

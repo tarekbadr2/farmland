@@ -35,7 +35,8 @@ import {
 } from "firebase/firestore";
 
 import { getFirebase } from "./client";
-import { FARM_ID, PREFIX_END, animalSearchFields, paths } from "./paths";
+import { PREFIX_END, animalSearchFields, paths } from "./paths";
+import { getActiveFarm } from "./tenant";
 import type {
   Alert,
   Animal,
@@ -168,10 +169,17 @@ function normalizeAlert(a: Record<string, unknown>): Alert {
 
 export class FirebaseFarmRepository implements FarmRepository {
   readonly source = "firebase" as const;
-  private farmId: string;
+  private readonly fixedFarmId?: string;
 
-  constructor(farmId: string = FARM_ID) {
-    this.farmId = farmId;
+  // An explicit farmId pins the repo to one farm (admin tooling); the app passes
+  // none, so `farmId` follows the signed-in user's active farm at call time —
+  // which lets one long-lived repo serve whatever farm the user belongs to.
+  constructor(farmId?: string) {
+    this.fixedFarmId = farmId;
+  }
+
+  private get farmId(): string {
+    return this.fixedFarmId ?? getActiveFarm();
   }
 
   private get db() {
