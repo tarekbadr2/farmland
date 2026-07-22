@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, IBM_Plex_Sans_Arabic } from "next/font/google";
 import { Providers } from "@/components/providers";
+import { MonitoringInit } from "@/components/shell/monitoring-init";
 import "./globals.css";
 
 const inter = Inter({
@@ -51,6 +52,7 @@ export default function RootLayout({
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning>
       <body className={`${inter.variable} ${arabic.variable} antialiased`}>
+        <MonitoringInit />
         <Providers>{children}</Providers>
       </body>
     </html>
