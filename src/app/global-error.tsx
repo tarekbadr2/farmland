@@ -36,7 +36,7 @@ export default function GlobalError({
         <div style={{ textAlign: "center", padding: "0 24px", maxWidth: 460 }}>
           <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Something went wrong</h1>
           <p style={{ marginTop: 10, fontSize: 14, lineHeight: 1.6, opacity: 0.7 }}>
-            An unexpected error occurred. It's been logged.
+            An unexpected error occurred. It&apos;s been logged.
           </p>
           <button
             onClick={reset}

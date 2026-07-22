@@ -22,7 +22,7 @@ export default function ErrorBoundary({
       <p className="mt-2 max-w-md text-[13.5px] leading-relaxed text-muted-foreground">
         حدث خطأ غير متوقّع — تم تسجيله وسنعمل على إصلاحه.
         <br />
-        An unexpected error occurred. It's been logged — try again, or head back.
+        An unexpected error occurred. It&apos;s been logged — try again, or head back.
       </p>
       <div className="mt-6 flex gap-2">
         <button
