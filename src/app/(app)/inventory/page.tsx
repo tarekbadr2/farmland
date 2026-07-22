@@ -39,7 +39,7 @@ import { TODAY } from "@/core/data/seed";
 import { diffDays, formatDate } from "@/lib/date";
 import { inventoryMetrics } from "@/core/services/metrics";
 import { groupBy, sum } from "@/lib/utils";
-import { downloadCsv } from "@/lib/export";
+import { downloadTableXlsx } from "@/lib/export";
 import type { InventoryItem, StockMovement } from "@/core/domain/types";
 
 export default function InventoryPage() {
@@ -204,8 +204,9 @@ export default function InventoryPage() {
               variant="outline"
               size="sm"
               onClick={() =>
-                downloadCsv(
-                  "inventory.csv",
+                downloadTableXlsx(
+                  "inventory",
+                  t("inventory.title"),
                   items.map((i) => ({
                     sku: i.sku,
                     name: i.name,
@@ -217,10 +218,11 @@ export default function InventoryPage() {
                     value: i.stock * i.unitCost,
                     expires: i.expiresAt ?? "",
                   })),
+                  { subtitle: t("inventory.subtitle"), rtl: locale === "ar" },
                 )
               }
             >
-              {t("common.exportCsv")}
+              {t("common.export")}
             </Button>
             <StockMovementDialog />
           </>

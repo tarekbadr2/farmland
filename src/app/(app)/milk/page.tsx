@@ -31,7 +31,7 @@ import { useAnimals, useMilkDaily, useWeather } from "@/hooks/use-farm-data";
 import { TODAY } from "@/core/data/seed";
 import { formatDate, formatMonth } from "@/lib/date";
 import { forecastMilk, milkSummary, monthlyMilk } from "@/core/services/metrics";
-import { downloadCsv } from "@/lib/export";
+import { downloadTableXlsx } from "@/lib/export";
 import { RecordSessionDialog } from "@/components/milk/record-session-dialog";
 import { average, round } from "@/lib/utils";
 
@@ -101,8 +101,9 @@ export default function MilkPage() {
               variant="outline"
               size="sm"
               onClick={() =>
-                downloadCsv(
-                  "milk-daily.csv",
+                downloadTableXlsx(
+                  "milk-daily",
+                  t("milk.title"),
                   daily.map((d) => ({
                     date: d.date,
                     morning_l: d.morningL,
@@ -113,10 +114,11 @@ export default function MilkPage() {
                     protein_pct: d.avgProtein,
                     milking_cows: d.milkingCows,
                   })),
+                  { subtitle: t("milk.subtitle"), rtl: locale === "ar" },
                 )
               }
             >
-              <Download /> {t("common.exportCsv")}
+              <Download /> {t("common.export")}
             </Button>
             <RecordSessionDialog
               trigger={

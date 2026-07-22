@@ -38,7 +38,7 @@ import { useAnimals, useHealth } from "@/hooks/use-farm-data";
 import { TODAY } from "@/core/data/seed";
 import { diffDays, formatDate, formatMonth, relativeDays } from "@/lib/date";
 import { diseaseTrend, healthMetrics } from "@/core/services/metrics";
-import { downloadCsv } from "@/lib/export";
+import { downloadTableXlsx } from "@/lib/export";
 import type { HealthEvent } from "@/core/domain/types";
 import { LogHealthDialog } from "@/components/health/log-health-dialog";
 
@@ -162,8 +162,9 @@ export default function HealthPage() {
               variant="outline"
               size="sm"
               onClick={() =>
-                downloadCsv(
-                  "health-register.csv",
+                downloadTableXlsx(
+                  "health-register",
+                  t("health.title"),
                   events.map((e) => ({
                     date: e.date,
                     animal: e.animalId,
@@ -175,10 +176,11 @@ export default function HealthPage() {
                     outcome: e.outcome ?? "",
                     withdrawal_until: e.withdrawalUntil ?? "",
                   })),
+                  { subtitle: t("health.subtitle"), rtl: locale === "ar" },
                 )
               }
             >
-              {t("common.exportCsv")}
+              {t("common.export")}
             </Button>
             <LogHealthDialog
               trigger={

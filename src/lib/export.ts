@@ -3,6 +3,10 @@
 /** Client-side exports. Real deployments swap these for a Cloud Function that
  *  renders the same data server-side and emails it on a schedule. */
 
+// Type-only import — erased at build time, so the ExcelJS runtime is still
+// loaded lazily (via dynamic import) and never touches first paint.
+import type { Font, CellValue } from "exceljs";
+
 type Row = Record<string, string | number | boolean | null | undefined>;
 
 // Cheap Arabic detector kept local so format detection never drags in the
@@ -75,33 +79,169 @@ export interface ReportDoc {
   rtl?: boolean;
 }
 
+/** snake_case / camelCase key → "Title Case" header label. */
+function prettifyHeader(key: string): string {
+  return key
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+// Brand palette, as Excel ARGB strings.
+const XLSX_GREEN = "FF16654A"; // header fill / accents
+const XLSX_GREEN_DEEP = "FF12332A"; // title text
+const XLSX_BAND = "FFEFF5F2"; // striped row fill
+const XLSX_RULE = "FFDCE5E0"; // hairline row borders
+const XLSX_MUTED = "FF6B7B74"; // subtitle text
+
 /**
- * A real .xlsx workbook — not CSV with a different extension.
+ * A professionally styled .xlsx workbook.
  *
- * SheetJS handles Unicode natively, so Arabic names and mixed scripts survive,
- * numbers stay numbers (sortable, summable in Excel) rather than becoming text,
- * and the column widths are sized to the content so nothing opens truncated.
- * Loaded on demand so the ~400 KB library never touches first paint.
+ * ExcelJS (unlike the SheetJS community build) can style cells, so the export
+ * gets a branded letterhead block, a bold coloured header row that stays frozen
+ * and filterable, zebra-striped rows, hairline rules, right-aligned numbers with
+ * a totals row, and content-sized columns. Numbers stay numbers (sortable /
+ * summable), Arabic survives, and RTL locales flip the sheet. Loaded on demand
+ * so the library never touches first paint.
  */
 export async function downloadXlsx(doc: ReportDoc) {
-  const XLSX = await import("xlsx");
-  const headers = doc.headers ?? doc.columns;
+  const ExcelJS = await import("exceljs");
+  const headers = doc.headers ?? doc.columns.map(prettifyHeader);
+  const n = doc.columns.length;
+  const rtl = !!doc.rtl;
+  const hAlign = rtl ? "right" : "left";
 
-  const aoa = [headers, ...doc.rows.map((r) => doc.columns.map((c) => r[c] ?? ""))];
-  const sheet = XLSX.utils.aoa_to_sheet(aoa);
-
-  // Size each column to its widest cell (capped) so it opens readable.
-  sheet["!cols"] = doc.columns.map((c, i) => {
-    const widest = Math.max(
-      String(headers[i] ?? c).length,
-      ...doc.rows.map((r) => String(r[c] ?? "").length),
-    );
-    return { wch: Math.min(40, Math.max(8, widest + 2)) };
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Herd OS";
+  const ws = wb.addWorksheet(doc.title.slice(0, 31) || "Report", {
+    views: [{ rightToLeft: rtl }],
   });
 
-  const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(book, sheet, doc.title.slice(0, 31));
-  XLSX.writeFile(book, `${doc.filename}.xlsx`);
+  const spanRow = (row: number, value: string, font: Partial<Font>, height?: number) => {
+    ws.mergeCells(row, 1, row, Math.max(1, n));
+    const cell = ws.getCell(row, 1);
+    cell.value = value;
+    cell.font = { name: "Calibri", ...font };
+    cell.alignment = { vertical: "middle", horizontal: hAlign };
+    if (height) ws.getRow(row).height = height;
+  };
+
+  // ---- Letterhead ----
+  let r = 1;
+  spanRow(r++, doc.title, { size: 16, bold: true, color: { argb: XLSX_GREEN_DEEP } }, 26);
+  if (doc.subtitle) spanRow(r++, doc.subtitle, { size: 11, color: { argb: XLSX_MUTED } });
+  spanRow(
+    r++,
+    rtl
+      ? `${doc.rows.length} صف · ${new Date().toISOString().slice(0, 10)}`
+      : `Generated ${new Date().toISOString().slice(0, 10)} · ${doc.rows.length} rows`,
+    { size: 9, italic: true, color: { argb: "FF9AA8A1" } },
+  );
+  r++; // spacer
+
+  // ---- Header row ----
+  const headerRowIdx = r;
+  const headerRow = ws.getRow(headerRowIdx);
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
+    cell.font = { name: "Calibri", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: XLSX_GREEN } };
+    cell.alignment = { vertical: "middle", horizontal: hAlign, wrapText: false };
+    cell.border = { bottom: { style: "medium", color: { argb: XLSX_GREEN_DEEP } } };
+  });
+  headerRow.height = 20;
+
+  // ---- Data rows ----
+  doc.rows.forEach((row, ri) => {
+    const xr = ws.getRow(headerRowIdx + 1 + ri);
+    doc.columns.forEach((col, ci) => {
+      const v = row[col];
+      const cell = xr.getCell(ci + 1);
+      cell.value = (v ?? "") as CellValue;
+      cell.font = { name: "Calibri", size: 10, color: { argb: "FF23302B" } };
+      cell.alignment = {
+        horizontal: typeof v === "number" ? "right" : hAlign,
+        vertical: "middle",
+      };
+      cell.border = { bottom: { style: "hair", color: { argb: XLSX_RULE } } };
+      if (ri % 2 === 1) {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: XLSX_BAND } };
+      }
+    });
+  });
+
+  // ---- Totals row ----
+  // Sum only genuine quantities. Rates, percentages and scores don't add up to
+  // anything meaningful, so summing them would look wrong — skip those columns.
+  const rateLike = /pct|percent|%|avg|average|score|health|rate|per[_\s]|ratio/i;
+  const summable = doc.columns.map(
+    (c, i) =>
+      !rateLike.test(c) &&
+      !rateLike.test(String(headers[i] ?? "")) &&
+      doc.rows.some((row) => typeof row[c] === "number") &&
+      doc.rows.every((row) => row[c] == null || row[c] === "" || typeof row[c] === "number"),
+  );
+  if (summable.some(Boolean)) {
+    const tr = ws.getRow(headerRowIdx + 1 + doc.rows.length);
+    doc.columns.forEach((c, ci) => {
+      const cell = tr.getCell(ci + 1);
+      if (ci === 0) cell.value = rtl ? "الإجمالي" : "Total";
+      else if (summable[ci]) {
+        cell.value = doc.rows.reduce((s, row) => s + (typeof row[c] === "number" ? (row[c] as number) : 0), 0);
+      }
+      cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: XLSX_GREEN_DEEP } };
+      cell.alignment = { horizontal: summable[ci] ? "right" : hAlign };
+      cell.border = { top: { style: "thin", color: { argb: XLSX_GREEN } } };
+    });
+  }
+
+  // ---- Freeze header + auto-filter + column widths ----
+  ws.views = [{ state: "frozen", ySplit: headerRowIdx, rightToLeft: rtl }];
+  ws.autoFilter = {
+    from: { row: headerRowIdx, column: 1 },
+    to: { row: headerRowIdx, column: Math.max(1, n) },
+  };
+  doc.columns.forEach((c, i) => {
+    const widest = Math.max(
+      String(headers[i] ?? c).length,
+      ...doc.rows.map((row) => String(row[c] ?? "").length),
+    );
+    ws.getColumn(i + 1).width = Math.min(46, Math.max(10, widest + 2));
+  });
+
+  const buf = await wb.xlsx.writeBuffer();
+  triggerDownload(
+    new Blob([buf], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    `${doc.filename}.xlsx`,
+  );
+}
+
+/**
+ * Convenience wrapper for the per-page "Export" buttons: takes a flat list of
+ * row objects and produces the styled workbook, deriving columns from the keys
+ * and Title-Casing them into headers. Pass `subtitle`/`rtl` for the letterhead.
+ */
+export async function downloadTableXlsx(
+  filenameBase: string,
+  title: string,
+  rows: Row[],
+  opts?: { subtitle?: string; rtl?: boolean; headers?: string[] },
+) {
+  const columns = rows.length ? Object.keys(rows[0]) : [];
+  await downloadXlsx({
+    filename: filenameBase.replace(/\.(csv|xlsx)$/i, ""),
+    title,
+    subtitle: opts?.subtitle,
+    columns,
+    headers: opts?.headers ?? columns.map(prettifyHeader),
+    rows,
+    rtl: opts?.rtl,
+  });
 }
 
 /**

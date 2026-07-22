@@ -33,7 +33,7 @@ import { ageFromDOB } from "@/lib/date";
 import { TODAY } from "@/core/data/seed";
 import { herdComposition } from "@/core/services/metrics";
 import type { Animal } from "@/core/domain/types";
-import { downloadCsv } from "@/lib/export";
+import { downloadTableXlsx } from "@/lib/export";
 import { Beef, Droplets, Baby, Activity } from "lucide-react";
 
 const PAGE_SIZE = 25;
@@ -218,8 +218,9 @@ export default function AnimalsPage() {
               variant="outline"
               size="sm"
               onClick={() =>
-                downloadCsv(
-                  "herd-inventory.csv",
+                downloadTableXlsx(
+                  "herd-inventory",
+                  t("animals.title"),
                   (allAnimals?.items ?? []).map((a) => ({
                     tag: a.tag,
                     name: a.name,
@@ -233,10 +234,11 @@ export default function AnimalsPage() {
                     health: a.healthScore,
                     pen: a.penId,
                   })),
+                  { subtitle: t("animals.subtitle"), rtl: locale === "ar" },
                 )
               }
             >
-              <Download /> {t("common.exportCsv")}
+              <Download /> {t("common.export")}
             </Button>
             <Button variant="outline" size="sm">
               <QrCode /> {t("animals.scanTag")}

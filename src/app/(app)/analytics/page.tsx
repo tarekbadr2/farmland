@@ -53,7 +53,7 @@ import {
   sustainabilityMetrics,
 } from "@/core/services/metrics";
 import { groupBy, round, sum } from "@/lib/utils";
-import { downloadCsv } from "@/lib/export";
+import { downloadTableXlsx } from "@/lib/export";
 
 export default function AnalyticsPage() {
   const { t, locale, formatNumber, formatCompact, formatCurrency } = useI18n();
@@ -150,8 +150,9 @@ export default function AnalyticsPage() {
             variant="outline"
             size="sm"
             onClick={() =>
-              downloadCsv(
-                "monthly-analytics.csv",
+              downloadTableXlsx(
+                "monthly-analytics",
+                t("analytics.title"),
                 monthly.map((m, i) => ({
                   month: m.month,
                   milk_l: m.totalL,
@@ -161,6 +162,7 @@ export default function AnalyticsPage() {
                   expense: finance[i]?.expense ?? "",
                   profit: finance[i]?.profit ?? "",
                 })),
+                { subtitle: t("analytics.subtitle"), rtl: locale === "ar" },
               )
             }
           >

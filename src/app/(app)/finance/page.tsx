@@ -33,7 +33,7 @@ import { useInvoices, useMilkDaily, usePartners, useTransactions } from "@/hooks
 import { TODAY } from "@/core/data/seed";
 import { diffDays, formatDate, formatMonth } from "@/lib/date";
 import { expenseBreakdown, financeMetrics, monthlyFinance } from "@/core/services/metrics";
-import { downloadCsv } from "@/lib/export";
+import { downloadTableXlsx } from "@/lib/export";
 import { round, sum } from "@/lib/utils";
 import type { Invoice, Transaction } from "@/core/domain/types";
 
@@ -184,8 +184,9 @@ export default function FinancePage() {
               variant="outline"
               size="sm"
               onClick={() =>
-                downloadCsv(
-                  "transactions.csv",
+                downloadTableXlsx(
+                  "transactions",
+                  t("finance.title"),
                   txns.map((x) => ({
                     date: x.date,
                     kind: x.kind,
@@ -194,10 +195,11 @@ export default function FinancePage() {
                     description: x.description,
                     method: x.paymentMethod,
                   })),
+                  { subtitle: t("finance.subtitle"), rtl: locale === "ar" },
                 )
               }
             >
-              {t("common.exportCsv")}
+              {t("common.export")}
             </Button>
             <RecordTransactionDialog />
           </>
