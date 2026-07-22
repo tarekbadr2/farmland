@@ -1,7 +1,7 @@
 {
   "name": "herd-os-desktop",
   "productName": "Herd OS",
-  "version": "0.2.1",
+  "version": "0.2.5",
   "description": "Herd OS — Buffalo Farm Management (desktop shell)",
   "author": "Tarek Badr",
   "main": "main.js",
