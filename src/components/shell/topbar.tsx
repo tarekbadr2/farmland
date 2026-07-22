@@ -41,7 +41,7 @@ export function Topbar() {
     .map((part) => part[0])
     .join("")
     .toUpperCase();
-  const { theme, setTheme, resolvedTheme } = useTheme();
+  const { setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
@@ -115,28 +115,6 @@ export function Topbar() {
             <InstallButton />
             <SyncStatus className="hidden sm:flex" />
 
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleLocale}
-              aria-label="Toggle language"
-              className="relative"
-            >
-              <Languages />
-              <span className="absolute bottom-1 end-1 text-[9px] font-bold leading-none">
-                {locale === "en" ? "ع" : "EN"}
-              </span>
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Toggle theme"
-              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-            >
-              {mounted && resolvedTheme === "dark" ? <Sun /> : <Moon />}
-            </Button>
-
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="ms-1">
@@ -158,8 +136,20 @@ export function Topbar() {
                 <DropdownMenuItem asChild>
                   <Link href="/settings">{t("nav.settings")}</Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setTheme(theme === "dark" ? "light" : "dark")}>
-                  {t("settings.theme")}
+                <DropdownMenuItem onSelect={() => toggleLocale()}>
+                  <Languages />
+                  {locale === "en" ? "العربية" : "English"}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault(); // keep the menu open so the change is visible
+                    setTheme(resolvedTheme === "dark" ? "light" : "dark");
+                  }}
+                >
+                  {mounted && resolvedTheme === "dark" ? <Sun /> : <Moon />}
+                  {mounted && resolvedTheme === "dark"
+                    ? locale === "ar" ? "الوضع الفاتح" : "Light mode"
+                    : locale === "ar" ? "الوضع الداكن" : "Dark mode"}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
