@@ -37,6 +37,7 @@ import {
 import { TODAY } from "@/core/data/seed";
 import { diffDays, formatDate } from "@/lib/date";
 import { feedEfficiencySeries, feedMetrics } from "@/core/services/metrics";
+import { kgPerUnit } from "@/core/domain/rules";
 import { groupBy, round, sum } from "@/lib/utils";
 import type { FeedItem } from "@/core/domain/types";
 
@@ -63,15 +64,20 @@ export default function FeedPage() {
     return Object.entries(grouped)
       .map(([zoneId, list]) => {
         const zone = zones.find((z) => z.id === zoneId);
+        const cost = sum(list.map((l) => l.cost));
+        const heads = list[0]?.heads ?? 0;
         return {
           zoneId,
           name: zone ? ln(zone) : zoneId,
           kg: round(sum(list.map((l) => l.kg)), 0),
-          cost: sum(list.map((l) => l.cost)),
-          heads: list[0]?.heads ?? 0,
+          cost,
+          heads,
+          rationId: list[0]?.rationId,
+          // Average feed spend per animal per day in this pen.
+          costPerHeadDay: heads > 0 ? round(cost / heads / 30, 1) : 0,
         };
       })
-      .sort((a, b) => b.kg - a.kg);
+      .sort((a, b) => b.cost - a.cost);
   }, [consumption, zones, ln]);
 
   const byCategory = React.useMemo(() => {
@@ -249,6 +255,25 @@ export default function FeedPage() {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+
+          {/* Average feed spend per animal per day, by pen — pens differ because
+              their rations differ. */}
+          <div className="mt-3 space-y-1.5 border-t border-border/60 pt-3">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+              {locale === "ar" ? "متوسط تكلفة العلف للرأس/يوم" : "Avg feed cost per head / day"}
+            </p>
+            {byPen.map((p) => (
+              <div key={p.zoneId} className="flex items-center gap-2 text-[12px]">
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">{p.name}</span>
+                <span className="tabular text-[11px] text-muted-foreground">
+                  {formatNumber(p.heads)} {t("common.head")}
+                </span>
+                <span className="tabular w-20 text-end font-semibold">
+                  {formatCurrency(p.costPerHeadDay)}
+                </span>
+              </div>
+            ))}
+          </div>
         </ChartCard>
 
         <ChartCard title={t("common.value")} description={t("feed.inventory")}>
@@ -343,24 +368,36 @@ export default function FeedPage() {
                           {formatCurrency(r.costPerHead)} / {t("common.head")}
                         </Badge>
                       </div>
-                      <ul className="mt-3 space-y-1.5">
-                        {r.components.map((c) => {
-                          const item = items.find((i) => i.id === c.feedItemId);
-                          const total = sum(r.components.map((x) => x.kgPerHead));
-                          return (
-                            <li key={c.feedItemId} className="flex items-center gap-2 text-[12px]">
-                              <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                                {item ? ln(item) : c.feedItemId}
-                              </span>
-                              <div className="w-20">
-                                <Progress value={(c.kgPerHead / total) * 100} className="h-1.5" />
+                      <p className="mt-3 mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                        {locale === "ar" ? "التركيبة حسب التكلفة" : "Formula by cost"}
+                      </p>
+                      <ul className="space-y-1.5">
+                        {r.components
+                          .map((c) => {
+                            const item = items.find((i) => i.id === c.feedItemId);
+                            const costKg = item ? item.costPerUnit / kgPerUnit(item.unit) : 0;
+                            const compCost = c.kgPerHead * costKg;
+                            const costShare = r.costPerHead > 0 ? (compCost / r.costPerHead) * 100 : 0;
+                            return { c, item, compCost, costShare };
+                          })
+                          .sort((a, b) => b.costShare - a.costShare)
+                          .map(({ c, item, compCost, costShare }) => (
+                            <li key={c.feedItemId} className="text-[12px]">
+                              <div className="flex items-center gap-2">
+                                <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                                  {item ? ln(item) : c.feedItemId}
+                                </span>
+                                <span className="tabular w-9 text-end font-semibold">
+                                  {Math.round(costShare)}%
+                                </span>
+                                <span className="tabular w-24 text-end text-muted-foreground">
+                                  {formatNumber(c.kgPerHead)}
+                                  {t("common.kg")} · {formatCurrency(compCost)}
+                                </span>
                               </div>
-                              <span className="tabular w-14 text-end font-medium">
-                                {formatNumber(c.kgPerHead)} {t("common.kg")}
-                              </span>
+                              <Progress value={costShare} className="mt-1 h-1.5" />
                             </li>
-                          );
-                        })}
+                          ))}
                       </ul>
                     </Card>
                   ))}
