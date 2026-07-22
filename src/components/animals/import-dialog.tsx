@@ -20,6 +20,7 @@ import { useAnimals, useZones } from "@/hooks/use-farm-data";
 import { getRepository } from "@/core/repositories";
 import { TODAY } from "@/core/data/seed";
 import { downloadCsv } from "@/lib/export";
+import { parseSpreadsheet } from "@/lib/spreadsheet";
 import {
   canonicalizeHeaders,
   draftToPatch,
@@ -93,10 +94,7 @@ export function ImportAnimalsDialog() {
   const onFile = async (file: File) => {
     setFileName(file.name);
     try {
-      const XLSX = await import("xlsx");
-      const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: true });
+      const raw = await parseSpreadsheet(file);
 
       if (!raw.length) {
         toast.error(ar ? "الملف فارغ" : "That file has no rows");
