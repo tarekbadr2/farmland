@@ -135,6 +135,29 @@ message and nothing is ever charged — safe to deploy at any point.
 > security rules are new. Run `firebase deploy --only firestore:rules,functions`
 > so new farms get a 7-day trial and clients can't grant themselves a plan.
 
+## 8. Automated backups (one-time setup)
+
+A `nightlyFirestoreBackup` Cloud Function exports the whole database to Cloud
+Storage every night (03:00 Cairo). Turn it on once:
+
+```bash
+# 1. Create a backup bucket (same region as Firestore is cheapest/fastest)
+gsutil mb -l us-central1 gs://<project-id>-backups
+
+# 2. Let the functions service account run exports
+gcloud projects add-iam-policy-binding <project-id> \
+  --member="serviceAccount:<project-id>@appspot.gserviceaccount.com" \
+  --role="roles/datastore.importExportAdmin"
+
+# 3. (optional) auto-delete backups after 30 days
+printf '{"rule":[{"action":{"type":"Delete"},"condition":{"age":30}}]}' > lifecycle.json
+gsutil lifecycle set lifecycle.json gs://<project-id>-backups
+```
+
+Then `firebase deploy --only functions`. The bucket defaults to
+`gs://<project-id>-backups`; override with a `FIRESTORE_BACKUP_BUCKET` env var on
+the function. To restore: `gcloud firestore import gs://<project-id>-backups/firestore/<timestamp>`.
+
 ## Redeploying later
 
 Push to `main` → Vercel auto-builds and deploys. That's it. Only re-run

@@ -15,3 +15,4 @@ export { dailyAlerts } from "./alerts";
 export { onAlertCreated } from "./notify";
 export { runAlertsNow, rebuildMilkDaily } from "./admin";
 export { claimMembership, createFarm } from "./members";
+export { nightlyFirestoreBackup } from "./backup";
