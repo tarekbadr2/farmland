@@ -91,6 +91,50 @@ Without this, the app deploys fine but **login will fail** with an auth error.
   and show the last synced data. Record a milk session offline; it syncs when you
   reconnect.
 
+## 7. Billing (Paymob) — turning on paid subscriptions
+
+Payments run through **Paymob's Accept API**. You do **not** create "payment
+links" (single or bulk) — the app generates a payment session automatically each
+time someone subscribes. You just wire up four values.
+
+**Step A — get the four values from the Paymob dashboard:**
+
+| Env var | Where in Paymob |
+|---------|-----------------|
+| `PAYMOB_API_KEY` | Settings → Account Info → **API Key** |
+| `PAYMOB_INTEGRATION_ID` | Developers → Payment Integrations → your **card** integration's ID (a number) |
+| `PAYMOB_IFRAME_ID` | Developers → iFrames → create one → its **ID** (a number) |
+| `PAYMOB_HMAC_SECRET` | Settings → Account Info → **HMAC** |
+
+**Step B — put them where the Firebase keys already are:** Vercel → Project →
+**Settings → Environment Variables** (the same place as step 3 above). Add each
+as a **Production** variable. These are **secrets** — do NOT prefix them with
+`NEXT_PUBLIC_`, and never commit them. For local testing, put them in
+`.env.local` instead.
+
+**Step C — point Paymob's webhook at the app.** In Paymob → Developers →
+Payment Integrations → your integration → set the **Transaction processed
+callback** to:
+
+```
+https://<your-domain>/api/billing/webhook
+```
+
+**Step D — turn the paywall on.** Until you're ready, leave it off (the trial and
+paywall are visible but never block anyone). When prices are final and Paymob is
+live, add one more Vercel env var and redeploy:
+
+| Key | Value |
+|-----|-------|
+| `NEXT_PUBLIC_BILLING_ENFORCED` | `1` |
+
+Until all four `PAYMOB_*` values are set, checkout shows an honest "coming soon"
+message and nothing is ever charged — safe to deploy at any point.
+
+> **Also redeploy Firebase once for this release:** the trial + the billing
+> security rules are new. Run `firebase deploy --only firestore:rules,functions`
+> so new farms get a 7-day trial and clients can't grant themselves a plan.
+
 ## Redeploying later
 
 Push to `main` → Vercel auto-builds and deploys. That's it. Only re-run
