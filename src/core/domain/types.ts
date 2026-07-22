@@ -101,6 +101,23 @@ export type AnimalStatus =
   | "culled"
   | "quarantine";
 
+/** What an animal is raised for — decides which cost metric applies (cost per
+ *  kg of liveweight for meat, cost per litre for dairy). */
+export type AnimalPurpose = "dairy" | "meat" | "breeding";
+
+/** Recorded when an animal leaves the herd (sold, died, or culled). Drives the
+ *  disposal account and closes out its cost ledger. */
+export interface AnimalDisposal {
+  date: string;
+  type: "sold" | "died" | "culled";
+  /** Final weight (kg) at sale/exit — the denominator for cost per kg. */
+  weightKg?: number;
+  /** Money received (EGP). Zero for death/cull. */
+  proceeds?: number;
+  buyerId?: ID;
+  note?: string;
+}
+
 export type MilkStatus = "lactating" | "dry" | "heifer" | "not_applicable";
 
 export type ReproStatus =
@@ -175,6 +192,16 @@ export interface Animal {
   acquiredFrom?: "born_on_farm" | "purchased";
   isCalf: boolean;
   gpsCollar?: boolean;
+
+  /* --- Livestock economics (cost analysis) --- */
+  /** Raised for milk, meat, or breeding. Inferred from sex/role when unset. */
+  purpose?: AnimalPurpose;
+  /** Price paid to acquire (EGP). Undefined / 0 for born-on-farm. */
+  acquisitionCost?: number;
+  /** Weight (kg) at acquisition or birth — the baseline for weight gain. */
+  acquisitionWeightKg?: number;
+  /** Set once the animal leaves the herd; closes out its cost ledger. */
+  disposal?: AnimalDisposal;
 }
 
 /* ---------------------------------- Pens ---------------------------------- */
@@ -508,6 +535,9 @@ export interface Transaction {
   description: string;
   counterpartyId?: ID;
   invoiceId?: ID;
+  /** Links the money to a specific animal (e.g. an animal sale) for per-animal
+   *  profitability. */
+  animalId?: ID;
   paymentMethod: "cash" | "bank" | "credit";
 }
 

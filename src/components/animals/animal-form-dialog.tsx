@@ -68,6 +68,9 @@ const schema = z.object({
   microchip: z.string().optional(),
   acquiredFrom: z.enum(["born_on_farm", "purchased"]),
   valuation: z.coerce.number().min(0),
+  purpose: z.enum(["dairy", "meat", "breeding"]).optional(),
+  acquisitionCost: z.coerce.number().min(0).optional(),
+  acquisitionWeightKg: z.coerce.number().min(0).max(1500).optional(),
   notes: z.string().optional(),
 });
 
@@ -117,6 +120,9 @@ export function AnimalFormDialog({
           microchip: animal.microchip,
           acquiredFrom: animal.acquiredFrom ?? "born_on_farm",
           valuation: animal.valuation,
+          purpose: animal.purpose,
+          acquisitionCost: animal.acquisitionCost,
+          acquisitionWeightKg: animal.acquisitionWeightKg,
           notes: animal.notes,
         }
       : {
@@ -157,6 +163,9 @@ export function AnimalFormDialog({
         acquiredFrom: values.acquiredFrom,
         acquiredAt: animal?.acquiredAt ?? TODAY,
         valuation: values.valuation,
+        purpose: values.purpose,
+        acquisitionCost: values.acquisitionCost || undefined,
+        acquisitionWeightKg: values.acquisitionWeightKg || undefined,
         notes: values.notes,
         isCalf,
       };
@@ -307,6 +316,28 @@ export function AnimalFormDialog({
             </Field>
             <Field label={t("animals.valuation")}>
               <Input type="number" step="100" {...form.register("valuation")} />
+            </Field>
+          </Section>
+
+          {/* Economics — drives cost/kg (meat) and cost/litre (dairy) */}
+          <Section title={locale === "ar" ? "الاقتصاد" : "Economics"}>
+            <Field label={locale === "ar" ? "الغرض" : "Raised for"}>
+              <SelectField
+                value={form.watch("purpose")}
+                placeholder={locale === "ar" ? "تلقائي" : "Auto"}
+                onChange={(v) => form.setValue("purpose", v as FormValues["purpose"])}
+                options={[
+                  { value: "dairy", label: locale === "ar" ? "حليب" : "Dairy" },
+                  { value: "meat", label: locale === "ar" ? "لحم" : "Meat" },
+                  { value: "breeding", label: locale === "ar" ? "تربية" : "Breeding" },
+                ]}
+              />
+            </Field>
+            <Field label={locale === "ar" ? "سعر الشراء (ج.م)" : "Purchase price (EGP)"}>
+              <Input type="number" step="100" placeholder="0" {...form.register("acquisitionCost")} />
+            </Field>
+            <Field label={locale === "ar" ? "وزن الشراء (كجم)" : "Purchase weight (kg)"}>
+              <Input type="number" step="1" placeholder="0" {...form.register("acquisitionWeightKg")} />
             </Field>
           </Section>
 

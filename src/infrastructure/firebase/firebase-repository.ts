@@ -40,6 +40,7 @@ import { getActiveFarm } from "./tenant";
 import type {
   Alert,
   Animal,
+  AnimalDisposal,
   Attendance,
   BreedingEvent,
   DailyMilkPoint,
@@ -486,6 +487,40 @@ export class FirebaseFarmRepository implements FarmRepository {
         : {};
     const ref = doc(this.db, paths.animals(this.farmId), id);
     await setDoc(ref, { ...patch, ...searchable, farmId: this.farmId }, { merge: true });
+    return (await this.getAnimal(id))!;
+  }
+
+  async disposeAnimal(id: ID, disposal: AnimalDisposal): Promise<Animal> {
+    const status: Animal["status"] =
+      disposal.type === "sold" ? "sold" : disposal.type === "culled" ? "culled" : "dead";
+    const batch = writeBatch(this.db);
+    batch.set(
+      doc(this.db, paths.animals(this.farmId), id),
+      { status, disposal: omitUndefined(disposal), farmId: this.farmId },
+      { merge: true },
+    );
+    // A sale is money in — post the linked animal-sale income in the same batch
+    // so the herd and the ledger never disagree.
+    if (disposal.type === "sold" && (disposal.proceeds ?? 0) > 0) {
+      const tag = (await this.getAnimal(id))?.tag ?? id;
+      const txId = doc(this.col(paths.transactions(this.farmId))).id;
+      batch.set(
+        doc(this.db, paths.transactions(this.farmId), txId),
+        omitUndefined({
+          id: txId,
+          farmId: this.farmId,
+          date: disposal.date,
+          kind: "income",
+          category: "animal_sales",
+          amount: disposal.proceeds,
+          description: `Sale of ${tag}`,
+          animalId: id,
+          counterpartyId: disposal.buyerId,
+          paymentMethod: "cash",
+        }),
+      );
+    }
+    await trackWrite(batch.commit());
     return (await this.getAnimal(id))!;
   }
 

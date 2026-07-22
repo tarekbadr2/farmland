@@ -27,9 +27,12 @@ import {
   ImageIcon,
   MapPin,
   Pencil,
+  Scale,
   Shield,
   Syringe,
+  TrendingUp,
   Wallet,
+  LogOut,
 } from "lucide-react";
 
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
@@ -61,13 +64,16 @@ import {
   useAnimalTimeline,
   useAnimalWeight,
   useBreeding,
+  useFeedConsumption,
   useHealth,
   useZones,
 } from "@/hooks/use-farm-data";
+import { animalEconomics } from "@/core/services/metrics";
+import { DisposeAnimalDialog } from "@/components/animals/dispose-animal-dialog";
 import { TODAY, woodsCurve } from "@/core/data/seed";
 import { peakFromCurrent } from "@/core/repositories/demo-repository";
 import { ageFromDOB, diffDays, formatDate, relativeDays } from "@/lib/date";
-import { groupBy, round } from "@/lib/utils";
+import { groupBy, round, sum } from "@/lib/utils";
 
 function AnimalProfileInner() {
   const id = useSearchParams().get("id") ?? "";
@@ -81,6 +87,7 @@ function AnimalProfileInner() {
   const { data: health } = useHealth();
   const { data: breeding } = useBreeding();
   const { data: zones } = useZones();
+  const { data: feedConsumption } = useFeedConsumption();
   const { data: dam } = useAnimal(animal?.motherId ?? "");
   const { data: sire } = useAnimal(animal?.fatherId ?? "");
 
@@ -133,6 +140,16 @@ function AnimalProfileInner() {
   const dim = animal.lastCalvingDate ? diffDays(TODAY, animal.lastCalvingDate) : 0;
   const pen = zones?.find((z) => z.id === animal.penId);
 
+  const econ = animalEconomics({
+    animal,
+    health: animalHealth,
+    feedConsumption: feedConsumption ?? [],
+    litres: round(sum((milk ?? []).map((m) => m.volumeL)), 1),
+    today: TODAY,
+  });
+  const active = animal.status === "active" || animal.status === "quarantine";
+  const ar = locale === "ar";
+
   const facts: { label: string; value: React.ReactNode; icon?: typeof Beef }[] = [
     { label: t("animals.rfid"), value: <span className="tabular">{animal.rfid}</span> },
     { label: t("animals.breed"), value: t(`breeds.${animal.breed}`) },
@@ -176,6 +193,16 @@ function AnimalProfileInner() {
                 </Button>
               }
             />
+            {active && (
+              <DisposeAnimalDialog
+                animal={animal}
+                trigger={
+                  <Button variant="outline" size="sm">
+                    <LogOut /> {locale === "ar" ? "خروج من القطيع" : "Record exit"}
+                  </Button>
+                }
+              />
+            )}
             <AnimalFormDialog
               animal={animal}
               trigger={
@@ -270,6 +297,102 @@ function AnimalProfileInner() {
           icon={HeartPulse}
           tone={animalHealth.some((h) => h.outcome === "ongoing") ? "warning" : "default"}
         />
+      </motion.div>
+
+      {/* ------------------------ Cost & profitability ------------------------- */}
+      <motion.div variants={cardIn} initial="hidden" animate="show" className="mb-4">
+        <Card>
+          <div className="flex items-center justify-between px-5 pb-2 pt-4">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="size-4 text-primary" />
+                {ar ? "التكلفة والربحية" : "Cost & profitability"}
+              </CardTitle>
+              <CardDescription>
+                {econ.purpose === "meat"
+                  ? ar ? "تسمين — تكلفة إنتاج الكيلو" : "Fattening — cost to produce a kilo"
+                  : econ.purpose === "dairy"
+                    ? ar ? "حلوب — تكلفة إنتاج اللتر" : "Dairy — cost to produce a litre"
+                    : ar ? "تربية" : "Breeding"}
+              </CardDescription>
+            </div>
+            <Badge variant="outline">
+              {econ.purpose === "meat"
+                ? ar ? "لحم" : "Meat"
+                : econ.purpose === "dairy"
+                  ? ar ? "حليب" : "Dairy"
+                  : ar ? "تربية" : "Breeding"}
+            </Badge>
+          </div>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+              <Metric label={ar ? "سعر الشراء" : "Purchase"} value={formatCurrency(econ.purchaseCost)} />
+              <Metric label={ar ? "العلف (مُوزَّع)" : "Feed (allocated)"} value={formatCurrency(econ.feedCost)} />
+              <Metric label={ar ? "علاج وتطعيم" : "Meds & vaccines"} value={formatCurrency(econ.healthCost)} />
+              <Metric
+                label={ar ? "إجمالي التكلفة" : "Total cost"}
+                value={<span className="font-semibold text-foreground">{formatCurrency(econ.totalCost)}</span>}
+              />
+            </div>
+
+            <Separator className="my-4" />
+
+            {econ.purpose === "dairy" ? (
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
+                <Metric label={ar ? "اللبن المُنتَج" : "Milk produced"} value={`${formatNumber(econ.litres)} ${t("common.liters")}`} />
+                <Metric
+                  label={ar ? "تكلفة اللتر" : "Cost / litre"}
+                  value={econ.costPerLitre ? <span className="font-semibold text-primary">{formatCurrency(econ.costPerLitre)}</span> : "—"}
+                />
+                <Metric label={ar ? "أيام في المزرعة" : "Days on farm"} value={formatNumber(econ.daysOnFarm)} />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+                <Metric
+                  label={ar ? "الوزن" : "Weight"}
+                  value={
+                    <span className="flex items-center gap-1">
+                      <Scale className="size-3.5 text-muted-foreground" />
+                      {formatNumber(econ.startWeightKg)} → {formatNumber(econ.currentWeightKg)} {t("common.kg")}
+                    </span>
+                  }
+                />
+                <Metric label={ar ? "الزيادة الوزنية" : "Weight gain"} value={`${formatNumber(econ.gainKg)} ${t("common.kg")}`} />
+                <Metric
+                  label={ar ? "تكلفة كجم حي" : "Cost / kg live"}
+                  value={econ.costPerKgLive ? formatCurrency(econ.costPerKgLive) : "—"}
+                />
+                <Metric
+                  label={ar ? "تكلفة كجم زيادة" : "Cost / kg gain"}
+                  value={econ.costPerKgGain ? <span className="font-semibold text-primary">{formatCurrency(econ.costPerKgGain)}</span> : "—"}
+                />
+              </div>
+            )}
+
+            {econ.sold && (
+              <>
+                <Separator className="my-4" />
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
+                  <Metric label={ar ? "قيمة البيع" : "Sale price"} value={formatCurrency(econ.proceeds)} />
+                  <Metric
+                    label={ar ? "صافي الربح" : "Net profit"}
+                    value={
+                      <span className={econ.profit >= 0 ? "font-semibold text-emerald-600 dark:text-emerald-500" : "font-semibold text-destructive"}>
+                        {formatCurrency(econ.profit)}
+                      </span>
+                    }
+                  />
+                </div>
+              </>
+            )}
+
+            <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
+              {ar
+                ? "العلف مُوزَّع من تكلفة تغذية حظيرة الحيوان. التكاليف مباشرة (شراء + علف + علاج)؛ أدخِل سعر ووزن الشراء من زر التعديل لحساب أدق."
+                : "Feed is allocated from the animal's pen feeding cost. Costs are direct (purchase + feed + meds); set the purchase price & weight via Edit for a precise cost/kg."}
+            </p>
+          </CardContent>
+        </Card>
       </motion.div>
 
       <Tabs defaultValue="overview">

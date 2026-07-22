@@ -556,6 +556,111 @@ export function growthMetrics(animals: Animal[], today: string) {
   };
 }
 
+/* ---------------------- Per-animal cost of production --------------------- */
+
+/** Typical buffalo birth weight (kg) — the gain baseline for animals born on
+ *  the farm when no acquisition weight was recorded. */
+const BIRTH_WEIGHT_KG = 38;
+
+export interface AnimalEconomics {
+  purpose: "dairy" | "meat" | "breeding";
+  /** Days from acquisition/birth to sale/today. */
+  daysOnFarm: number;
+  purchaseCost: number;
+  /** Feed allocated from the animal's pen consumption over its time on farm. */
+  feedCost: number;
+  /** Medicines + vaccinations + treatments booked to this animal. */
+  healthCost: number;
+  totalCost: number;
+  startWeightKg: number;
+  currentWeightKg: number;
+  gainKg: number;
+  /** Cost per kg of liveweight — totalCost / current weight. */
+  costPerKgLive: number;
+  /** Cost per kg of gain — totalCost / (current − start). The number that sets
+   *  a break-even sale price for a fattening animal. */
+  costPerKgGain: number;
+  /** Litres this animal produced over the window (dairy). */
+  litres: number;
+  /** Cost of producing one litre — totalCost / litres. */
+  costPerLitre: number;
+  sold: boolean;
+  proceeds: number;
+  /** Sale proceeds − total cost (only meaningful once sold). */
+  profit: number;
+}
+
+/**
+ * The lifetime cost ledger for one animal, and the unit costs derived from it.
+ *
+ * Costs are direct: what it cost to buy (or 0 if born here), the feed it ate
+ * (its share of its pen's feeding), and the meds/vaccines booked to it. Feed is
+ * allocated per head from each pen feeding (`cost / heads`) over the animal's
+ * time on the farm — an approximation, since day-by-day pen membership isn't
+ * stored, but it reflects real pen-level feed spend rather than a flat average.
+ */
+export function animalEconomics(input: {
+  animal: Animal;
+  health: HealthEvent[];
+  feedConsumption: FeedConsumption[];
+  /** Litres this animal produced over the window (pass 0 for non-dairy). */
+  litres: number;
+  today: string;
+}): AnimalEconomics {
+  const { animal, health, feedConsumption, litres, today } = input;
+
+  const purpose: AnimalEconomics["purpose"] =
+    animal.purpose ?? (animal.sex === "male" ? "meat" : "dairy");
+
+  const start = animal.acquiredAt || animal.dateOfBirth;
+  const end = animal.disposal?.date || today;
+  const daysOnFarm = Math.max(0, diffDays(end, start));
+  const inWindow = (d: string) => diffDays(d, start) >= 0 && diffDays(end, d) >= 0;
+
+  const purchaseCost = animal.acquisitionCost ?? 0;
+
+  const feedCost = round(
+    sum(
+      feedConsumption
+        .filter((c) => c.zoneId === animal.penId && inWindow(c.date))
+        .map((c) => c.cost / Math.max(1, c.heads)),
+    ),
+  );
+
+  const healthCost = round(
+    sum(health.filter((h) => h.animalId === animal.id && inWindow(h.date)).map((h) => h.cost ?? 0)),
+  );
+
+  const totalCost = round(purchaseCost + feedCost + healthCost);
+
+  const startWeightKg =
+    animal.acquisitionWeightKg ?? (animal.acquiredFrom === "purchased" ? animal.weightKg : BIRTH_WEIGHT_KG);
+  const currentWeightKg = animal.disposal?.weightKg ?? animal.weightKg;
+  const gainKg = round(Math.max(0, currentWeightKg - startWeightKg));
+
+  const sold = animal.disposal?.type === "sold";
+  const proceeds = animal.disposal?.proceeds ?? 0;
+
+  return {
+    purpose,
+    daysOnFarm,
+    purchaseCost: round(purchaseCost),
+    feedCost,
+    healthCost,
+    totalCost,
+    startWeightKg: round(startWeightKg),
+    currentWeightKg: round(currentWeightKg),
+    gainKg,
+    costPerKgLive: currentWeightKg > 0 ? round(totalCost / currentWeightKg) : 0,
+    costPerKgGain: gainKg > 0 ? round(totalCost / gainKg) : 0,
+    litres: round(litres),
+    costPerLitre: litres > 0 ? round(totalCost / litres) : 0,
+    sold,
+    proceeds: round(proceeds),
+    profit: sold ? round(proceeds - totalCost) : 0,
+  };
+}
+
 /* --------------------------------- Alerts --------------------------------- */
 
 export function alertCounts(alerts: Alert[]) {

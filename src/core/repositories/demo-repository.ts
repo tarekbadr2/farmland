@@ -16,6 +16,7 @@ import {
 } from "@/core/domain/rules";
 import type {
   Animal,
+  AnimalDisposal,
   Attendance,
   BreedingEvent,
   Employee,
@@ -339,6 +340,29 @@ export class DemoFarmRepository implements FarmRepository {
     };
     this.db.animals.unshift(created);
     return tick(created);
+  }
+
+  async disposeAnimal(id: ID, disposal: AnimalDisposal) {
+    const idx = this.db.animals.findIndex((a) => a.id === id);
+    if (idx < 0) throw new Error("Animal not found");
+    const status: Animal["status"] =
+      disposal.type === "sold" ? "sold" : disposal.type === "culled" ? "culled" : "dead";
+    this.db.animals[idx] = { ...this.db.animals[idx], status, disposal };
+    if (disposal.type === "sold" && (disposal.proceeds ?? 0) > 0) {
+      this.db.transactions.unshift({
+        id: `tx_${Date.now()}`,
+        farmId: this.db.farm.id,
+        date: disposal.date,
+        kind: "income",
+        category: "animal_sales",
+        amount: disposal.proceeds!,
+        description: `Sale of ${this.db.animals[idx].tag}`,
+        animalId: id,
+        counterpartyId: disposal.buyerId,
+        paymentMethod: "cash",
+      } as Transaction);
+    }
+    return tick(this.db.animals[idx]);
   }
 
   getMilkDaily = (days = 730) => tick(this.db.milkDaily.slice(-days));

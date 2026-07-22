@@ -9,6 +9,7 @@
 import type {
   Alert,
   Animal,
+  AnimalDisposal,
   Attendance,
   BreedingEvent,
   DailyMilkPoint,
@@ -155,6 +156,9 @@ export interface FarmRepository {
   getAnimalMilkHistory(id: ID, days?: number): Promise<MilkRecord[]>;
   getAnimalWeightHistory(id: ID): Promise<{ date: string; weightKg: number }[]>;
   saveAnimal(animal: Partial<Animal> & { id?: ID }): Promise<Animal>;
+  /** Records an animal leaving the herd: sets status + disposal, and for a sale
+   *  posts the linked animal-sale income to the ledger, atomically. */
+  disposeAnimal(id: ID, disposal: AnimalDisposal): Promise<Animal>;
 
   getMilkDaily(days?: number): Promise<DailyMilkPoint[]>;
   getMilkRecords(date: string): Promise<MilkRecord[]>;
