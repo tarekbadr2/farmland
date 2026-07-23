@@ -23,6 +23,13 @@
       "output": "dist"
     },
     "artifactName": "Herd-OS-Setup.exe",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "tarekbadr2",
+        "repo": "farmland"
+      }
+    ],
     "files": [
       "main.js",
       "preload.js",
@@ -47,6 +54,7 @@
     }
   },
   "dependencies": {
+    "electron-updater": "^6.3.9",
     "serve-handler": "^6.1.7"
   }
 }

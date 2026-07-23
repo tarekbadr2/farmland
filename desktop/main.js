@@ -6,10 +6,11 @@
 // no internet needed to open it. Firebase (client SDK) still talks to the cloud
 // directly for data, exactly as it does on the web.
 
-const { app, BrowserWindow, shell, Menu, ipcMain } = require("electron");
+const { app, BrowserWindow, shell, Menu, ipcMain, dialog } = require("electron");
 const path = require("path");
 const http = require("http");
 const handler = require("serve-handler");
+const { autoUpdater } = require("electron-updater");
 
 // The hosted site that carries the Google sign-in bridge page (real browser).
 const WEB_ORIGIN = process.env.HERDOS_WEB || "https://farmland-tarekbadr2s-projects.vercel.app";
@@ -155,6 +156,54 @@ function createWindow() {
     if (!isInternal(url)) {
       event.preventDefault();
       shell.openExternal(url);
+    }
+  });
+
+  setupAutoUpdates(win);
+}
+
+// ------------------------------ Auto-update -------------------------------
+// So users never have to hunt down the installer and reinstall by hand: the
+// app checks GitHub Releases on launch, downloads any newer version quietly in
+// the background, and offers a one-click restart to apply it. Runs only in the
+// packaged app — dev builds have no update feed (app-update.yml).
+function setupAutoUpdates(win) {
+  if (!app.isPackaged) return;
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("update-downloaded", async (info) => {
+    const { response } = await dialog.showMessageBox(win, {
+      type: "info",
+      buttons: ["Restart now", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+      title: "Update ready",
+      message: `Herd OS ${info.version} is ready to install.`,
+      detail: "Restart the app to apply it — your data is untouched.",
+    });
+    if (response === 0) autoUpdater.quitAndInstall();
+  });
+
+  // Never let a failed check (offline, rate-limited, no release yet) surface to
+  // the user or block the app.
+  autoUpdater.on("error", (err) => {
+    console.error("Auto-update check failed:", err && err.message ? err.message : err);
+  });
+
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  check();
+  setInterval(check, 6 * 60 * 60 * 1000); // re-check every 6h for always-on installs
+
+  // Lets the app trigger a manual check later (e.g. a Settings button) and hear
+  // back whether an update was found.
+  ipcMain.handle("check-for-updates", async () => {
+    try {
+      const r = await autoUpdater.checkForUpdates();
+      return { ok: true, version: (r && r.updateInfo && r.updateInfo.version) || null };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
     }
   });
 }
