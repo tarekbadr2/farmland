@@ -90,6 +90,68 @@ export function journalNumber(date: string, seq: number): string {
   return `JV-${date.slice(0, 4)}-${String(seq).padStart(4, "0")}`;
 }
 
+/** سند قبض / سند صرف — cash in and cash out. */
+export type VoucherKind = "receipt" | "payment";
+
+/** Vouchers get their own number series so RV-0001 and PV-0001 can coexist. */
+export function voucherNumber(kind: VoucherKind, date: string, seq: number): string {
+  const prefix = kind === "receipt" ? "RV" : "PV";
+  return `${prefix}-${date.slice(0, 4)}-${String(seq).padStart(4, "0")}`;
+}
+
+export interface VoucherInput {
+  kind: VoucherKind;
+  date: string;
+  amount: number;
+  /** The cash box or bank account the money moves through. */
+  treasuryAccountId: ID;
+  /** What it was for — the income, expense, receivable or payable account. */
+  counterAccountId: ID;
+  description: string;
+  partnerId?: ID;
+  reference?: string;
+}
+
+/**
+ * A voucher is just a two-line journal entry with a cash side.
+ *
+ * A receipt debits the treasury (money arrived) and credits whatever it was
+ * for; a payment does the reverse. Building it here means vouchers land in the
+ * same ledger as everything else and can't drift from it.
+ */
+export function journalEntryFromVoucher(
+  input: VoucherInput,
+  farmId: ID,
+  number: string,
+): Omit<JournalEntry, "id"> | null {
+  const amount = round(Math.abs(input.amount), 2);
+  if (amount === 0 || input.treasuryAccountId === input.counterAccountId) return null;
+
+  const treasury: JournalLine = {
+    accountId: input.treasuryAccountId,
+    debit: input.kind === "receipt" ? amount : 0,
+    credit: input.kind === "receipt" ? 0 : amount,
+    partnerId: input.partnerId,
+  };
+  const counter: JournalLine = {
+    accountId: input.counterAccountId,
+    debit: input.kind === "receipt" ? 0 : amount,
+    credit: input.kind === "receipt" ? amount : 0,
+    partnerId: input.partnerId,
+  };
+
+  return {
+    farmId,
+    number,
+    date: input.date,
+    description: input.description,
+    reference: input.reference,
+    status: "posted",
+    lines: [treasury, counter],
+    sourceKind: "voucher",
+  };
+}
+
 /** Post a batch of transactions, numbering them in date order. */
 export function journalFromTransactions(
   transactions: Transaction[],

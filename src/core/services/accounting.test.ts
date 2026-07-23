@@ -14,6 +14,7 @@ import {
   balanceSheet,
   accountLedger,
 } from "./accounting";
+import { journalEntryFromVoucher, voucherNumber } from "./posting";
 import type { Account, JournalEntry } from "@/core/domain/types";
 
 /* A small but realistic farm chart of accounts. */
@@ -264,5 +265,58 @@ describe("accountLedger", () => {
       ]),
     ];
     expect(accountLedger(cash, withPayment).closing).toBe(103_000);
+  });
+});
+
+describe("vouchers", () => {
+  const base = {
+    date: "2026-02-01",
+    amount: 5_000,
+    treasuryAccountId: "a101", // cash
+    counterAccountId: "a401", // milk sales
+    description: "Milk sold for cash",
+  };
+
+  it("numbers receipts and payments in separate series", () => {
+    expect(voucherNumber("receipt", "2026-02-01", 7)).toBe("RV-2026-0007");
+    expect(voucherNumber("payment", "2026-02-01", 7)).toBe("PV-2026-0007");
+  });
+
+  it("a receipt debits the treasury and credits what it was for", () => {
+    const e = journalEntryFromVoucher({ ...base, kind: "receipt" }, "f1", "RV-2026-0001")!;
+    expect(e.lines[0]).toMatchObject({ accountId: "a101", debit: 5_000, credit: 0 });
+    expect(e.lines[1]).toMatchObject({ accountId: "a401", debit: 0, credit: 5_000 });
+    expect(isBalanced(e.lines)).toBe(true);
+    expect(e.status).toBe("posted");
+  });
+
+  it("a payment credits the treasury instead", () => {
+    const e = journalEntryFromVoucher(
+      { ...base, kind: "payment", counterAccountId: "a501" },
+      "f1",
+      "PV-2026-0001",
+    )!;
+    expect(e.lines[0]).toMatchObject({ accountId: "a101", debit: 0, credit: 5_000 });
+    expect(e.lines[1]).toMatchObject({ accountId: "a501", debit: 5_000, credit: 0 });
+    expect(isBalanced(e.lines)).toBe(true);
+  });
+
+  it("refuses a zero amount or a self-transfer", () => {
+    expect(journalEntryFromVoucher({ ...base, kind: "receipt", amount: 0 }, "f1", "RV-1")).toBeNull();
+    expect(
+      journalEntryFromVoucher(
+        { ...base, kind: "receipt", counterAccountId: "a101" },
+        "f1",
+        "RV-1",
+      ),
+    ).toBeNull();
+  });
+
+  it("a posted voucher lands in the trial balance and keeps it balanced", () => {
+    const e = journalEntryFromVoucher({ ...base, kind: "receipt" }, "f1", "RV-2026-0001")!;
+    const tb = trialBalance(ACCOUNTS, [...ENTRIES, { ...e, id: "v1" }]);
+    expect(tb.balanced).toBe(true);
+    // Cash rose from 105,000 to 110,000.
+    expect(tb.rows.find((r) => r.account.id === "a101")!.debit).toBe(110_000);
   });
 });

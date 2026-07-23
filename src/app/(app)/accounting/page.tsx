@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { BookOpen, CheckCircle2, Lock, Plus, Scale, Sigma, Wallet } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, BookOpen, CheckCircle2, Lock, Plus, Scale, Sigma, Wallet } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
@@ -29,6 +29,7 @@ import {
 } from "@/core/services/accounting";
 import { JournalEntryDialog } from "@/components/accounting/journal-entry-dialog";
 import { AccountFormDialog } from "@/components/accounting/account-form-dialog";
+import { VoucherDialog } from "@/components/accounting/voucher-dialog";
 import { formatDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import type { Account, JournalEntry } from "@/core/domain/types";
@@ -73,13 +74,31 @@ export default function AccountingPage() {
             : "Chart of accounts, journal, trial balance and financial statements."
         }
         actions={
-          <JournalEntryDialog
-            trigger={
-              <Button size="sm">
-                <Plus /> {ar ? "قيد جديد" : "New entry"}
-              </Button>
-            }
-          />
+          <>
+            <VoucherDialog
+              kind="receipt"
+              trigger={
+                <Button variant="outline" size="sm">
+                  <ArrowDownLeft /> {ar ? "سند قبض" : "Receipt"}
+                </Button>
+              }
+            />
+            <VoucherDialog
+              kind="payment"
+              trigger={
+                <Button variant="outline" size="sm">
+                  <ArrowUpRight /> {ar ? "سند صرف" : "Payment"}
+                </Button>
+              }
+            />
+            <JournalEntryDialog
+              trigger={
+                <Button size="sm">
+                  <Plus /> {ar ? "قيد جديد" : "New entry"}
+                </Button>
+              }
+            />
+          </>
         }
       />
 
