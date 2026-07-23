@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Beef, Building2, Landmark, Plus, TrendingDown, Wallet, Wrench } from "lucide-react";
+import { Beef, Building2, Plus, TrendingDown, Wallet, Wrench } from "lucide-react";
 
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
 import { StatCard } from "@/components/common/stat-card";

@@ -6,7 +6,7 @@ import { CalendarCheck, Plus, Users, Wallet } from "lucide-react";
 
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
 import { StatCard } from "@/components/common/stat-card";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n/provider";

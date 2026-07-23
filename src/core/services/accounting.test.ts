@@ -22,6 +22,7 @@ import {
   journalEntryFromCheque,
   journalEntryFromInvoice,
   journalEntryFromInvoicePayment,
+  isIncomingInvoice,
   journalEntryFromVoucher,
   nextSequence,
   reverseEntry,
@@ -696,5 +697,17 @@ describe("nextSequence", () => {
 
   it("ignores malformed or foreign numbers rather than throwing", () => {
     expect(nextSequence(["JV-bad", "OTHER-2026-0099", "JV-2026-0005"], "JV")).toBe(6);
+  });
+});
+
+describe("isIncomingInvoice", () => {
+  it("money in on a sale or a purchase return", () => {
+    expect(isIncomingInvoice("sale")).toBe(true);
+    expect(isIncomingInvoice("purchase_return")).toBe(true);
+    expect(isIncomingInvoice(undefined)).toBe(true); // legacy = sale
+  });
+  it("money out on a purchase or a sale return", () => {
+    expect(isIncomingInvoice("purchase")).toBe(false);
+    expect(isIncomingInvoice("sale_return")).toBe(false);
   });
 });

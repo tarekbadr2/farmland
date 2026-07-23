@@ -109,6 +109,7 @@ import {
   chequeNumber,
   invoiceDocNumber,
   invoiceSeries,
+  isIncomingInvoice,
   nextSequence,
   journalEntryFromCheque,
   journalEntryFromInvoice,
@@ -1102,12 +1103,14 @@ export class FirebaseFarmRepository implements FarmRepository {
         partner = undefined; // uncached offline → income books as "other"
       }
     }
-    const category =
-      partner?.kind === "animal_buyer"
+    const incoming = isIncomingInvoice(invoice.kind);
+    const category = incoming
+      ? partner?.kind === "animal_buyer"
         ? "animal_sales"
         : partner?.kind === "milk_buyer"
           ? "milk_sales"
-          : "other_income";
+          : "other_income"
+      : "other_expense";
 
     const txnId = doc(this.col(paths.transactions(this.farmId))).id;
     const batch = writeBatch(this.db);
@@ -1115,7 +1118,7 @@ export class FirebaseFarmRepository implements FarmRepository {
     batch.set(doc(this.db, paths.transactions(this.farmId), txnId), {
       id: txnId,
       farmId: this.farmId,
-      kind: "income",
+      kind: incoming ? "income" : "expense",
       category,
       amount: input.amount,
       date: input.date,

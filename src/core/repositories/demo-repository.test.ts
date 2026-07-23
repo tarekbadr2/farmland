@@ -459,3 +459,52 @@ describe("demo repository — production work orders", () => {
     await expect(repo.completeWorkOrder(greedy.id)).rejects.toThrow("insufficient-stock");
   });
 });
+
+describe("demo repository — invoice payment direction", () => {
+  it("paying a purchase bill books an EXPENSE, not phantom income", async () => {
+    const bill = await repo.saveInvoice({
+      kind: "purchase",
+      number: "TEST-DIR-BILL",
+      customerId: "partner_x",
+      issuedAt: TODAY,
+      dueAt: TODAY,
+      lines: [{ description: "Vet supplies", qty: 1, unitPrice: 4_000 }],
+      paidAmount: 0,
+      status: "sent",
+    });
+
+    const txnsBefore = (await repo.getTransactions()).length;
+    await repo.recordInvoicePayment({
+      invoiceId: bill.id,
+      amount: 4_000,
+      date: TODAY,
+      paymentMethod: "cash",
+    });
+
+    const txns = await repo.getTransactions();
+    const payment = txns.find((t) => t.invoiceId === bill.id);
+    expect(txns.length).toBe(txnsBefore + 1);
+    expect(payment?.kind).toBe("expense"); // the bug booked "income"
+  });
+
+  it("paying a sale still books income", async () => {
+    const sale = await repo.saveInvoice({
+      kind: "sale",
+      number: "TEST-DIR-SALE",
+      customerId: "partner_y",
+      issuedAt: TODAY,
+      dueAt: TODAY,
+      lines: [{ description: "Milk", qty: 1, unitPrice: 2_000 }],
+      paidAmount: 0,
+      status: "sent",
+    });
+    await repo.recordInvoicePayment({
+      invoiceId: sale.id,
+      amount: 2_000,
+      date: TODAY,
+      paymentMethod: "cash",
+    });
+    const payment = (await repo.getTransactions()).find((t) => t.invoiceId === sale.id);
+    expect(payment?.kind).toBe("income");
+  });
+});

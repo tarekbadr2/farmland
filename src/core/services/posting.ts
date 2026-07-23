@@ -441,3 +441,16 @@ export function nextSequence(existingNumbers: (string | undefined)[], prefix: st
   }
   return highest + 1;
 }
+
+/**
+ * Does settling this invoice bring money in or send it out?
+ *
+ * A sale and a purchase return are collected (money in); a purchase and a sale
+ * return are paid (money out). The finance page reads this to book the cash-side
+ * transaction on the right side — hardcoding "income" booked phantom income when
+ * a supplier bill was paid.
+ */
+export function isIncomingInvoice(kind?: InvoiceKind): boolean {
+  const k = kind ?? "sale";
+  return k === "sale" || k === "purchase_return";
+}

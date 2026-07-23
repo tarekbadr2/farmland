@@ -13,6 +13,7 @@ import {
   chequeNumber,
   invoiceDocNumber,
   invoiceSeries,
+  isIncomingInvoice,
   nextSequence,
   journalEntryFromCheque,
   journalEntryFromInvoice,
@@ -775,18 +776,22 @@ export class DemoFarmRepository implements FarmRepository {
     };
     this.db.invoices[idx] = updated;
 
+    // Direction follows the document: paying a supplier bill (or refunding a
+    // sale return) is money OUT, not income.
+    const incoming = isIncomingInvoice(inv.kind);
     const partner = this.db.partners.find((p) => p.id === inv.customerId);
-    const category =
-      partner?.kind === "animal_buyer"
+    const category = incoming
+      ? partner?.kind === "animal_buyer"
         ? "animal_sales"
         : partner?.kind === "milk_buyer"
           ? "milk_sales"
-          : "other_income";
+          : "other_income"
+      : "other_expense";
 
     this.db.transactions.unshift({
       id: `tx_${Date.now()}`,
       farmId: this.db.farm.id,
-      kind: "income",
+      kind: incoming ? "income" : "expense",
       category,
       amount: input.amount,
       date: input.date,
@@ -807,7 +812,10 @@ export class DemoFarmRepository implements FarmRepository {
       voucherNumber(
         (updated.kind ?? "sale") === "sale" ? "receipt" : "payment",
         input.date,
-        this.db.journalEntries.length + 1,
+        nextSequence(
+          this.db.journalEntries.map((e) => e.number),
+          isIncomingInvoice(updated.kind) ? "RV" : "PV",
+        ),
       ),
     );
     if (settlement) {

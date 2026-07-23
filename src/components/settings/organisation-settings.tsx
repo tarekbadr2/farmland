@@ -26,7 +26,7 @@ import { formatDate } from "@/lib/date";
  * screen, and everything keeps working exactly as before.
  */
 export function OrganisationSettings() {
-  const { locale, formatNumber } = useI18n();
+  const { locale } = useI18n();
   const ar = locale === "ar";
   const { data: branches = [] } = useBranches();
   const { data: currencies = [] } = useCurrencies();

@@ -76,7 +76,7 @@ export function JournalEntryDialog({ trigger }: { trigger: React.ReactNode }) {
   const submit = async (status: "draft" | "posted") => {
     const clean = lines
       .filter((l) => l.accountId && (l.debit > 0 || l.credit > 0))
-      .map(({ key: _key, ...l }) => l);
+      .map((l) => ({ accountId: l.accountId, debit: l.debit, credit: l.credit, description: l.description, partnerId: l.partnerId, animalId: l.animalId }));
     try {
       await save.mutateAsync({
         date,
