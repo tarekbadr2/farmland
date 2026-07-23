@@ -42,6 +42,7 @@ import type {
   Cheque,
   LivestockTransfer,
   Warehouse,
+  WorkOrder,
   ChequeStatus,
   Alert,
   Animal,
@@ -121,6 +122,12 @@ import {
   type PurchaseInput,
 } from "@/core/services/automation";
 import { checkTransfer, commonOrigin, transferNumber } from "@/core/services/livestock";
+import {
+  allocateOutputCosts,
+  checkWorkOrder,
+  workOrderCost,
+  workOrderNumber,
+} from "@/core/services/production";
 import {
   DEFAULT_WAREHOUSE_ID,
   stockInWarehouse,
@@ -1221,6 +1228,122 @@ export class FirebaseFarmRepository implements FarmRepository {
       animalId: input.animalId,
       paymentMethod: input.paymentMethod,
     });
+  }
+
+  /* -------------------------------- Production ------------------------------ */
+
+  getWorkOrders = () =>
+    this.all<WorkOrder>(paths.workOrders(this.farmId), orderBy("date", "desc"), fsLimit(500));
+
+  async saveWorkOrder(
+    order: EventWrite<Omit<WorkOrder, "id" | "farmId" | "number"> & { number?: string }>,
+  ): Promise<WorkOrder> {
+    const id = order.id ?? doc(this.col(paths.workOrders(this.farmId))).id;
+    if (order.id) {
+      const snap = await getDoc(doc(this.db, paths.workOrders(this.farmId), order.id));
+      if (snap.exists() && (snap.data() as WorkOrder).status === "done")
+        throw new Error("already-completed");
+    }
+    const record = {
+      ...order,
+      id,
+      farmId: this.farmId,
+      number:
+        order.number ?? workOrderNumber(order.date, (await this.getWorkOrders()).length + 1),
+    } as WorkOrder;
+    await setDoc(doc(this.db, paths.workOrders(this.farmId), id), omitUndefined(record), {
+      merge: true,
+    });
+    return record;
+  }
+
+  async completeWorkOrder(id: ID): Promise<WorkOrder> {
+    const ref = doc(this.db, paths.workOrders(this.farmId), id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) throw new Error("not-found");
+    const order = { id, ...snap.data() } as WorkOrder;
+
+    const [inventory, feed] = await Promise.all([this.getInventory(), this.getFeedItems()]);
+    const stock = { inventory, feed };
+    const check = checkWorkOrder(order, stock);
+    if (!check.ok) throw new Error(check.errors[0]);
+
+    // Costed before anything moves — consuming inputs would shift the very
+    // unit costs the roll-up is based on.
+    const cost = workOrderCost(order, stock);
+    const allocated = allocateOutputCosts(order, stock);
+
+    const batch = writeBatch(this.db);
+
+    for (const line of order.inputs) {
+      const qty = Math.abs(line.quantity);
+      if (line.source === "feed") {
+        const f = feed.find((x) => x.id === line.itemId)!;
+        batch.update(doc(this.db, paths.feedItems(this.farmId), line.itemId), {
+          stock: round(f.stock - qty, 2),
+        });
+      } else {
+        const i = inventory.find((x) => x.id === line.itemId)!;
+        batch.update(doc(this.db, paths.inventory(this.farmId), line.itemId), {
+          stock: round(i.stock - qty, 2),
+        });
+      }
+      const mvId = `sm_wo_${order.id}_in_${line.itemId}`;
+      batch.set(
+        doc(this.db, paths.stockMovements(this.farmId), mvId),
+        omitUndefined({
+          id: mvId,
+          farmId: this.farmId,
+          itemId: line.itemId,
+          date: order.date,
+          kind: "out",
+          quantity: qty,
+          warehouseId: order.warehouseId,
+          reference: `${order.number} · ${order.name}`,
+        }),
+      );
+    }
+
+    for (const out of allocated) {
+      const qty = Math.abs(out.quantity);
+      if (out.source === "feed") {
+        const f = feed.find((x) => x.id === out.itemId)!;
+        batch.update(doc(this.db, paths.feedItems(this.farmId), out.itemId), {
+          stock: round(f.stock + qty, 2),
+          costPerUnit: blendedUnitCost(f.stock, f.costPerUnit, qty, out.unitCost),
+        });
+      } else {
+        const i = inventory.find((x) => x.id === out.itemId)!;
+        batch.update(doc(this.db, paths.inventory(this.farmId), out.itemId), {
+          stock: round(i.stock + qty, 2),
+          unitCost: blendedUnitCost(i.stock, i.unitCost, qty, out.unitCost),
+        });
+      }
+      const mvId = `sm_wo_${order.id}_out_${out.itemId}`;
+      batch.set(
+        doc(this.db, paths.stockMovements(this.farmId), mvId),
+        omitUndefined({
+          id: mvId,
+          farmId: this.farmId,
+          itemId: out.itemId,
+          date: order.date,
+          kind: "in",
+          quantity: qty,
+          warehouseId: order.warehouseId,
+          reference: `${order.number} · ${order.name}`,
+        }),
+      );
+    }
+
+    const patch = {
+      status: "done" as const,
+      materialCost: cost.materialCost,
+      totalCost: cost.totalCost,
+      completedAt: new Date().toISOString(),
+    };
+    batch.update(ref, patch);
+    await trackWrite(batch.commit());
+    return { ...order, ...patch };
   }
 
   /* --------------------------- Livestock transfers -------------------------- */

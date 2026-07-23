@@ -22,6 +22,12 @@ import {
 } from "@/core/services/posting";
 import { stockInWarehouse } from "@/core/services/warehouse";
 import { checkTransfer, commonOrigin, transferNumber } from "@/core/services/livestock";
+import {
+  allocateOutputCosts,
+  checkWorkOrder,
+  workOrderCost,
+  workOrderNumber,
+} from "@/core/services/production";
 import { stocktakeVariance } from "@/core/services/warehouse";
 import {
   FEED_EXPENSE_CATEGORY,
@@ -43,6 +49,8 @@ import type {
   Cheque,
   LivestockTransfer,
   Warehouse,
+  WorkOrder,
+  WorkOrderLine,
   ChequeStatus,
   Animal,
   AnimalDisposal,
@@ -883,6 +891,102 @@ export class DemoFarmRepository implements FarmRepository {
       animalId: input.animalId,
       paymentMethod: input.paymentMethod,
     });
+  }
+
+  /* -------------------------------- Production ------------------------------ */
+
+  getWorkOrders = () => tick(this.db.workOrders);
+
+  async saveWorkOrder(
+    order: EventWrite<Omit<WorkOrder, "id" | "farmId" | "number"> & { number?: string }>,
+  ) {
+    const idx = order.id ? this.db.workOrders.findIndex((w) => w.id === order.id) : -1;
+    if (idx >= 0) {
+      // A completed run is history — its costs are snapshotted.
+      if (this.db.workOrders[idx].status === "done") throw new Error("already-completed");
+      this.db.workOrders[idx] = { ...this.db.workOrders[idx], ...order } as WorkOrder;
+      return tick(this.db.workOrders[idx]);
+    }
+    const created = {
+      ...order,
+      id: order.id ?? `wo_${Date.now()}`,
+      farmId: this.db.farm.id,
+      number: order.number ?? workOrderNumber(order.date, this.db.workOrders.length + 1),
+    } as WorkOrder;
+    this.db.workOrders.unshift(created);
+    return tick(created);
+  }
+
+  /** Stock lists, in the shape the costing service expects. */
+  private stockLookup() {
+    return { inventory: this.db.inventory, feed: this.db.feedItems };
+  }
+
+  /** Applies a signed quantity to whichever list the line belongs to. */
+  private applyStock(line: WorkOrderLine, delta: number, unitCost?: number) {
+    if (line.source === "feed") {
+      const f = this.db.feedItems.find((x) => x.id === line.itemId);
+      if (!f) return;
+      if (unitCost !== undefined && delta > 0) {
+        f.costPerUnit = blendedUnitCost(f.stock, f.costPerUnit, delta, unitCost);
+      }
+      f.stock = round(f.stock + delta, 2);
+    } else {
+      const i = this.db.inventory.find((x) => x.id === line.itemId);
+      if (!i) return;
+      if (unitCost !== undefined && delta > 0) {
+        i.unitCost = blendedUnitCost(i.stock, i.unitCost, delta, unitCost);
+      }
+      i.stock = round(i.stock + delta, 2);
+    }
+  }
+
+  async completeWorkOrder(id: ID) {
+    const order = this.db.workOrders.find((w) => w.id === id);
+    if (!order) throw new Error("not-found");
+
+    const stock = this.stockLookup();
+    const check = checkWorkOrder(order, stock);
+    if (!check.ok) throw new Error(check.errors[0]);
+
+    // Cost is read BEFORE anything moves — consuming the inputs would change
+    // the very unit costs the roll-up is based on.
+    const cost = workOrderCost(order, stock);
+    const allocated = allocateOutputCosts(order, stock);
+
+    for (const line of order.inputs) {
+      this.applyStock(line, -Math.abs(line.quantity));
+      this.db.movements.unshift({
+        id: `sm_wo_${order.id}_in_${line.itemId}`,
+        farmId: this.db.farm.id,
+        itemId: line.itemId,
+        date: order.date,
+        kind: "out",
+        quantity: Math.abs(line.quantity),
+        warehouseId: order.warehouseId,
+        reference: `${order.number} · ${order.name}`,
+      });
+    }
+
+    for (const out of allocated) {
+      this.applyStock(out, Math.abs(out.quantity), out.unitCost);
+      this.db.movements.unshift({
+        id: `sm_wo_${order.id}_out_${out.itemId}`,
+        farmId: this.db.farm.id,
+        itemId: out.itemId,
+        date: order.date,
+        kind: "in",
+        quantity: Math.abs(out.quantity),
+        warehouseId: order.warehouseId,
+        reference: `${order.number} · ${order.name}`,
+      });
+    }
+
+    order.status = "done";
+    order.materialCost = cost.materialCost;
+    order.totalCost = cost.totalCost;
+    order.completedAt = new Date().toISOString();
+    return tick(order);
   }
 
   /* --------------------------- Livestock transfers -------------------------- */

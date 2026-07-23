@@ -357,3 +357,105 @@ describe("demo repository — livestock transfers", () => {
     ).rejects.toThrow("already-in-zone");
   });
 });
+
+describe("demo repository — production work orders", () => {
+  it("rolls material and overhead cost into the product's unit cost", async () => {
+    const feed = await repo.getFeedItems();
+    // Pick inputs that actually have stock, and consume a safe slice of it —
+    // the seed doesn't promise any particular quantity.
+    const stocked = feed.filter((f) => f.stock > 20);
+    const [bran, maize] = stocked;
+    const target = feed.find((f) => f.id !== bran.id && f.id !== maize.id)!;
+
+    // The demo adapter hands back live item objects, so "before" values must be
+    // copied out as primitives — holding the object would silently track the
+    // mutation and make the assertions compare a value against itself.
+    const branStockBefore = bran.stock;
+    const maizeStockBefore = maize.stock;
+    const qtyBran = Math.floor(branStockBefore / 10);
+    const qtyMaize = Math.floor(maizeStockBefore / 10);
+    const produced = qtyBran + qtyMaize;
+
+    const branCost = bran.costPerUnit;
+    const maizeCost = maize.costPerUnit;
+    const targetBefore = { stock: target.stock, cost: target.costPerUnit };
+
+    const order = await repo.saveWorkOrder({
+      date: TODAY,
+      name: "Mix ration",
+      status: "planned",
+      inputs: [
+        { source: "feed", itemId: bran.id, quantity: qtyBran },
+        { source: "feed", itemId: maize.id, quantity: qtyMaize },
+      ],
+      outputs: [{ source: "feed", itemId: target.id, quantity: produced }],
+      overheadCost: 300,
+    });
+    expect(order.number).toMatch(/^WO-\d{4}-\d{4}$/);
+
+    const done = await repo.completeWorkOrder(order.id);
+
+    const expectedMaterial = qtyBran * branCost + qtyMaize * maizeCost;
+    expect(done.materialCost).toBeCloseTo(expectedMaterial, 2);
+    expect(done.totalCost).toBeCloseTo(expectedMaterial + 300, 2);
+    expect(done.status).toBe("done");
+
+    // Inputs drawn, output added.
+    const after = await repo.getFeedItems();
+    expect(after.find((f) => f.id === bran.id)!.stock).toBeCloseTo(branStockBefore - qtyBran, 2);
+    expect(after.find((f) => f.id === maize.id)!.stock).toBeCloseTo(maizeStockBefore - qtyMaize, 2);
+    const producedItem = after.find((f) => f.id === target.id)!;
+    expect(producedItem.stock).toBeCloseTo(targetBefore.stock + produced, 2);
+
+    // The product's cost moved toward what the run actually cost per unit.
+    const runUnitCost = (expectedMaterial + 300) / produced;
+    const blended =
+      (targetBefore.stock * targetBefore.cost +
+        produced * (Math.round(runUnitCost * 100) / 100)) /
+      (targetBefore.stock + produced);
+    expect(producedItem.costPerUnit).toBeCloseTo(blended, 1);
+  });
+
+  it("writes an out movement per input and an in movement per output", async () => {
+    const feed = await repo.getFeedItems();
+    const source = feed.find((f) => f.stock > 20)!;
+    const sink = feed.find((f) => f.id !== source.id)!;
+    const order = await repo.saveWorkOrder({
+      date: TODAY,
+      name: "Second mix",
+      status: "planned",
+      inputs: [{ source: "feed", itemId: source.id, quantity: 10 }],
+      outputs: [{ source: "feed", itemId: sink.id, quantity: 10 }],
+    });
+    await repo.completeWorkOrder(order.id);
+
+    const movements = await repo.getStockMovements();
+    const mine = movements.filter((m) => m.reference?.includes(order.number));
+    expect(mine.filter((m) => m.kind === "out")).toHaveLength(1);
+    expect(mine.filter((m) => m.kind === "in")).toHaveLength(1);
+  });
+
+  it("refuses to run twice, and refuses one it can't source", async () => {
+    const feed = await repo.getFeedItems();
+    const source = feed.find((f) => f.stock > 20)!;
+    const sink = feed.find((f) => f.id !== source.id)!;
+    const order = await repo.saveWorkOrder({
+      date: TODAY,
+      name: "Once only",
+      status: "planned",
+      inputs: [{ source: "feed", itemId: source.id, quantity: 5 }],
+      outputs: [{ source: "feed", itemId: sink.id, quantity: 5 }],
+    });
+    await repo.completeWorkOrder(order.id);
+    await expect(repo.completeWorkOrder(order.id)).rejects.toThrow("already-completed");
+
+    const greedy = await repo.saveWorkOrder({
+      date: TODAY,
+      name: "Too much",
+      status: "planned",
+      inputs: [{ source: "feed", itemId: source.id, quantity: 9_999_999 }],
+      outputs: [{ source: "feed", itemId: sink.id, quantity: 1 }],
+    });
+    await expect(repo.completeWorkOrder(greedy.id)).rejects.toThrow("insufficient-stock");
+  });
+});

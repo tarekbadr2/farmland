@@ -11,6 +11,7 @@ import type {
   FiscalYear,
   ID,
   JournalEntry,
+  WorkOrder,
 } from "@/core/domain/types";
 import type { CostInput, PurchaseInput } from "@/core/services/automation";
 import type {
@@ -48,6 +49,7 @@ export const qk = {
   assets: ["assets"] as const,
   warehouses: ["warehouses"] as const,
   livestockTransfers: ["livestock-transfers"] as const,
+  workOrders: ["work-orders"] as const,
   cheques: ["cheques"] as const,
   accounts: ["accounts"] as const,
   journal: ["journal"] as const,
@@ -305,6 +307,34 @@ export function useRecordLivestockTransfer() {
       qc.invalidateQueries({ queryKey: qk.livestockTransfers });
       qc.invalidateQueries({ queryKey: ["animals"] });
       qc.invalidateQueries({ queryKey: qk.zones });
+    },
+  });
+}
+
+/* -------------------------------- Production -------------------------------- */
+
+export const useWorkOrders = () =>
+  useQuery({ queryKey: qk.workOrders, queryFn: () => repo.getWorkOrders() });
+
+export function useSaveWorkOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (order: Omit<WorkOrder, "id" | "farmId" | "number"> & { id?: ID; number?: string }) =>
+      repo.saveWorkOrder(order),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.workOrders }),
+  });
+}
+
+export function useCompleteWorkOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: ID) => repo.completeWorkOrder(id),
+    onSuccess: () => {
+      // Running an order moves stock in both lists and writes movements.
+      qc.invalidateQueries({ queryKey: qk.workOrders });
+      qc.invalidateQueries({ queryKey: qk.inventory });
+      qc.invalidateQueries({ queryKey: qk.feedItems });
+      qc.invalidateQueries({ queryKey: qk.movements });
     },
   });
 }

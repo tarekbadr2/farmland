@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  Factory,
   LayoutDashboard,
   Beef,
   Baby,
@@ -60,6 +61,7 @@ export const navGroups: NavGroup[] = [
       { href: "/milk", labelKey: "nav.milk", icon: Milk, primary: true },
       { href: "/feed", labelKey: "nav.feed", icon: Wheat },
       { href: "/meat", labelKey: "nav.meat", icon: Beef },
+      { href: "/production", labelKey: "nav.production2", icon: Factory },
     ],
   },
   {

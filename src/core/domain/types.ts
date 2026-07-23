@@ -883,3 +883,40 @@ export interface LivestockTransfer {
   createdBy?: ID;
   createdAt?: string;
 }
+
+/* ------------------------------- Production -------------------------------- */
+/* أمر شغل — turning inputs into outputs: milk into cheese, ingredients into a
+ * mixed ration. The point isn't the paperwork, it's the cost: what the farm
+ * spent on materials plus overhead becomes the output's unit cost, which is the
+ * only honest basis for pricing it. */
+
+export type WorkOrderStatus = "planned" | "done" | "cancelled";
+
+/** Feed and inventory are separate stock lists, so a line says which one. */
+export interface WorkOrderLine {
+  source: "inventory" | "feed";
+  itemId: ID;
+  quantity: number;
+}
+
+export interface WorkOrder {
+  id: ID;
+  farmId: ID;
+  /** Sequential document number, e.g. WO-2026-0001. */
+  number: string;
+  date: string;
+  name: string;
+  nameAr?: string;
+  status: WorkOrderStatus;
+  inputs: WorkOrderLine[];
+  outputs: WorkOrderLine[];
+  /** Which store the materials come from and the product goes to. */
+  warehouseId?: ID;
+  /** Labour, power, anything beyond the materials themselves. */
+  overheadCost?: number;
+  /** Snapshotted when completed, so later price changes don't rewrite history. */
+  materialCost?: number;
+  totalCost?: number;
+  notes?: string;
+  completedAt?: string;
+}

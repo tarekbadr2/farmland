@@ -42,6 +42,7 @@ import type {
   TransferReason,
   UtilityReading,
   Warehouse,
+  WorkOrder,
   WeatherNow,
   Zone,
 } from "@/core/domain/types";
@@ -256,6 +257,16 @@ export interface FarmRepository {
   recordPurchase(input: PurchaseInput): Promise<Transaction>;
   /** Books a non-stock cost (maintenance, transport, wages) the same way. */
   recordCost(input: CostInput): Promise<Transaction>;
+
+  /* -------------------------------- Production ------------------------------ */
+  getWorkOrders(): Promise<WorkOrder[]>;
+  saveWorkOrder(order: EventWrite<Omit<WorkOrder, "id" | "farmId" | "number"> & { number?: string }>): Promise<WorkOrder>;
+  /**
+   * أمر شغل — runs the order: draws every input from stock, adds the outputs,
+   * and rolls material + overhead cost into the outputs' unit cost. Refuses if
+   * an input isn't on hand, since the resulting cost would be meaningless.
+   */
+  completeWorkOrder(id: ID): Promise<WorkOrder>;
 
   /* --------------------------- Livestock transfers -------------------------- */
   getLivestockTransfers(): Promise<LivestockTransfer[]>;

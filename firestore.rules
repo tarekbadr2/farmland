@@ -154,6 +154,11 @@ service cloud.firestore {
         allow read: if isMember(farmId);
         allow write: if canManage(farmId);
       }
+      match /workOrders/{orderId} {
+        allow read: if isMember(farmId);
+        allow create, update: if canManage(farmId);
+        allow delete: if false;
+      }
       // A pen move is a record of what happened, so it isn't edited away.
       match /livestockTransfers/{transferId} {
         allow read: if isMember(farmId);
