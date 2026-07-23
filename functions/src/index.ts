@@ -17,3 +17,4 @@ export { runAlertsNow, rebuildMilkDaily } from "./admin";
 export { claimMembership, createFarm } from "./members";
 export { nightlyFirestoreBackup } from "./backup";
 export { trialEndingReminders } from "./reminders";
+export { onJournalEntryWritten } from "./ledger";

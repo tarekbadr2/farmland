@@ -163,3 +163,28 @@ describe("transferNumber", () => {
     expect(transferNumber("2026-03-04", 7)).toBe("LT-2026-0007");
   });
 });
+
+describe("checkTransfer with occupancy supplied", () => {
+  it("uses the given occupancy instead of counting the herd", () => {
+    // Only the animals being moved are passed — the caller never loaded the rest.
+    const selected = [animal("a3", "pen_b")];
+    const r = checkTransfer({ toZoneId: "pen_a", animalIds: ["a3"] }, selected, ZONES, 2);
+    expect(r.occupancyBefore).toBe(2);
+    expect(r.occupancyAfter).toBe(3);
+    expect(r.ok).toBe(true);
+  });
+
+  it("still flags over-capacity from the supplied count", () => {
+    const selected = [animal("a3", "pen_b")];
+    const r = checkTransfer({ toZoneId: "pen_a", animalIds: ["a3"] }, selected, ZONES, 3);
+    expect(r.occupancyAfter).toBe(4); // capacity is 3
+    expect(r.overCapacity).toBe(true);
+    expect(r.ok).toBe(true); // still only a warning
+  });
+
+  it("validates the selection without the full herd present", () => {
+    const gone = [animal("x", "pen_b", "sold")];
+    const r = checkTransfer({ toZoneId: "pen_a", animalIds: ["x"] }, gone, ZONES, 0);
+    expect(r.errors).toContain("animal-not-movable");
+  });
+});

@@ -15,6 +15,8 @@ import {
   deleteDoc,
   deleteField,
   doc,
+  documentId,
+  getCountFromServer,
   getDoc,
   getDocFromCache,
   getDocs,
@@ -1440,15 +1442,44 @@ export class FirebaseFarmRepository implements FarmRepository {
       fsLimit(500),
     );
 
+  /** Fetch specific animals by id. Firestore caps an `in` filter at 30. */
+  private async animalsByIds(ids: ID[]): Promise<Animal[]> {
+    const unique = [...new Set(ids)];
+    const out: Animal[] = [];
+    for (let i = 0; i < unique.length; i += 30) {
+      const chunk = unique.slice(i, i + 30);
+      const snap = await getDocs(
+        query(this.col(paths.animals(this.farmId)), where(documentId(), "in", chunk)),
+      );
+      out.push(...rows<Animal>(snap));
+    }
+    return out;
+  }
+
+  /** Live head count in a pen, without reading the animals themselves. */
+  private async countAnimalsInZone(zoneId: ID): Promise<number> {
+    const snap = await getCountFromServer(
+      query(
+        this.col(paths.animals(this.farmId)),
+        where("penId", "==", zoneId),
+        where("status", "in", ["active", "quarantine"]),
+      ),
+    );
+    return snap.data().count;
+  }
+
   async recordLivestockTransfer(input: LivestockTransferInput): Promise<LivestockTransfer> {
-    const [page, zones, existing] = await Promise.all([
-      this.listAnimals({ pageSize: 100_000 }),
+    // Read only the animals being moved, plus a count of the destination —
+    // loading the whole herd to move three head would be tens of thousands of
+    // document reads on a large farm.
+    const [animals, zones, existing, occupancyBefore] = await Promise.all([
+      this.animalsByIds(input.animalIds),
       this.getZones(),
       this.getLivestockTransfers(),
+      this.countAnimalsInZone(input.toZoneId),
     ]);
-    const animals = page.items;
 
-    const check = checkTransfer(input, animals, zones);
+    const check = checkTransfer(input, animals, zones, occupancyBefore);
     if (!check.ok) throw new Error(check.errors[0]);
 
     const id = doc(this.col(paths.livestockTransfers(this.farmId))).id;

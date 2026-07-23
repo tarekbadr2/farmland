@@ -52,6 +52,7 @@ export type AlertSeverity = "critical" | "warning" | "info";
 
 /** Alert `kind` → the app's alert category (drives the notification icon). */
 const KIND_TO_CATEGORY: Record<string, string> = {
+  ledger_unbalanced: "finance",
   calving_due: "breeding",
   vaccination_due: "health",
   quarantine: "health",

@@ -22,7 +22,7 @@ import { useAnimals, useRecordLivestockTransfer, useZones } from "@/hooks/use-fa
 import { checkTransfer, isMovable, transferableZones } from "@/core/services/livestock";
 import { TODAY } from "@/core/data/seed";
 import { cn } from "@/lib/utils";
-import type { TransferReason } from "@/core/domain/types";
+import type { Animal, TransferReason } from "@/core/domain/types";
 
 const REASONS: { value: TransferReason; en: string; ar: string }[] = [
   { value: "regrouping", en: "Regrouping", ar: "إعادة تجميع" },
@@ -44,11 +44,8 @@ export function TransferAnimalsDialog({ trigger }: { trigger: React.ReactNode })
   const { locale, formatNumber } = useI18n();
   const ar = locale === "ar";
   const [open, setOpen] = React.useState(false);
-  const { data: page } = useAnimals({ pageSize: 100_000 });
   const { data: zones = [] } = useZones();
   const record = useRecordLivestockTransfer();
-
-  const animals = React.useMemo(() => page?.items ?? [], [page]);
   const destinations = React.useMemo(() => transferableZones(zones), [zones]);
 
   const [toZoneId, setToZone] = React.useState("");
@@ -57,27 +54,27 @@ export function TransferAnimalsDialog({ trigger }: { trigger: React.ReactNode })
   const [notes, setNotes] = React.useState("");
   const [search, setSearch] = React.useState("");
   const [picked, setPicked] = React.useState<Set<string>>(new Set());
+  const [chosen, setChosen] = React.useState<Animal[]>([]);
 
-  // Only animals still in the herd can move.
-  const movable = React.useMemo(() => animals.filter(isMovable), [animals]);
-  const visible = React.useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const list = q
-      ? movable.filter(
-          (a) =>
-            a.tag.toLowerCase().includes(q) ||
-            (a.name ?? "").toLowerCase().includes(q) ||
-            (a.nameAr ?? "").includes(search.trim()),
-        )
-      : movable;
-    return list.slice(0, 200);
-  }, [movable, search]);
+  // Query a page at a time instead of the whole herd — a 50,000-head farm would
+  // otherwise read every animal just to open this dialog.
+  const { data: page } = useAnimals({ search: search.trim(), status: "active", pageSize: 40 });
+  const visible = React.useMemo(() => (page?.items ?? []).filter(isMovable), [page]);
+
+  // Destination occupancy comes from the query's own total, so the capacity
+  // line costs one count rather than a herd scan.
+  const { data: destPage } = useAnimals({
+    penId: toZoneId || "all",
+    status: "active",
+    pageSize: 1,
+  });
+  const occupancyBefore = toZoneId ? (destPage?.total ?? 0) : 0;
 
   // Memoised: a fresh array each render would re-run the check on every keystroke.
   const animalIds = React.useMemo(() => [...picked], [picked]);
   const check = React.useMemo(
-    () => checkTransfer({ toZoneId, animalIds }, animals, zones),
-    [toZoneId, animalIds, animals, zones],
+    () => checkTransfer({ toZoneId, animalIds }, chosen, zones, occupancyBefore),
+    [toZoneId, animalIds, chosen, zones, occupancyBefore],
   );
 
   const zoneName = (id: string) => {
@@ -85,11 +82,18 @@ export function TransferAnimalsDialog({ trigger }: { trigger: React.ReactNode })
     return z ? (ar ? z.nameAr : z.name) : "—";
   };
 
-  const toggle = (id: string) =>
+  // Picked animals are held as objects too: the search moves on, but the
+  // selection — and the data needed to validate it — must not disappear.
+  const toggle = (animal: Animal) =>
     setPicked((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(animal.id)) {
+        next.delete(animal.id);
+        setChosen((c) => c.filter((a) => a.id !== animal.id));
+      } else {
+        next.add(animal.id);
+        setChosen((c) => (c.some((a) => a.id === animal.id) ? c : [...c, animal]));
+      }
       return next;
     });
 
@@ -103,6 +107,7 @@ export function TransferAnimalsDialog({ trigger }: { trigger: React.ReactNode })
           : `${animalIds.length} head moved to ${zoneName(toZoneId)}.`,
       );
       setPicked(new Set());
+      setChosen([]);
       setNotes("");
       setOpen(false);
     } catch (e) {
@@ -182,7 +187,7 @@ export function TransferAnimalsDialog({ trigger }: { trigger: React.ReactNode })
             return (
               <button
                 key={a.id}
-                onClick={() => toggle(a.id)}
+                onClick={() => toggle(a)}
                 className={cn(
                   "flex w-full items-center gap-3 border-b border-border/60 px-3 py-2 text-start text-[12.5px] transition hover:bg-accent/40",
                   chosen && "bg-primary/[0.07]",

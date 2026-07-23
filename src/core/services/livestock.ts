@@ -52,11 +52,16 @@ export interface TransferCheck {
  * Errors: no animals, unknown destination, a destination that doesn't house
  * livestock, animals that have left the herd, or animals already in the
  * destination. Over-capacity is only a warning (see the note at the top).
+ *
+ * `animals` need only contain the animals being moved — not the whole herd.
+ * Destination occupancy is passed in, because counting it from every animal on
+ * the farm would mean reading 50,000 documents to move three.
  */
 export function checkTransfer(
   input: { toZoneId: ID; animalIds: ID[] },
   animals: Animal[],
   zones: Zone[],
+  occupancyBefore?: number,
 ): TransferCheck {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -81,9 +86,12 @@ export function checkTransfer(
     warnings.push("some-already-in-zone");
   }
 
-  const occupancyBefore = destination ? zoneOccupancy(destination.id, animals) : 0;
+  // Fall back to counting the list given — correct when a caller genuinely has
+  // the whole herd (the tests do), cheap when it only has the selection.
+  const before =
+    occupancyBefore ?? (destination ? zoneOccupancy(destination.id, animals) : 0);
   const incoming = selected.filter((a) => a.penId !== input.toZoneId).length;
-  const occupancyAfter = occupancyBefore + incoming;
+  const occupancyAfter = before + incoming;
   const capacity = destination?.capacity ?? 0;
   const overCapacity = capacity > 0 && occupancyAfter > capacity;
   if (overCapacity) warnings.push("over-capacity");
@@ -92,7 +100,7 @@ export function checkTransfer(
     ok: errors.length === 0,
     errors,
     warnings,
-    occupancyBefore,
+    occupancyBefore: before,
     occupancyAfter,
     capacity,
     overCapacity,
