@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { ArrowDownLeft, ArrowUpRight, BookOpen, CheckCircle2, Lock, Plus, Scale, Sigma, Wallet } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, BookOpen, CheckCircle2, Lock, Plus, Scale, Sigma, Undo2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
@@ -19,6 +19,7 @@ import {
   useSetJournalStatus,
   useCloseFiscalYear,
   usePartners,
+  useSaveJournalEntry,
 } from "@/hooks/use-farm-data";
 import {
   accountBalances,
@@ -32,6 +33,7 @@ import {
 import { JournalEntryDialog } from "@/components/accounting/journal-entry-dialog";
 import { AccountFormDialog } from "@/components/accounting/account-form-dialog";
 import { VoucherDialog } from "@/components/accounting/voucher-dialog";
+import { reverseEntry, journalNumber } from "@/core/services/posting";
 import { formatDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import type { Account, JournalEntry } from "@/core/domain/types";
@@ -70,6 +72,28 @@ export default function AccountingPage() {
   const label = (a: Account) => (ar ? a.nameAr : a.name);
   const posted = entries.filter((e) => e.status === "posted").length;
   const drafts = entries.filter((e) => e.status === "draft").length;
+
+  const saveEntry = useSaveJournalEntry();
+
+  /** Correct a posted entry by booking its mirror image (قيد عكسي). */
+  const reverse = async (entry: JournalEntry) => {
+    const built = reverseEntry(entry, journalNumber(entry.date, entries.length + 1));
+    try {
+      await saveEntry.mutateAsync({
+        date: built.date,
+        description: built.description,
+        reference: built.reference,
+        number: built.number,
+        status: "posted",
+        lines: built.lines,
+        sourceKind: built.sourceKind,
+        fiscalYearId: built.fiscalYearId,
+      });
+      toast.success(ar ? "تم ترحيل القيد العكسي." : "Reversing entry posted.");
+    } catch {
+      toast.error(ar ? "تعذّر عكس القيد." : "Couldn't reverse that entry.");
+    }
+  };
 
   const post = async (entry: JournalEntry) => {
     try {
@@ -297,6 +321,17 @@ export default function AccountingPage() {
                         {e.status === "draft" && (
                           <Button size="sm" variant="outline" onClick={() => post(e)}>
                             {ar ? "ترحيل" : "Post"}
+                          </Button>
+                        )}
+                        {e.status === "posted" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-muted-foreground"
+                            disabled={saveEntry.isPending}
+                            onClick={() => reverse(e)}
+                          >
+                            <Undo2 className="size-3.5" /> {ar ? "عكس" : "Reverse"}
                           </Button>
                         )}
                       </div>

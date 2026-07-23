@@ -169,3 +169,35 @@ export function journalFromTransactions(
   }
   return out;
 }
+
+/**
+ * قيد عكسي — the mirror image of an entry.
+ *
+ * A posted entry is history and must never be edited, so a mistake (or a goods
+ * return) is corrected by posting its opposite: every debit becomes a credit
+ * and vice-versa. The pair nets to zero, the audit trail keeps both, and the
+ * trial balance stays balanced throughout.
+ */
+export function reverseEntry(
+  entry: JournalEntry,
+  number: string,
+  opts: { date?: string; description?: string } = {},
+): Omit<JournalEntry, "id"> {
+  return {
+    farmId: entry.farmId,
+    number,
+    date: opts.date ?? entry.date,
+    description: opts.description ?? `Reversal of ${entry.number} — ${entry.description}`,
+    reference: entry.number,
+    fiscalYearId: entry.fiscalYearId,
+    status: "posted",
+    // Swap the sides; everything else about the line is preserved.
+    lines: entry.lines.map((l) => ({
+      ...l,
+      debit: l.credit || 0,
+      credit: l.debit || 0,
+    })),
+    sourceKind: entry.sourceKind,
+    sourceId: entry.sourceId,
+  };
+}

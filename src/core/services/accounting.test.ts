@@ -16,7 +16,7 @@ import {
   partnerBalances,
   partnerStatement,
 } from "./accounting";
-import { journalEntryFromVoucher, voucherNumber } from "./posting";
+import { journalEntryFromVoucher, reverseEntry, voucherNumber } from "./posting";
 import type { Account, JournalEntry } from "@/core/domain/types";
 
 /* A small but realistic farm chart of accounts. */
@@ -369,5 +369,38 @@ describe("partner balances (AR/AP)", () => {
     const { rows, closing } = partnerStatement("customer_1", withKeys, partnerEntries);
     expect(rows.map((r) => r.running)).toEqual([8_000, 5_000]);
     expect(closing).toBe(5_000);
+  });
+});
+
+describe("reverseEntry", () => {
+  const original = entry("j9", "JV-0009", "2026-04-01", [
+    { accountId: "a501", debit: 2_000 },
+    { accountId: "a201", credit: 2_000 },
+  ]);
+
+  it("swaps every side and stays balanced", () => {
+    const r = reverseEntry(original, "JV-0010");
+    expect(r.lines[0]).toMatchObject({ accountId: "a501", debit: 0, credit: 2_000 });
+    expect(r.lines[1]).toMatchObject({ accountId: "a201", debit: 2_000, credit: 0 });
+    expect(isBalanced(r.lines)).toBe(true);
+    expect(r.reference).toBe("JV-0009");
+    expect(r.status).toBe("posted");
+  });
+
+  it("nets the original to zero in the books", () => {
+    const r = { ...reverseEntry(original, "JV-0010"), id: "j10" };
+    const balances = accountBalances(ACCOUNTS, [original, r]);
+    expect(balances.get("a501")!.balance).toBe(0);
+    expect(balances.get("a201")!.balance).toBe(0);
+  });
+
+  it("keeps the trial balance balanced after a reversal", () => {
+    const r = { ...reverseEntry(original, "JV-0010"), id: "j10" };
+    expect(trialBalance(ACCOUNTS, [...ENTRIES, original, r]).balanced).toBe(true);
+  });
+
+  it("can be back-dated to the correction date", () => {
+    const r = reverseEntry(original, "JV-0010", { date: "2026-04-15" });
+    expect(r.date).toBe("2026-04-15");
   });
 });
