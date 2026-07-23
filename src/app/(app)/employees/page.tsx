@@ -13,6 +13,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { useEmployees, useAttendance } from "@/hooks/use-farm-data";
 import { labourMetrics } from "@/core/services/metrics";
 import { EmployeeFormDialog, EMPLOYEE_ROLES } from "@/components/employees/employee-form-dialog";
+import { RecordCostDialog } from "@/components/common/record-cost-dialog";
 import { TODAY } from "@/core/data/seed";
 
 export default function EmployeesPage() {
@@ -35,13 +36,27 @@ export default function EmployeesPage() {
         title={ar ? "الرواتب والموظفون" : "Payroll & staff"}
         subtitle={ar ? "الفريق، الرواتب الشهرية، والحضور." : "Your team, monthly payroll and attendance."}
         actions={
-          <EmployeeFormDialog
+          <>
+            {/* One click books the whole month's wage bill to expenses. */}
+            <RecordCostDialog
+              category="labor"
+              title={ar ? "صرف رواتب الشهر" : "Run monthly payroll"}
+              defaultAmount={m.payroll}
+              defaultDescription={ar ? "رواتب الشهر" : "Monthly payroll"}
+              trigger={
+                <Button variant="outline" size="sm">
+                  <Wallet /> {ar ? "صرف الرواتب" : "Run payroll"}
+                </Button>
+              }
+            />
+            <EmployeeFormDialog
             trigger={
               <Button size="sm">
                 <Plus /> {ar ? "موظف جديد" : "New employee"}
               </Button>
             }
-          />
+            />
+          </>
         }
       />
 

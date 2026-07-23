@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Beef, Building2, Landmark, Plus, TrendingDown, Wallet } from "lucide-react";
+import { Beef, Building2, Landmark, Plus, TrendingDown, Wallet, Wrench } from "lucide-react";
 
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
 import { StatCard } from "@/components/common/stat-card";
@@ -15,9 +15,13 @@ import { useI18n } from "@/lib/i18n/provider";
 import { useAssets, useAnimals } from "@/hooks/use-farm-data";
 import { assetBookValue, assetsSummary } from "@/core/services/metrics";
 import { AssetFormDialog, ASSET_CATEGORIES } from "@/components/assets/asset-form-dialog";
+import { RecordCostDialog } from "@/components/common/record-cost-dialog";
 import { TODAY } from "@/core/data/seed";
 import { sum } from "@/lib/utils";
 import type { AssetCategory } from "@/core/domain/types";
+
+/** Assets that get serviced — land and buildings don't take maintenance costs. */
+const MAINTAINABLE: AssetCategory[] = ["machine", "equipment", "vehicle"];
 
 export default function AssetsPage() {
   const { locale, formatCurrency, formatNumber } = useI18n();
@@ -173,6 +177,22 @@ export default function AssetsPage() {
                   </Card>
                 }
               />
+
+              {/* Servicing a machine is a cost, so book it straight from here —
+                  land and buildings aren't serviced, so they don't offer it. */}
+              {MAINTAINABLE.includes(asset.category) && (
+                <RecordCostDialog
+                  category="maintenance"
+                  title={ar ? "تسجيل صيانة" : "Record maintenance"}
+                  assetId={asset.id}
+                  defaultDescription={`${ar ? "صيانة" : "Maintenance"} — ${ar ? asset.nameAr || asset.name : asset.name}`}
+                  trigger={
+                    <Button variant="ghost" size="sm" className="mt-1.5 w-full text-muted-foreground">
+                      <Wrench /> {ar ? "تسجيل صيانة" : "Record maintenance"}
+                    </Button>
+                  }
+                />
+              )}
             </motion.div>
           );
         })}
