@@ -6,6 +6,15 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "herdos-demo",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3005"],
+      "port": 3005,
+      "env": {
+        "NEXT_PUBLIC_DATA_SOURCE": "demo"
+      }
     }
   ]
 }
