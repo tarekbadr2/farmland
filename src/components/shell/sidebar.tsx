@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/auth/provider";
 import { useAlerts, useFarm } from "@/hooks/use-farm-data";
 import { cn } from "@/lib/utils";
 import { Logo } from "./logo";
+import { BackgroundModeToggle } from "./background-mode-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/primitives";
@@ -119,6 +120,9 @@ export function SidebarNav({
           </div>
         ))}
       </nav>
+
+      {/* Desktop-only: keep running in the tray + get alert notifications. */}
+      <BackgroundModeToggle collapsed={collapsed} />
 
       {/* Only while running on demo data — a live farm doesn't need a
           permanent banner taking up sidebar space. */}

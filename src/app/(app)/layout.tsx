@@ -9,6 +9,7 @@ import { BillingGate } from "@/components/shell/billing-gate";
 import { WebGate } from "@/components/shell/web-gate";
 import { WebDownloadBanner } from "@/components/shell/web-download-banner";
 import { TrialBanner } from "@/components/billing/trial-banner";
+import { DesktopAlerts } from "@/components/shell/desktop-alerts";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -30,6 +31,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
             <MobileTabBar />
             <ServiceWorkerRegistrar />
+            <DesktopAlerts />
           </div>
         </TourProvider>
       </BillingGate>

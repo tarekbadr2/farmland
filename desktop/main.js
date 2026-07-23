@@ -6,11 +6,19 @@
 // no internet needed to open it. Firebase (client SDK) still talks to the cloud
 // directly for data, exactly as it does on the web.
 
-const { app, BrowserWindow, shell, Menu, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, shell, Menu, ipcMain, dialog, Tray, nativeImage } = require("electron");
 const path = require("path");
 const http = require("http");
 const handler = require("serve-handler");
 const { autoUpdater } = require("electron-updater");
+
+// Background mode: when on, closing the window hides it to a system-tray icon
+// instead of quitting, so the app keeps running and can raise desktop
+// notifications. Toggled from the sidebar (renderer -> "background:set").
+let tray = null;
+let mainWin = null;
+let backgroundEnabled = false;
+let isQuitting = false;
 
 // The hosted site that carries the Google sign-in bridge page (real browser).
 const WEB_ORIGIN = process.env.HERDOS_WEB || "https://farmland-tarekbadr2s-projects.vercel.app";
@@ -145,7 +153,19 @@ function createWindow() {
     },
   });
 
+  mainWin = win;
   win.loadURL(appUrl, { userAgent: CHROME_UA });
+
+  // In background mode, the close button hides to tray instead of quitting.
+  win.on("close", (event) => {
+    if (backgroundEnabled && !isQuitting) {
+      event.preventDefault();
+      win.hide();
+    }
+  });
+  win.on("closed", () => {
+    if (mainWin === win) mainWin = null;
+  });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isInternal(url)) return { action: "allow" }; // OAuth popups
@@ -228,6 +248,59 @@ function setupAutoUpdates(win) {
   });
 }
 
+// ---------------------------- Background mode -----------------------------
+// Bring the window back from the tray (or recreate it if it was destroyed).
+function showWindow() {
+  if (!mainWin) return createWindow();
+  if (mainWin.isMinimized()) mainWin.restore();
+  mainWin.show();
+  mainWin.focus();
+}
+
+// Create the tray icon on demand (only once background mode is turned on).
+function ensureTray() {
+  if (tray) return;
+  const icon = nativeImage
+    .createFromPath(path.join(__dirname, "app-icon.png"))
+    .resize({ width: 16, height: 16 });
+  tray = new Tray(icon);
+  tray.setToolTip("Herd OS");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Open Herd OS", click: showWindow },
+      { type: "separator" },
+      {
+        label: "Quit Herd OS",
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        },
+      },
+    ]),
+  );
+  tray.on("click", showWindow);
+  tray.on("double-click", showWindow);
+}
+
+function setupBackgroundMode() {
+  // The renderer (sidebar toggle) drives this; it also pushes the stored
+  // preference up on launch so the tray matches what the user last chose.
+  ipcMain.handle("background:set", (_e, on) => {
+    backgroundEnabled = !!on;
+    if (backgroundEnabled) ensureTray();
+    else if (tray) {
+      tray.destroy();
+      tray = null;
+    }
+    return { ok: true };
+  });
+
+  // A real quit (tray menu, Cmd/Ctrl+Q, updater restart) must bypass hide-to-tray.
+  app.on("before-quit", () => {
+    isQuitting = true;
+  });
+}
+
 app.whenReady().then(async () => {
   app.userAgentFallback = CHROME_UA;
   Menu.setApplicationMenu(null);
@@ -236,6 +309,7 @@ app.whenReady().then(async () => {
   } catch {
     appUrl = "https://farmland-tarekbadr2s-projects.vercel.app"; // last-resort fallback
   }
+  setupBackgroundMode();
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -243,5 +317,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
+  // In background mode we keep the process alive (tray) even with no window.
+  if (backgroundEnabled) return;
   if (process.platform !== "darwin") app.quit();
 });

@@ -9,6 +9,12 @@ contextBridge.exposeInMainWorld("desktopAuth", {
   signInWithGoogle: () => ipcRenderer.invoke("desktop-google-signin"),
 });
 
+// Background mode: the sidebar toggle tells the main process whether closing
+// the window should hide to the tray (keep running) instead of quitting.
+contextBridge.exposeInMainWorld("desktopBackground", {
+  setEnabled: (on) => ipcRenderer.invoke("background:set", on),
+});
+
 // Self-update controls for the Settings screen. check() triggers a manual
 // look at GitHub Releases; onStatus() streams progress ("checking" → "none" |
 // "available" → "downloading" → "ready"); version() returns the running build.
