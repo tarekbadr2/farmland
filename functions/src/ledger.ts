@@ -1,7 +1,8 @@
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import * as logger from "firebase-functions/logger";
 
-import { db, REGION, round, writeAlerts } from "./shared";
+import { db, REGION, writeAlerts } from "./shared";
+import { checkEntry, type JournalEntryDoc } from "./ledger-check";
 
 /**
  * Server-side guard on the books.
@@ -18,69 +19,6 @@ import { db, REGION, round, writeAlerts } from "./shared";
  * balance) and an alert is raised for someone to look at. The document itself is
  * kept — deleting evidence of a bad write is the wrong instinct.
  */
-
-interface JournalLineDoc {
-  accountId?: string;
-  debit?: number;
-  credit?: number;
-}
-
-interface JournalEntryDoc {
-  number?: string;
-  status?: string;
-  description?: string;
-  lines?: JournalLineDoc[];
-  /** Set by this function so it never re-processes its own correction. */
-  integrityVoidedAt?: string;
-}
-
-export interface LedgerCheck {
-  balanced: boolean;
-  debit: number;
-  credit: number;
-  difference: number;
-  reason?: "unbalanced" | "no-lines" | "bad-line" | "empty";
-}
-
-/**
- * The same rule the client applies, restated where it can't be bypassed:
- * debits must equal credits, every line sits on exactly one side, and an entry
- * with nothing in it is not an entry.
- */
-export function checkEntry(entry: JournalEntryDoc): LedgerCheck {
-  const lines = entry.lines ?? [];
-  if (lines.length === 0) {
-    return { balanced: false, debit: 0, credit: 0, difference: 0, reason: "no-lines" };
-  }
-
-  let debit = 0;
-  let credit = 0;
-  for (const line of lines) {
-    const d = Number(line.debit ?? 0);
-    const c = Number(line.credit ?? 0);
-    // A line on both sides (or neither, or negative) is malformed even if the
-    // totals happen to come out equal.
-    if (!Number.isFinite(d) || !Number.isFinite(c) || d < 0 || c < 0 || (d > 0 && c > 0)) {
-      return { balanced: false, debit, credit, difference: 0, reason: "bad-line" };
-    }
-    debit += d;
-    credit += c;
-  }
-
-  debit = round(debit, 2);
-  credit = round(credit, 2);
-  const difference = round(debit - credit, 2);
-  if (debit === 0 && credit === 0) {
-    return { balanced: false, debit, credit, difference, reason: "empty" };
-  }
-  return {
-    balanced: difference === 0,
-    debit,
-    credit,
-    difference,
-    reason: difference === 0 ? undefined : "unbalanced",
-  };
-}
 
 export const onJournalEntryWritten = onDocumentWritten(
   { document: "farms/{farmId}/journalEntries/{entryId}", region: REGION },

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { checkEntry } from "../../../functions/src/ledger";
+import { checkEntry } from "../../../functions/src/ledger-check";
 
 /**
  * The server-side guard mirrors the client's balance rule. It's tested from the

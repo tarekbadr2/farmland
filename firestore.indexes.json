@@ -41,6 +41,15 @@
       ]
     },
     {
+      "comment": "Live head count in a pen (livestock transfer occupancy): penId == AND status in [...]",
+      "collectionGroup": "animals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "penId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "animals",
       "queryScope": "COLLECTION",
       "fields": [
