@@ -18,12 +18,15 @@ import {
 } from "./accounting";
 import {
   chequeNumber,
+  invoiceDocNumber,
   journalEntryFromCheque,
+  journalEntryFromInvoice,
+  journalEntryFromInvoicePayment,
   journalEntryFromVoucher,
   reverseEntry,
   voucherNumber,
 } from "./posting";
-import type { Account, Cheque, JournalEntry } from "@/core/domain/types";
+import type { Account, Cheque, Invoice, JournalEntry } from "@/core/domain/types";
 
 /* A small but realistic farm chart of accounts. */
 const acc = (
@@ -496,5 +499,171 @@ describe("cheques (أوراق قبض / دفع)", () => {
   it("refuses to post when the chart is missing the note accounts", () => {
     const bare = [acc("x", "1", "Assets", "asset", true)];
     expect(journalEntryFromCheque(incoming, "received", bare, "CR-1")).toBeNull();
+  });
+});
+
+describe("invoices & returns (مشتريات / مرتجعات)", () => {
+  const invAccounts: Account[] = [
+    { ...acc("i103", "1103", "Customers", "asset"), systemKey: "receivable" },
+    { ...acc("i201", "2101", "Suppliers", "liability"), systemKey: "payable" },
+    { ...acc("i401", "4105", "Other income", "revenue"), systemKey: "revenue_other" },
+    { ...acc("i501", "5110", "Other expenses", "expense"), systemKey: "expense_other" },
+  ];
+
+  const doc = (kind: Invoice["kind"], id = "inv1"): Invoice => ({
+    id,
+    farmId: "f1",
+    number: "A-1",
+    kind,
+    customerId: "party_1",
+    issuedAt: "2026-07-01",
+    dueAt: "2026-07-31",
+    lines: [{ description: "Bran", qty: 10, unitPrice: 500 }],
+    paidAmount: 0,
+    status: "sent",
+  });
+
+  it("numbers each document type in its own series", () => {
+    expect(invoiceDocNumber("sale", "2026-07-01", 2)).toBe("INV-2026-0002");
+    expect(invoiceDocNumber("purchase", "2026-07-01", 2)).toBe("BILL-2026-0002");
+    expect(invoiceDocNumber("sale_return", "2026-07-01", 2)).toBe("SRET-2026-0002");
+    expect(invoiceDocNumber("purchase_return", "2026-07-01", 2)).toBe("PRET-2026-0002");
+  });
+
+  it("a sale debits the customer and credits revenue", () => {
+    const e = journalEntryFromInvoice(doc("sale"), invAccounts, "INV-1", 5_000)!;
+    expect(e.lines[0]).toMatchObject({ accountId: "i103", debit: 5_000 });
+    expect(e.lines[1]).toMatchObject({ accountId: "i401", credit: 5_000 });
+    expect(isBalanced(e.lines)).toBe(true);
+  });
+
+  it("a purchase debits the cost and credits the supplier", () => {
+    const e = journalEntryFromInvoice(doc("purchase"), invAccounts, "BILL-1", 5_000)!;
+    expect(e.lines[0]).toMatchObject({ accountId: "i501", debit: 5_000 });
+    expect(e.lines[1]).toMatchObject({ accountId: "i201", credit: 5_000 });
+  });
+
+  it("nothing touches cash — an invoice is credit until it's paid", () => {
+    const e = journalEntryFromInvoice(doc("purchase"), invAccounts, "BILL-1", 5_000)!;
+    expect(e.lines.every((l) => l.accountId !== "cash" && l.accountId !== "bank")).toBe(true);
+  });
+
+  it("a sale return undoes the sale exactly", () => {
+    const sale = { ...journalEntryFromInvoice(doc("sale"), invAccounts, "INV-1", 5_000)!, id: "e1" };
+    const ret = {
+      ...journalEntryFromInvoice(doc("sale_return", "inv2"), invAccounts, "SRET-1", 5_000)!,
+      id: "e2",
+    };
+    const b = accountBalances(invAccounts, [sale, ret]);
+    expect(b.get("i103")!.balance).toBe(0); // customer owes nothing
+    expect(b.get("i401")!.balance).toBe(0); // revenue reversed
+  });
+
+  it("a purchase return undoes the purchase exactly", () => {
+    const bill = {
+      ...journalEntryFromInvoice(doc("purchase"), invAccounts, "BILL-1", 5_000)!,
+      id: "e1",
+    };
+    const ret = {
+      ...journalEntryFromInvoice(doc("purchase_return", "inv2"), invAccounts, "PRET-1", 5_000)!,
+      id: "e2",
+    };
+    const b = accountBalances(invAccounts, [bill, ret]);
+    expect(b.get("i201")!.balance).toBe(0); // supplier owed nothing
+    expect(b.get("i501")!.balance).toBe(0); // cost reversed
+  });
+
+  it("a partial return leaves only the unreturned amount standing", () => {
+    const bill = {
+      ...journalEntryFromInvoice(doc("purchase"), invAccounts, "BILL-1", 5_000)!,
+      id: "e1",
+    };
+    const ret = {
+      ...journalEntryFromInvoice(doc("purchase_return", "inv2"), invAccounts, "PRET-1", 2_000)!,
+      id: "e2",
+    };
+    const b = accountBalances(invAccounts, [bill, ret]);
+    expect(b.get("i201")!.balance).toBe(3_000);
+    expect(b.get("i501")!.balance).toBe(3_000);
+  });
+
+  it("treats a legacy invoice with no kind as a sale", () => {
+    const legacy = { ...doc("sale"), kind: undefined } as Invoice;
+    const e = journalEntryFromInvoice(legacy, invAccounts, "INV-1", 1_000)!;
+    expect(e.lines[0]).toMatchObject({ accountId: "i103", debit: 1_000 });
+  });
+
+  it("books to an explicitly chosen account when given one", () => {
+    const withAccount = { ...doc("purchase"), accountId: "i401" } as Invoice;
+    const e = journalEntryFromInvoice(withAccount, invAccounts, "BILL-1", 1_000)!;
+    expect(e.lines[0]).toMatchObject({ accountId: "i401", debit: 1_000 });
+  });
+
+  it("keeps the trial balance balanced across a bill and its return", () => {
+    const bill = { ...journalEntryFromInvoice(doc("purchase"), invAccounts, "BILL-1", 5_000)!, id: "e1" };
+    const ret = {
+      ...journalEntryFromInvoice(doc("purchase_return", "inv2"), invAccounts, "PRET-1", 2_000)!,
+      id: "e2",
+    };
+    expect(trialBalance(invAccounts, [bill, ret]).balanced).toBe(true);
+  });
+});
+
+describe("invoice payments settle rather than re-recognise revenue", () => {
+  const payAccounts: Account[] = [
+    { ...acc("p101", "1101", "Cash", "asset"), systemKey: "cash" },
+    { ...acc("p102", "1102", "Bank", "asset"), systemKey: "bank" },
+    { ...acc("p103", "1103", "Customers", "asset"), systemKey: "receivable" },
+    { ...acc("p201", "2101", "Suppliers", "liability"), systemKey: "payable" },
+    { ...acc("p401", "4105", "Other income", "revenue"), systemKey: "revenue_other" },
+    { ...acc("p501", "5110", "Other expenses", "expense"), systemKey: "expense_other" },
+  ];
+
+  const sale: Invoice = {
+    id: "inv1",
+    farmId: "f1",
+    number: "A-1",
+    kind: "sale",
+    customerId: "party_1",
+    issuedAt: "2026-07-01",
+    dueAt: "2026-07-31",
+    lines: [{ description: "Milk", qty: 1, unitPrice: 5_000 }],
+    paidAmount: 0,
+    status: "sent",
+  };
+
+  it("a payment debits cash and clears the receivable — revenue untouched", () => {
+    const e = journalEntryFromInvoicePayment(sale, 5_000, "2026-07-10", "cash", payAccounts, "RV-1")!;
+    expect(e.lines[0]).toMatchObject({ accountId: "p101", debit: 5_000 });
+    expect(e.lines[1]).toMatchObject({ accountId: "p103", credit: 5_000 });
+    expect(e.lines.some((l) => l.accountId === "p401")).toBe(false);
+  });
+
+  it("invoice then full payment: revenue counted once, receivable cleared", () => {
+    const inv = { ...journalEntryFromInvoice(sale, payAccounts, "INV-1", 5_000)!, id: "e1" };
+    const pay = {
+      ...journalEntryFromInvoicePayment(sale, 5_000, "2026-07-10", "bank", payAccounts, "RV-1")!,
+      id: "e2",
+    };
+    const b = accountBalances(payAccounts, [inv, pay]);
+    expect(b.get("p401")!.balance).toBe(5_000); // revenue recognised exactly once
+    expect(b.get("p103")!.balance).toBe(0); // customer settled
+    expect(b.get("p102")!.balance).toBe(5_000); // money in the bank
+  });
+
+  it("paying a supplier bill debits the payable and credits the treasury", () => {
+    const bill: Invoice = { ...sale, id: "inv2", kind: "purchase" };
+    const e = journalEntryFromInvoicePayment(bill, 5_000, "2026-07-10", "bank", payAccounts, "PV-1")!;
+    expect(e.lines[0]).toMatchObject({ accountId: "p201", debit: 5_000 });
+    expect(e.lines[1]).toMatchObject({ accountId: "p102", credit: 5_000 });
+  });
+
+  it("a part payment leaves the rest outstanding", () => {
+    const inv = { ...journalEntryFromInvoice(sale, payAccounts, "INV-1", 5_000)!, id: "e1" };
+    const pay = {
+      ...journalEntryFromInvoicePayment(sale, 2_000, "2026-07-10", "cash", payAccounts, "RV-1")!,
+      id: "e2",
+    };
+    expect(accountBalances(payAccounts, [inv, pay]).get("p103")!.balance).toBe(3_000);
   });
 });

@@ -27,7 +27,8 @@ import { getRepository } from "@/core/repositories";
 import { TODAY } from "@/core/data/seed";
 import { addDays } from "@/lib/date";
 import { round } from "@/lib/utils";
-import type { Invoice } from "@/core/domain/types";
+import { invoiceSeries } from "@/core/services/posting";
+import type { Invoice, InvoiceKind } from "@/core/domain/types";
 
 const schema = z.object({
   customerId: z.string().min(1, "Pick a customer"),
@@ -55,18 +56,27 @@ type FormValues = z.infer<typeof schema>;
  * not a payment, and marking it paid is a separate act on the finance side once
  * the money actually arrives. The total is derived from the lines, never typed.
  */
-export function NewInvoiceDialog({ trigger }: { trigger?: React.ReactNode }) {
+export function NewInvoiceDialog({
+  trigger,
+  kind = "sale",
+}: {
+  trigger?: React.ReactNode;
+  /** Sale bills a customer; purchase records a supplier's bill. Returns undo
+   *  their counterpart. */
+  kind?: InvoiceKind;
+}) {
   const { t, ln, locale, formatNumber } = useI18n();
   const queryClient = useQueryClient();
   const [open, setOpen] = React.useState(false);
   const { data: partners = [] } = usePartners();
 
-  // Only parties you sell to can be billed.
-  const customers = partners.filter(
-    (p) => p.kind === "milk_buyer" || p.kind === "animal_buyer",
+  // A sale is billed to a buyer; a purchase comes from a supplier.
+  const buyingSide = kind === "purchase" || kind === "purchase_return";
+  const customers = partners.filter((p) =>
+    buyingSide ? p.kind === "supplier" : p.kind === "milk_buyer" || p.kind === "animal_buyer",
   );
 
-  const suggestedNumber = `INV-${TODAY.replace(/-/g, "").slice(2)}-${String(
+  const suggestedNumber = `${invoiceSeries(kind)}-${TODAY.replace(/-/g, "").slice(2)}-${String(
     Math.floor(Number(TODAY.replace(/-/g, "").slice(-4))),
   ).slice(-3)}`;
 
@@ -81,6 +91,16 @@ export function NewInvoiceDialog({ trigger }: { trigger?: React.ReactNode }) {
     },
   });
 
+  const ar = locale === "ar";
+  const heading =
+    kind === "purchase"
+      ? ar ? "فاتورة مشتريات" : "Purchase bill"
+      : kind === "sale_return"
+        ? ar ? "مرتجع مبيعات" : "Sales return"
+        : kind === "purchase_return"
+          ? ar ? "مرتجع مشتريات" : "Purchase return"
+          : t("partners.newInvoice");
+
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "lines" });
   const lines = form.watch("lines");
   const total = round(
@@ -91,6 +111,7 @@ export function NewInvoiceDialog({ trigger }: { trigger?: React.ReactNode }) {
   const save = useMutation({
     mutationFn: async (values: FormValues) => {
       const invoice: Omit<Invoice, "id" | "farmId"> = {
+        kind,
         number: values.number.trim(),
         customerId: values.customerId,
         issuedAt: values.issuedAt,
@@ -123,21 +144,21 @@ export function NewInvoiceDialog({ trigger }: { trigger?: React.ReactNode }) {
       <DialogTrigger asChild>
         {trigger ?? (
           <Button size="sm">
-            <Plus /> {t("partners.newInvoice")}
+            <Plus /> {heading}
           </Button>
         )}
       </DialogTrigger>
 
       <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t("partners.newInvoice")}</DialogTitle>
+          <DialogTitle>{heading}</DialogTitle>
           <DialogDescription>{t("partners.newInvoiceHint")}</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit((v) => save.mutate(v))} className="space-y-3.5">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>{t("partners.customer")}</Label>
+              <Label>{buyingSide ? (ar ? "المورّد" : "Supplier") : t("partners.customer")}</Label>
               <Select
                 value={form.watch("customerId")}
                 onValueChange={(v) => form.setValue("customerId", v, { shouldValidate: true })}

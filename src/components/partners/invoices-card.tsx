@@ -16,6 +16,19 @@ import { formatDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import type { Invoice } from "@/core/domain/types";
 
+const KIND_EN: Record<NonNullable<Invoice["kind"]>, string> = {
+  sale: "Sale",
+  purchase: "Purchase",
+  sale_return: "Sales return",
+  purchase_return: "Purchase return",
+};
+const KIND_AR: Record<NonNullable<Invoice["kind"]>, string> = {
+  sale: "مبيعات",
+  purchase: "مشتريات",
+  sale_return: "مرتجع مبيعات",
+  purchase_return: "مرتجع مشتريات",
+};
+
 const STATUS_TONE: Record<Invoice["status"], string> = {
   draft: "text-muted-foreground border-border",
   sent: "text-blue-600 dark:text-blue-400 border-blue-500/40 bg-blue-500/10",
@@ -70,6 +83,12 @@ export function InvoicesCard() {
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2 text-[13px] font-medium">
                   <span className="tabular">{inv.number}</span>
+                  {/* Sales are the default, so only flag the others. */}
+                  {(inv.kind ?? "sale") !== "sale" && (
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10.5px]">
+                      {locale === "ar" ? KIND_AR[inv.kind!] : KIND_EN[inv.kind!]}
+                    </Badge>
+                  )}
                   <Badge
                     variant="outline"
                     className={cn("h-5 px-1.5 text-[10.5px] capitalize", STATUS_TONE[inv.status])}

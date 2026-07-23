@@ -12,6 +12,8 @@ import type {
   Cheque,
   ChequeKind,
   ID,
+  Invoice,
+  InvoiceKind,
   JournalEntry,
   JournalLine,
   Transaction,
@@ -291,5 +293,129 @@ export function journalEntryFromCheque(
     lines,
     sourceKind: "voucher",
     sourceId: cheque.id,
+  };
+}
+
+/* -------------------------------- Invoices --------------------------------- */
+
+/** Invoice number series: مبيعات INV-, مشتريات BILL-, and their returns. */
+export function invoiceSeries(kind: InvoiceKind): string {
+  return kind === "sale"
+    ? "INV"
+    : kind === "purchase"
+      ? "BILL"
+      : kind === "sale_return"
+        ? "SRET"
+        : "PRET";
+}
+
+export function invoiceDocNumber(kind: InvoiceKind, date: string, seq: number): string {
+  return `${invoiceSeries(kind)}-${date.slice(0, 4)}-${String(seq).padStart(4, "0")}`;
+}
+
+/** The default account each document books its non-cash side against. */
+function invoiceAccountKey(kind: InvoiceKind): string {
+  return kind === "sale" || kind === "sale_return" ? "revenue_other" : "expense_other";
+}
+
+/**
+ * An invoice → one balanced entry, booked on credit.
+ *
+ * A sale debits the customer and credits revenue; a purchase debits the cost
+ * and credits the supplier. Returns post the exact mirror of their counterpart,
+ * so a full return leaves both accounts back where they started. Payment is a
+ * separate event (a voucher or a recorded payment), which is why nothing here
+ * touches cash.
+ */
+export function journalEntryFromInvoice(
+  invoice: Invoice,
+  accounts: Account[],
+  number: string,
+  total: number,
+): Omit<JournalEntry, "id"> | null {
+  const kind = invoice.kind ?? "sale";
+  const amount = round(Math.abs(total), 2);
+  if (amount === 0) return null;
+
+  const isSaleSide = kind === "sale" || kind === "sale_return";
+  const party = findBySystemKey(accounts, isSaleSide ? "receivable" : "payable");
+  const category =
+    (invoice.accountId ? accounts.find((a) => a.id === invoice.accountId) : undefined) ??
+    findBySystemKey(accounts, invoiceAccountKey(kind));
+  if (!party || !category) return null;
+
+  const line = (accountId: ID, side: "debit" | "credit"): JournalLine => ({
+    accountId,
+    debit: side === "debit" ? amount : 0,
+    credit: side === "credit" ? amount : 0,
+    partnerId: invoice.customerId,
+  });
+
+  let lines: JournalLine[];
+  if (kind === "sale") lines = [line(party.id, "debit"), line(category.id, "credit")];
+  else if (kind === "purchase") lines = [line(category.id, "debit"), line(party.id, "credit")];
+  else if (kind === "sale_return") lines = [line(category.id, "debit"), line(party.id, "credit")];
+  else lines = [line(party.id, "debit"), line(category.id, "credit")]; // purchase_return
+
+  return {
+    farmId: invoice.farmId,
+    number,
+    date: invoice.issuedAt,
+    description: `${invoiceSeries(kind)} ${invoice.number}`,
+    reference: invoice.number,
+    status: "posted",
+    lines,
+    sourceKind: kind === "purchase" || kind === "purchase_return" ? "purchase" : "invoice",
+    sourceId: invoice.id,
+  };
+}
+
+/**
+ * A payment against an invoice → money in, debt down.
+ *
+ * Revenue was already recognised when the invoice posted, so settling it must
+ * NOT credit revenue again — it debits the treasury and clears the receivable
+ * (or, on a purchase, debits the payable and credits the treasury). Getting
+ * this wrong double-counts income, which is why it lives here beside the
+ * invoice's own entry rather than being inferred from a transaction category.
+ */
+export function journalEntryFromInvoicePayment(
+  invoice: Invoice,
+  amount: number,
+  date: string,
+  paymentMethod: Transaction["paymentMethod"],
+  accounts: Account[],
+  number: string,
+): Omit<JournalEntry, "id"> | null {
+  const value = round(Math.abs(amount), 2);
+  if (value === 0) return null;
+
+  const kind = invoice.kind ?? "sale";
+  const incoming = kind === "sale" || kind === "purchase_return";
+  const party = findBySystemKey(accounts, incoming ? "receivable" : "payable");
+  const treasury = findBySystemKey(accounts, paymentMethod === "bank" ? "bank" : "cash");
+  if (!party || !treasury) return null;
+
+  const line = (accountId: ID, side: "debit" | "credit"): JournalLine => ({
+    accountId,
+    debit: side === "debit" ? value : 0,
+    credit: side === "credit" ? value : 0,
+    partnerId: invoice.customerId,
+  });
+
+  const lines = incoming
+    ? [line(treasury.id, "debit"), line(party.id, "credit")]
+    : [line(party.id, "debit"), line(treasury.id, "credit")];
+
+  return {
+    farmId: invoice.farmId,
+    number,
+    date,
+    description: `Payment · ${invoice.number}`,
+    reference: invoice.number,
+    status: "posted",
+    lines,
+    sourceKind: "voucher",
+    sourceId: invoice.id,
   };
 }

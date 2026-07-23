@@ -97,7 +97,11 @@ import { defaultChartOfAccounts } from "@/core/data/chart-of-accounts";
 import { isBalanced } from "@/core/services/accounting";
 import {
   chequeNumber,
+  invoiceDocNumber,
   journalEntryFromCheque,
+  journalEntryFromInvoice,
+  journalEntryFromInvoicePayment,
+  voucherNumber,
   journalEntryFromTransaction,
   journalNumber,
   type ChequePhase,
@@ -984,7 +988,32 @@ export class FirebaseFarmRepository implements FarmRepository {
     const id = invoice.id ?? doc(this.col(paths.invoices(this.farmId))).id;
     const record = { ...invoice, id, farmId: this.farmId } as Invoice;
     await setDoc(doc(this.db, paths.invoices(this.farmId), id), omitUndefined(record));
+    await this.postInvoice(record);
     return record;
+  }
+
+  /** Books an issued document; a draft stays out of the ledger. */
+  private async postInvoice(invoice: Invoice): Promise<void> {
+    if (invoice.status === "draft") return;
+    try {
+      const accounts = await this.getAccounts();
+      const kind = invoice.kind ?? "sale";
+      const built = journalEntryFromInvoice(
+        invoice,
+        accounts,
+        invoiceDocNumber(kind, invoice.issuedAt, (await this.getInvoices()).length),
+        invoiceTotal(invoice),
+      );
+      if (!built) return;
+      const entryId = `jv_inv_${invoice.id}`;
+      await setDoc(
+        doc(this.db, paths.journalEntries(this.farmId), entryId),
+        omitUndefined({ ...built, id: entryId, farmId: this.farmId }),
+        { merge: true },
+      );
+    } catch {
+      // Best-effort: the document itself is already saved.
+    }
   }
 
   async setInvoiceStatus(id: ID, status: Invoice["status"]): Promise<Invoice> {
@@ -1054,6 +1083,35 @@ export class FirebaseFarmRepository implements FarmRepository {
       paymentMethod: input.paymentMethod,
     });
     await trackWrite(batch.commit());
+
+    // Revenue was recognised when the invoice posted; settling only moves money
+    // and clears the debt, so this must not credit revenue again.
+    try {
+      const accounts = await this.getAccounts();
+      const settled = { ...invoice, paidAmount, status } as Invoice;
+      const settlement = journalEntryFromInvoicePayment(
+        settled,
+        input.amount,
+        input.date,
+        input.paymentMethod,
+        accounts,
+        voucherNumber(
+          (settled.kind ?? "sale") === "sale" ? "receipt" : "payment",
+          input.date,
+          (await this.getJournalEntries()).length + 1,
+        ),
+      );
+      if (settlement) {
+        const entryId = `jv_pay_${invoice.id}_${input.date}_${input.amount}`;
+        await setDoc(
+          doc(this.db, paths.journalEntries(this.farmId), entryId),
+          omitUndefined({ ...settlement, id: entryId, farmId: this.farmId }),
+          { merge: true },
+        );
+      }
+    } catch {
+      // The payment itself is recorded; a ledger hiccup must not lose it.
+    }
 
     return { ...invoice, paidAmount, status };
   }

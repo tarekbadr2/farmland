@@ -544,16 +544,32 @@ export interface Transaction {
   paymentMethod: "cash" | "bank" | "credit";
 }
 
+/**
+ * مبيعات / مشتريات / مرتجعات — what kind of document this is.
+ *
+ * A sale bills a customer; a purchase is a supplier's bill to the farm. The two
+ * return kinds undo their counterpart, which is why they post the mirror image
+ * of it rather than a negative amount.
+ */
+export type InvoiceKind = "sale" | "purchase" | "sale_return" | "purchase_return";
+
 export interface Invoice {
   id: ID;
   farmId: ID;
   number: string;
+  /** Absent on documents created before purchases existed — treat as "sale". */
+  kind?: InvoiceKind;
+  /** The other party: a customer on a sale, a supplier on a purchase. */
   customerId: ID;
   issuedAt: string;
   dueAt: string;
   lines: { description: string; qty: number; unitPrice: number }[];
   paidAmount: number;
   status: "draft" | "sent" | "partial" | "paid" | "overdue";
+  /** Which revenue/expense account it books to; falls back to a sensible default. */
+  accountId?: ID;
+  /** For a return, the document it reverses. */
+  returnsInvoiceId?: ID;
 }
 
 /* --------------------------------- Assets ---------------------------------- */

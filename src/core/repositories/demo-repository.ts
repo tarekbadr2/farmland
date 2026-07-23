@@ -11,7 +11,11 @@ import { mulberry32, round, clamp, sum } from "@/lib/utils";
 import { isBalanced } from "@/core/services/accounting";
 import {
   chequeNumber,
+  invoiceDocNumber,
   journalEntryFromCheque,
+  journalEntryFromInvoice,
+  journalEntryFromInvoicePayment,
+  voucherNumber,
   journalEntryFromTransaction,
   journalNumber,
   type ChequePhase,
@@ -689,6 +693,7 @@ export class DemoFarmRepository implements FarmRepository {
     const idx = invoice.id ? this.db.invoices.findIndex((i) => i.id === invoice.id) : -1;
     if (idx >= 0) {
       this.db.invoices[idx] = { ...this.db.invoices[idx], ...invoice } as Invoice;
+      this.postInvoice(this.db.invoices[idx]);
       return tick(this.db.invoices[idx]);
     }
     const created = {
@@ -697,7 +702,28 @@ export class DemoFarmRepository implements FarmRepository {
       farmId: this.db.farm.id,
     } as Invoice;
     this.db.invoices.unshift(created);
+    this.postInvoice(created);
     return tick(created);
+  }
+
+  /**
+   * Books an issued document. A draft is not yet a commitment, so it stays out
+   * of the ledger until it's sent.
+   */
+  private postInvoice(invoice: Invoice) {
+    if (invoice.status === "draft") return;
+    const kind = invoice.kind ?? "sale";
+    const built = journalEntryFromInvoice(
+      invoice,
+      this.db.accounts,
+      invoiceDocNumber(kind, invoice.issuedAt, this.db.invoices.length),
+      invoiceTotal(invoice),
+    );
+    if (!built) return;
+    const entry = { ...built, id: `jv_inv_${invoice.id}` } as JournalEntry;
+    const i = this.db.journalEntries.findIndex((e) => e.id === entry.id);
+    if (i >= 0) this.db.journalEntries[i] = entry;
+    else this.db.journalEntries.unshift(entry);
   }
 
   async setInvoiceStatus(id: ID, status: Invoice["status"]) {
@@ -744,6 +770,27 @@ export class DemoFarmRepository implements FarmRepository {
       invoiceId: inv.id,
       paymentMethod: input.paymentMethod,
     } as Transaction);
+
+    // Revenue was recognised when the invoice posted, so settling it only moves
+    // money and clears the debt — crediting revenue again would double-count.
+    const settlement = journalEntryFromInvoicePayment(
+      updated,
+      input.amount,
+      input.date,
+      input.paymentMethod,
+      this.db.accounts,
+      voucherNumber(
+        (updated.kind ?? "sale") === "sale" ? "receipt" : "payment",
+        input.date,
+        this.db.journalEntries.length + 1,
+      ),
+    );
+    if (settlement) {
+      this.db.journalEntries.unshift({
+        ...settlement,
+        id: `jv_pay_${updated.id}_${input.date}_${input.amount}`,
+      } as JournalEntry);
+    }
 
     return tick(updated);
   }

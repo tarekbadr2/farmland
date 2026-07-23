@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { Handshake, Milk, Star, Stethoscope, Truck, Users } from "lucide-react";
+import { Handshake, Milk, Plus, Star, Stethoscope, Truck, Users } from "lucide-react";
 
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
 import { StatCard } from "@/components/common/stat-card";
@@ -11,6 +11,7 @@ import { NewInvoiceDialog } from "@/components/partners/new-invoice-dialog";
 import { InvoicesCard } from "@/components/partners/invoices-card";
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/primitives";
 import { useI18n } from "@/lib/i18n/provider";
 import { useInvoices, usePartners } from "@/hooks/use-farm-data";
@@ -108,7 +109,37 @@ export default function PartnersPage() {
       <PageHeader
         title={t("partners.title")}
         subtitle={t("partners.subtitle")}
-        actions={<NewInvoiceDialog />}
+        actions={
+          <>
+            {/* Sales bill a customer; purchases record a supplier's bill.
+                Returns undo either, and post the mirror entry. */}
+            <NewInvoiceDialog
+              kind="purchase"
+              trigger={
+                <Button variant="outline" size="sm">
+                  <Plus /> {locale === "ar" ? "فاتورة مشتريات" : "Purchase bill"}
+                </Button>
+              }
+            />
+            <NewInvoiceDialog
+              kind="sale_return"
+              trigger={
+                <Button variant="outline" size="sm">
+                  {locale === "ar" ? "مرتجع مبيعات" : "Sales return"}
+                </Button>
+              }
+            />
+            <NewInvoiceDialog
+              kind="purchase_return"
+              trigger={
+                <Button variant="outline" size="sm">
+                  {locale === "ar" ? "مرتجع مشتريات" : "Purchase return"}
+                </Button>
+              }
+            />
+            <NewInvoiceDialog />
+          </>
+        }
       />
 
       <motion.div
