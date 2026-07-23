@@ -156,6 +156,12 @@ service cloud.firestore {
       }
       // Branches and rates shape every report, so only the people who own the
       // numbers may change them.
+      // Document-number sequences. Anyone who can create a numbered document may
+      // advance its counter; the transaction that does it is the integrity point.
+      match /docCounters/{series} {
+        allow read: if isMember(farmId);
+        allow write: if hasRole(farmId, ['owner', 'manager', 'accountant']);
+      }
       match /branches/{branchId} {
         allow read: if isMember(farmId);
         allow write: if hasRole(farmId, ['owner', 'accountant']);

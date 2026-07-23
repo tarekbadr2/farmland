@@ -842,7 +842,10 @@ export class FirebaseFarmRepository implements FarmRepository {
       const existing = await getDoc(ref);
       const number = existing.exists()
         ? (existing.data() as JournalEntry).number
-        : journalNumber(txn.date, nextSequence((await this.getJournalEntries()).map((e) => e.number), "JV"));
+        : journalNumber(
+          txn.date,
+          await this.allocateSequence("JV", txn.date.slice(0, 4), nextSequence((await this.getJournalEntries()).map((e) => e.number), "JV")),
+        );
       await setDoc(ref, omitUndefined({ ...entry, number }), { merge: true });
     } catch {
       // Best-effort: the transaction is already saved.
@@ -1035,7 +1038,11 @@ export class FirebaseFarmRepository implements FarmRepository {
         invoiceDocNumber(
           kind,
           invoice.issuedAt,
-          nextSequence((await this.getInvoices()).map((i) => i.number), invoiceSeries(kind)),
+          await this.allocateSequence(
+            invoiceSeries(kind),
+            invoice.issuedAt.slice(0, 4),
+            nextSequence((await this.getInvoices()).map((i) => i.number), invoiceSeries(kind)),
+          ),
         ),
         invoiceTotal(invoice),
       );
@@ -1133,9 +1140,13 @@ export class FirebaseFarmRepository implements FarmRepository {
         voucherNumber(
           (settled.kind ?? "sale") === "sale" ? "receipt" : "payment",
           input.date,
-          nextSequence(
-            (await this.getJournalEntries()).map((e) => e.number),
+          await this.allocateSequence(
             (settled.kind ?? "sale") === "sale" ? "RV" : "PV",
+            input.date.slice(0, 4),
+            nextSequence(
+              (await this.getJournalEntries()).map((e) => e.number),
+              (settled.kind ?? "sale") === "sale" ? "RV" : "PV",
+            ),
           ),
         ),
       );
@@ -1336,7 +1347,10 @@ export class FirebaseFarmRepository implements FarmRepository {
       farmId: this.farmId,
       number:
         order.number ??
-        workOrderNumber(order.date, nextSequence((await this.getWorkOrders()).map((w) => w.number), "WO")),
+        workOrderNumber(
+          order.date,
+          await this.allocateSequence("WO", order.date.slice(0, 4), nextSequence((await this.getWorkOrders()).map((w) => w.number), "WO")),
+        ),
     } as WorkOrder;
     await setDoc(doc(this.db, paths.workOrders(this.farmId), id), omitUndefined(record), {
       merge: true,
@@ -1486,7 +1500,10 @@ export class FirebaseFarmRepository implements FarmRepository {
     const transfer: LivestockTransfer = {
       id,
       farmId: this.farmId,
-      number: transferNumber(input.date, nextSequence(existing.map((t) => t.number), "LT")),
+      number: transferNumber(
+        input.date,
+        await this.allocateSequence("LT", input.date.slice(0, 4), nextSequence(existing.map((t) => t.number), "LT")),
+      ),
       date: input.date,
       fromZoneId: commonOrigin(input.animalIds, animals),
       toZoneId: input.toZoneId,
@@ -1615,9 +1632,12 @@ export class FirebaseFarmRepository implements FarmRepository {
     opts: { treasuryAccountId?: ID; date?: string } = {},
   ): Promise<ID | null> {
     const accounts = await this.getAccounts();
-    const seq = nextSequence(
-      (await this.getJournalEntries()).map((e) => e.number),
-      cheque.kind === "receivable" ? "CR" : "CP",
+    const prefix = cheque.kind === "receivable" ? "CR" : "CP";
+    const noteDate = opts.date ?? cheque.dueDate;
+    const seq = await this.allocateSequence(
+      prefix,
+      noteDate.slice(0, 4),
+      nextSequence((await this.getJournalEntries()).map((e) => e.number), prefix),
     );
     const built = journalEntryFromCheque(
       cheque,
@@ -1724,6 +1744,29 @@ export class FirebaseFarmRepository implements FarmRepository {
   }
 
   /**
+   * Allocate the next number in a document series, atomically.
+   *
+   * `nextSequence` over a bounded read fixed the systematic collision (past the
+   * read cap every document got the same number); this closes the concurrency
+   * hole too. A counter document per series+year is bumped inside a transaction,
+   * so two people saving in the same second get distinct numbers.
+   *
+   * `floor` is the caller's best guess from existing documents. It only matters
+   * on the very first allocation (a fresh counter, or one lagging a hand-keyed
+   * number): the counter self-heals up to it, then `stored + 1` takes over.
+   */
+  private async allocateSequence(prefix: string, year: string, floor: number): Promise<number> {
+    const ref = doc(this.db, paths.docCounters(this.farmId), `${prefix}-${year}`);
+    return runTransaction(this.db, async (tx) => {
+      const snap = await tx.get(ref);
+      const stored = snap.exists() ? ((snap.data().next as number) ?? 0) : 0;
+      const allocated = Math.max(stored + 1, floor);
+      tx.set(ref, { next: allocated, prefix, year }, { merge: true });
+      return allocated;
+    });
+  }
+
+  /**
    * The ledger.
    *
    * Every balance on the accounting screen is computed from this list, so the
@@ -1761,7 +1804,10 @@ export class FirebaseFarmRepository implements FarmRepository {
     const id = entry.id ?? doc(this.col(paths.journalEntries(this.farmId))).id;
     const number =
       entry.number ??
-      journalNumber(entry.date, nextSequence((await this.getJournalEntries()).map((e) => e.number), "JV"));
+      journalNumber(
+        entry.date,
+        await this.allocateSequence("JV", entry.date.slice(0, 4), nextSequence((await this.getJournalEntries()).map((e) => e.number), "JV")),
+      );
     const record = {
       ...entry,
       id,

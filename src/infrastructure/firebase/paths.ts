@@ -35,6 +35,7 @@ export const paths = {
   invoices: (farmId = getActiveFarm()) => `farms/${farmId}/invoices`,
   partners: (farmId = getActiveFarm()) => `farms/${farmId}/partners`,
   assets: (farmId = getActiveFarm()) => `farms/${farmId}/assets`,
+  docCounters: (farmId = getActiveFarm()) => `farms/${farmId}/docCounters`,
   branches: (farmId = getActiveFarm()) => `farms/${farmId}/branches`,
   currencies: (farmId = getActiveFarm()) => `farms/${farmId}/currencies`,
   workOrders: (farmId = getActiveFarm()) => `farms/${farmId}/workOrders`,
