@@ -39,6 +39,8 @@ import { PREFIX_END, animalSearchFields, paths } from "./paths";
 import { getActiveFarm } from "./tenant";
 import type {
   Account,
+  Cheque,
+  ChequeStatus,
   Alert,
   Animal,
   AnimalDisposal,
@@ -93,7 +95,13 @@ import {
 import { addDays, toISODate } from "@/lib/date";
 import { defaultChartOfAccounts } from "@/core/data/chart-of-accounts";
 import { isBalanced } from "@/core/services/accounting";
-import { journalEntryFromTransaction, journalNumber } from "@/core/services/posting";
+import {
+  chequeNumber,
+  journalEntryFromCheque,
+  journalEntryFromTransaction,
+  journalNumber,
+  type ChequePhase,
+} from "@/core/services/posting";
 import {
   FEED_EXPENSE_CATEGORY,
   INVENTORY_EXPENSE_CATEGORY,
@@ -1144,6 +1152,80 @@ export class FirebaseFarmRepository implements FarmRepository {
       animalId: input.animalId,
       paymentMethod: input.paymentMethod,
     });
+  }
+
+  /* --------------------------------- Cheques -------------------------------- */
+
+  getCheques = () => this.all<Cheque>(paths.cheques(this.farmId), orderBy("dueDate"));
+
+  /** Builds and writes the entry for one stage of a cheque's life. */
+  private async postCheque(
+    cheque: Cheque,
+    phase: ChequePhase,
+    opts: { treasuryAccountId?: ID; date?: string } = {},
+  ): Promise<ID | null> {
+    const accounts = await this.getAccounts();
+    const seq = (await this.getCheques()).length + 1;
+    const built = journalEntryFromCheque(
+      cheque,
+      phase,
+      accounts,
+      chequeNumber(cheque.kind, opts.date ?? cheque.dueDate, seq),
+      opts,
+    );
+    if (!built) return null;
+    const id = `jv_chq_${cheque.id}_${phase}`;
+    await setDoc(
+      doc(this.db, paths.journalEntries(this.farmId), id),
+      omitUndefined({ ...built, id, farmId: this.farmId }),
+      { merge: true },
+    );
+    return id;
+  }
+
+  async saveCheque(cheque: EventWrite<Omit<Cheque, "id" | "farmId">>): Promise<Cheque> {
+    const id = cheque.id ?? doc(this.col(paths.cheques(this.farmId))).id;
+    const isNew = !cheque.id;
+    const record = {
+      ...cheque,
+      id,
+      farmId: this.farmId,
+      createdAt: cheque.createdAt ?? new Date().toISOString(),
+    } as Cheque;
+
+    if (isNew) {
+      const entryId = await this.postCheque(record, "received");
+      if (entryId) record.entryIds = [entryId];
+    }
+    await setDoc(doc(this.db, paths.cheques(this.farmId), id), omitUndefined(record), {
+      merge: true,
+    });
+    return record;
+  }
+
+  async setChequeStatus(
+    id: ID,
+    status: ChequeStatus,
+    opts: { treasuryAccountId?: ID; date?: string } = {},
+  ): Promise<Cheque> {
+    const ref = doc(this.db, paths.cheques(this.farmId), id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) throw new Error("not-found");
+    const cheque = { id, ...snap.data() } as Cheque;
+    if (cheque.status !== "held") throw new Error("already-settled");
+
+    let entryId: ID | null = null;
+    if (status === "collected") entryId = await this.postCheque(cheque, "settled", opts);
+    else if (status === "bounced" || status === "cancelled")
+      entryId = await this.postCheque(cheque, "bounced", opts);
+
+    const patch = {
+      status,
+      settledAt: opts.date ?? new Date().toISOString().slice(0, 10),
+      entryIds: [...(cheque.entryIds ?? []), ...(entryId ? [entryId] : [])],
+    };
+    await setDoc(ref, omitUndefined(patch), { merge: true });
+    return { ...cheque, ...patch };
   }
 
   /* ------------------------------- Accounting ------------------------------- */

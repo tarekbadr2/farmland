@@ -20,6 +20,7 @@ import {
   useCloseFiscalYear,
   usePartners,
   useSaveJournalEntry,
+  useCheques,
 } from "@/hooks/use-farm-data";
 import {
   accountBalances,
@@ -33,10 +34,12 @@ import {
 import { JournalEntryDialog } from "@/components/accounting/journal-entry-dialog";
 import { AccountFormDialog } from "@/components/accounting/account-form-dialog";
 import { VoucherDialog } from "@/components/accounting/voucher-dialog";
+import { PartnerStatementDialog } from "@/components/accounting/partner-statement-dialog";
+import { ChequeDialog, ChequeSettleDialog } from "@/components/accounting/cheque-dialog";
 import { reverseEntry, journalNumber } from "@/core/services/posting";
 import { formatDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
-import type { Account, JournalEntry } from "@/core/domain/types";
+import type { Account, Cheque, JournalEntry, Partner } from "@/core/domain/types";
 
 export default function AccountingPage() {
   const { locale, formatCurrency } = useI18n();
@@ -54,6 +57,12 @@ export default function AccountingPage() {
   const pl = React.useMemo(() => incomeStatement(accounts, entries), [accounts, entries]);
   const bs = React.useMemo(() => balanceSheet(accounts, entries), [accounts, entries]);
   const { data: partners = [] } = usePartners();
+  const { data: cheques = [] } = useCheques();
+  const partnerName = (id?: string) => {
+    const p = partners.find((x) => x.id === id);
+    return p ? (ar ? p.nameAr : p.name) : "—";
+  };
+  const heldCheques = cheques.filter((c) => c.status === "held");
   const partnerBal = React.useMemo(
     () => partnerBalances(accounts, entries),
     [accounts, entries],
@@ -186,6 +195,7 @@ export default function AccountingPage() {
           <TabsTrigger value="journal">{ar ? "القيود" : "Journal"}</TabsTrigger>
           <TabsTrigger value="trial">{ar ? "ميزان المراجعة" : "Trial balance"}</TabsTrigger>
           <TabsTrigger value="balances">{ar ? "أرصدة العملاء والموردين" : "Customer & supplier balances"}</TabsTrigger>
+          <TabsTrigger value="cheques">{ar ? "أوراق القبض والدفع" : "Cheques"}</TabsTrigger>
           <TabsTrigger value="statements">{ar ? "القوائم المالية" : "Statements"}</TabsTrigger>
         </TabsList>
 
@@ -423,12 +433,13 @@ export default function AccountingPage() {
               caption={ar ? "مستحق لنا" : "Owed to the farm"}
               total={totalReceivable}
               rows={receivables.map((x) => ({
-                id: x.partner.id,
+                partner: x.partner,
                 name: ar ? x.partner.nameAr : x.partner.name,
                 amount: x.row!.balance,
               }))}
               empty={ar ? "لا توجد مستحقات." : "Nothing outstanding."}
               formatCurrency={formatCurrency}
+              statementLabel={ar ? "كشف حساب" : "Statement"}
             />
             <PartnerBalanceCard
               title={ar ? "أرصدة الموردين" : "Supplier balances"}
@@ -436,14 +447,120 @@ export default function AccountingPage() {
               total={totalPayable}
               tone="destructive"
               rows={payables.map((x) => ({
-                id: x.partner.id,
+                partner: x.partner,
                 name: ar ? x.partner.nameAr : x.partner.name,
                 amount: Math.abs(x.row!.balance),
               }))}
               empty={ar ? "لا توجد التزامات." : "Nothing owed."}
               formatCurrency={formatCurrency}
+              statementLabel={ar ? "كشف حساب" : "Statement"}
             />
           </div>
+        </TabsContent>
+
+        {/* -------------------------------- Cheques ------------------------------- */}
+        <TabsContent value="cheques">
+          <Card>
+            <div className="flex flex-wrap items-end justify-between gap-2 px-5 pb-2 pt-4">
+              <div>
+                <CardTitle>{ar ? "أوراق القبض والدفع" : "Cheques"}</CardTitle>
+                <CardDescription>
+                  {ar
+                    ? "الشيك ليس نقدية بعد — يصبح نقدية عند التحصيل."
+                    : "A cheque isn't cash yet — it becomes cash when it clears."}
+                </CardDescription>
+              </div>
+              <div className="flex gap-2">
+                <ChequeDialog
+                  kind="receivable"
+                  trigger={
+                    <Button variant="outline" size="sm">
+                      <ArrowDownLeft /> {ar ? "ورقة قبض" : "Received"}
+                    </Button>
+                  }
+                />
+                <ChequeDialog
+                  kind="payable"
+                  trigger={
+                    <Button variant="outline" size="sm">
+                      <ArrowUpRight /> {ar ? "ورقة دفع" : "Issued"}
+                    </Button>
+                  }
+                />
+              </div>
+            </div>
+            <CardContent className="px-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-[13px]">
+                  <thead className="border-y border-border bg-muted/40 text-[12px] text-muted-foreground">
+                    <tr>
+                      <th className="p-2.5 text-start font-medium">{ar ? "رقم الشيك" : "Cheque"}</th>
+                      <th className="p-2.5 text-start font-medium">{ar ? "النوع" : "Type"}</th>
+                      <th className="p-2.5 text-start font-medium">{ar ? "الطرف" : "Party"}</th>
+                      <th className="p-2.5 text-start font-medium">{ar ? "الاستحقاق" : "Due"}</th>
+                      <th className="p-2.5 text-end font-medium">{ar ? "المبلغ" : "Amount"}</th>
+                      <th className="p-2.5 text-start font-medium">{ar ? "الحالة" : "Status"}</th>
+                      <th className="p-2.5" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cheques.map((c) => (
+                      <tr key={c.id} className="border-b border-border/60">
+                        <td className="p-2.5 tabular-nums">{c.chequeNumber}</td>
+                        <td className="p-2.5 text-muted-foreground">
+                          {c.kind === "receivable" ? (ar ? "قبض" : "Receivable") : ar ? "دفع" : "Payable"}
+                        </td>
+                        <td className="p-2.5">{partnerName(c.partnerId)}</td>
+                        <td className="p-2.5 whitespace-nowrap text-muted-foreground">
+                          {formatDate(c.dueDate, locale)}
+                        </td>
+                        <td className="p-2.5 text-end tabular-nums">{formatCurrency(c.amount)}</td>
+                        <td className="p-2.5">
+                          <Badge variant={CHEQUE_TONE[c.status]}>
+                            {ar ? CHEQUE_AR[c.status] : CHEQUE_EN[c.status]}
+                          </Badge>
+                        </td>
+                        <td className="p-2.5">
+                          {/* Only a held cheque can still go either way. */}
+                          {c.status === "held" && (
+                            <div className="flex justify-end gap-1">
+                              <ChequeSettleDialog
+                                cheque={c}
+                                mode="collect"
+                                trigger={
+                                  <Button size="sm" variant="outline">
+                                    {c.kind === "receivable"
+                                      ? ar ? "تحصيل" : "Collect"
+                                      : ar ? "سداد" : "Pay"}
+                                  </Button>
+                                }
+                              />
+                              <ChequeSettleDialog
+                                cheque={c}
+                                mode="bounce"
+                                trigger={
+                                  <Button size="sm" variant="ghost" className="text-muted-foreground">
+                                    {ar ? "رد" : "Bounce"}
+                                  </Button>
+                                }
+                              />
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {cheques.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-muted-foreground">
+                          {ar ? "لا توجد أوراق مسجّلة." : "No cheques recorded."}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ------------------------------ Statements ------------------------------ */}
@@ -615,14 +732,16 @@ function PartnerBalanceCard({
   empty,
   formatCurrency,
   tone,
+  statementLabel,
 }: {
   title: string;
   caption: string;
   total: number;
-  rows: { id: string; name: string; amount: number }[];
+  rows: { partner: Partner; name: string; amount: number }[];
   empty: string;
   formatCurrency: (n: number) => string;
   tone?: "destructive";
+  statementLabel: string;
 }) {
   return (
     <Card>
@@ -633,10 +752,21 @@ function PartnerBalanceCard({
       <CardContent className="space-y-1.5 text-[13px]">
         {rows.length === 0 && <p className="py-6 text-center text-muted-foreground">{empty}</p>}
         {rows.map((r) => (
-          <div key={r.id} className="flex items-center justify-between border-b border-border/50 py-1.5">
-            <span className="truncate">{r.name}</span>
-            <span className="tabular-nums">{formatCurrency(r.amount)}</span>
-          </div>
+          // The whole row opens that party's statement — the number alone rarely
+          // answers the question, "what makes it up?" does.
+          <PartnerStatementDialog
+            key={r.partner.id}
+            partner={r.partner}
+            trigger={
+              <button
+                className="flex w-full items-center justify-between border-b border-border/50 py-1.5 text-start transition hover:bg-accent/40"
+                aria-label={`${statementLabel} — ${r.name}`}
+              >
+                <span className="truncate">{r.name}</span>
+                <span className="tabular-nums">{formatCurrency(r.amount)}</span>
+              </button>
+            }
+          />
         ))}
         {rows.length > 0 && (
           <div className="flex items-center justify-between pt-2 text-[14px] font-semibold">
@@ -650,3 +780,22 @@ function PartnerBalanceCard({
     </Card>
   );
 }
+
+const CHEQUE_EN: Record<Cheque["status"], string> = {
+  held: "Held",
+  collected: "Cleared",
+  bounced: "Bounced",
+  cancelled: "Cancelled",
+};
+const CHEQUE_AR: Record<Cheque["status"], string> = {
+  held: "بالمحفظة",
+  collected: "محصّل",
+  bounced: "مرتد",
+  cancelled: "ملغى",
+};
+const CHEQUE_TONE: Record<Cheque["status"], "warning" | "success" | "destructive" | "secondary"> = {
+  held: "warning",
+  collected: "success",
+  bounced: "destructive",
+  cancelled: "secondary",
+};

@@ -16,8 +16,14 @@ import {
   partnerBalances,
   partnerStatement,
 } from "./accounting";
-import { journalEntryFromVoucher, reverseEntry, voucherNumber } from "./posting";
-import type { Account, JournalEntry } from "@/core/domain/types";
+import {
+  chequeNumber,
+  journalEntryFromCheque,
+  journalEntryFromVoucher,
+  reverseEntry,
+  voucherNumber,
+} from "./posting";
+import type { Account, Cheque, JournalEntry } from "@/core/domain/types";
 
 /* A small but realistic farm chart of accounts. */
 const acc = (
@@ -402,5 +408,93 @@ describe("reverseEntry", () => {
   it("can be back-dated to the correction date", () => {
     const r = reverseEntry(original, "JV-0010", { date: "2026-04-15" });
     expect(r.date).toBe("2026-04-15");
+  });
+});
+
+describe("cheques (أوراق قبض / دفع)", () => {
+  // The lifecycle needs the four system accounts to key off.
+  const chequeAccounts: Account[] = [
+    { ...acc("c101", "1101", "Cash", "asset"), systemKey: "cash" },
+    { ...acc("c102", "1102", "Bank", "asset"), systemKey: "bank" },
+    { ...acc("c103", "1103", "Customers", "asset"), systemKey: "receivable" },
+    { ...acc("c104", "1104", "Notes receivable", "asset"), systemKey: "notes_receivable" },
+    { ...acc("c201", "2101", "Suppliers", "liability"), systemKey: "payable" },
+    { ...acc("c202", "2102", "Notes payable", "liability"), systemKey: "notes_payable" },
+  ];
+
+  const incoming: Cheque = {
+    id: "chq1",
+    farmId: "f1",
+    kind: "receivable",
+    chequeNumber: "0012345",
+    amount: 10_000,
+    issuedDate: "2026-05-01",
+    dueDate: "2026-06-01",
+    partnerId: "customer_1",
+    status: "held",
+  };
+
+  it("numbers receivable and payable cheques separately", () => {
+    expect(chequeNumber("receivable", "2026-05-01", 3)).toBe("CR-2026-0003");
+    expect(chequeNumber("payable", "2026-05-01", 3)).toBe("CP-2026-0003");
+  });
+
+  it("taking a cheque moves the debt out of receivables into notes", () => {
+    const e = journalEntryFromCheque(incoming, "received", chequeAccounts, "CR-2026-0001")!;
+    expect(e.lines[0]).toMatchObject({ accountId: "c104", debit: 10_000 }); // notes receivable up
+    expect(e.lines[1]).toMatchObject({ accountId: "c103", credit: 10_000 }); // customer cleared
+    expect(isBalanced(e.lines)).toBe(true);
+  });
+
+  it("collecting it turns the note into money in the chosen treasury", () => {
+    const e = journalEntryFromCheque(incoming, "settled", chequeAccounts, "CR-2026-0002", {
+      treasuryAccountId: "c101",
+    })!;
+    expect(e.lines[0]).toMatchObject({ accountId: "c101", debit: 10_000 });
+    expect(e.lines[1]).toMatchObject({ accountId: "c104", credit: 10_000 });
+  });
+
+  it("a bounced cheque puts the debt back on the customer", () => {
+    const e = journalEntryFromCheque(incoming, "bounced", chequeAccounts, "CR-2026-0003")!;
+    expect(e.lines[0]).toMatchObject({ accountId: "c103", debit: 10_000 });
+    expect(e.lines[1]).toMatchObject({ accountId: "c104", credit: 10_000 });
+  });
+
+  it("received-then-bounced leaves every account exactly where it started", () => {
+    const a = { ...journalEntryFromCheque(incoming, "received", chequeAccounts, "CR-1")!, id: "e1" };
+    const b = { ...journalEntryFromCheque(incoming, "bounced", chequeAccounts, "CR-2")!, id: "e2" };
+    const balances = accountBalances(chequeAccounts, [a, b]);
+    expect(balances.get("c104")!.balance).toBe(0); // the note is gone
+    expect(balances.get("c103")!.balance).toBe(0); // the debt is back, netting the original
+  });
+
+  it("received-then-collected leaves the money in the bank and no note", () => {
+    const a = { ...journalEntryFromCheque(incoming, "received", chequeAccounts, "CR-1")!, id: "e1" };
+    const b = {
+      ...journalEntryFromCheque(incoming, "settled", chequeAccounts, "CR-2", { treasuryAccountId: "c102" })!,
+      id: "e2",
+    };
+    const balances = accountBalances(chequeAccounts, [a, b]);
+    expect(balances.get("c102")!.balance).toBe(10_000); // bank up
+    expect(balances.get("c104")!.balance).toBe(0); // note settled
+    expect(balances.get("c103")!.balance).toBe(-10_000); // the original invoice cleared
+  });
+
+  it("mirrors the whole flow for a cheque the farm writes out", () => {
+    const outgoing: Cheque = { ...incoming, id: "chq2", kind: "payable", partnerId: "supplier_1" };
+    const issued = journalEntryFromCheque(outgoing, "received", chequeAccounts, "CP-1")!;
+    expect(issued.lines[0]).toMatchObject({ accountId: "c201", debit: 10_000 }); // supplier cleared
+    expect(issued.lines[1]).toMatchObject({ accountId: "c202", credit: 10_000 }); // note payable up
+
+    const paid = journalEntryFromCheque(outgoing, "settled", chequeAccounts, "CP-2", {
+      treasuryAccountId: "c102",
+    })!;
+    expect(paid.lines[0]).toMatchObject({ accountId: "c202", debit: 10_000 });
+    expect(paid.lines[1]).toMatchObject({ accountId: "c102", credit: 10_000 }); // bank down
+  });
+
+  it("refuses to post when the chart is missing the note accounts", () => {
+    const bare = [acc("x", "1", "Assets", "asset", true)];
+    expect(journalEntryFromCheque(incoming, "received", bare, "CR-1")).toBeNull();
   });
 });

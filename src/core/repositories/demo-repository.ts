@@ -9,7 +9,13 @@ import { getDataset, TODAY, woodsCurve, woodsShape, seasonalFactor } from "@/cor
 import { addDays, diffDays, rangeDays } from "@/lib/date";
 import { mulberry32, round, clamp, sum } from "@/lib/utils";
 import { isBalanced } from "@/core/services/accounting";
-import { journalEntryFromTransaction, journalNumber } from "@/core/services/posting";
+import {
+  chequeNumber,
+  journalEntryFromCheque,
+  journalEntryFromTransaction,
+  journalNumber,
+  type ChequePhase,
+} from "@/core/services/posting";
 import {
   FEED_EXPENSE_CATEGORY,
   INVENTORY_EXPENSE_CATEGORY,
@@ -27,6 +33,8 @@ import {
 } from "@/core/domain/rules";
 import type {
   Account,
+  Cheque,
+  ChequeStatus,
   Animal,
   AnimalDisposal,
   Asset,
@@ -820,6 +828,66 @@ export class DemoFarmRepository implements FarmRepository {
       animalId: input.animalId,
       paymentMethod: input.paymentMethod,
     });
+  }
+
+  /* -------------------------------- Cheques -------------------------------- */
+
+  getCheques = () => tick(this.db.cheques);
+
+  /** Posts the cheque's entry and remembers which entry it produced. */
+  private postCheque(
+    cheque: Cheque,
+    phase: ChequePhase,
+    opts: { treasuryAccountId?: ID; date?: string } = {},
+  ) {
+    const built = journalEntryFromCheque(
+      cheque,
+      phase,
+      this.db.accounts,
+      chequeNumber(cheque.kind, opts.date ?? cheque.dueDate, this.db.cheques.length + 1),
+      opts,
+    );
+    if (!built) return;
+    const entry = { ...built, id: `jv_chq_${cheque.id}_${phase}` } as JournalEntry;
+    const idx = this.db.journalEntries.findIndex((e) => e.id === entry.id);
+    if (idx >= 0) this.db.journalEntries[idx] = entry;
+    else this.db.journalEntries.unshift(entry);
+    cheque.entryIds = [...(cheque.entryIds ?? []).filter((id) => id !== entry.id), entry.id];
+  }
+
+  async saveCheque(cheque: EventWrite<Omit<Cheque, "id" | "farmId">>) {
+    const idx = cheque.id ? this.db.cheques.findIndex((c) => c.id === cheque.id) : -1;
+    if (idx >= 0) {
+      this.db.cheques[idx] = { ...this.db.cheques[idx], ...cheque } as Cheque;
+      return tick(this.db.cheques[idx]);
+    }
+    const created = {
+      ...cheque,
+      id: cheque.id ?? `chq_${Date.now()}`,
+      farmId: this.db.farm.id,
+      createdAt: new Date().toISOString(),
+    } as Cheque;
+    this.db.cheques.unshift(created);
+    // Taking (or writing) a cheque moves the debt into notes straight away.
+    this.postCheque(created, "received");
+    return tick(created);
+  }
+
+  async setChequeStatus(
+    id: ID,
+    status: ChequeStatus,
+    opts: { treasuryAccountId?: ID; date?: string } = {},
+  ) {
+    const cheque = this.db.cheques.find((c) => c.id === id);
+    if (!cheque) throw new Error("not-found");
+    if (cheque.status !== "held") throw new Error("already-settled");
+
+    if (status === "collected") this.postCheque(cheque, "settled", opts);
+    else if (status === "bounced" || status === "cancelled") this.postCheque(cheque, "bounced", opts);
+
+    cheque.status = status;
+    cheque.settledAt = opts.date ?? new Date().toISOString().slice(0, 10);
+    return tick(cheque);
   }
 
   /* ------------------------------ Accounting ------------------------------ */

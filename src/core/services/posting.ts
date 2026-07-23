@@ -7,7 +7,16 @@
  * and which side it lands on.
  */
 
-import type { Account, ID, JournalEntry, JournalLine, Transaction, TxnCategory } from "@/core/domain/types";
+import type {
+  Account,
+  Cheque,
+  ChequeKind,
+  ID,
+  JournalEntry,
+  JournalLine,
+  Transaction,
+  TxnCategory,
+} from "@/core/domain/types";
 import { findBySystemKey } from "@/core/data/chart-of-accounts";
 import { round } from "@/lib/utils";
 
@@ -199,5 +208,88 @@ export function reverseEntry(
     })),
     sourceKind: entry.sourceKind,
     sourceId: entry.sourceId,
+  };
+}
+
+/* --------------------------------- Cheques --------------------------------- */
+
+/** Which stage of a cheque's life is being booked. */
+export type ChequePhase = "received" | "settled" | "bounced";
+
+/** Cheques get their own series: أوراق قبض CR-, أوراق دفع CP-. */
+export function chequeNumber(kind: ChequeKind, date: string, seq: number): string {
+  const prefix = kind === "receivable" ? "CR" : "CP";
+  return `${prefix}-${date.slice(0, 4)}-${String(seq).padStart(4, "0")}`;
+}
+
+/**
+ * One stage of a cheque's life → one balanced entry.
+ *
+ * `received`  — taking a customer's cheque moves their debt from receivables
+ *               into notes receivable (and the mirror for one we write out).
+ * `settled`   — the cheque cleared: the note becomes real money in a treasury.
+ * `bounced`   — it didn't clear, so the debt goes back where it came from.
+ *
+ * Returns null when the chart is missing an account it needs, so a half-formed
+ * entry can never post.
+ */
+export function journalEntryFromCheque(
+  cheque: Cheque,
+  phase: ChequePhase,
+  accounts: Account[],
+  number: string,
+  opts: { date?: string; treasuryAccountId?: ID } = {},
+): Omit<JournalEntry, "id"> | null {
+  const amount = round(Math.abs(cheque.amount), 2);
+  if (amount === 0) return null;
+
+  const receivable = cheque.kind === "receivable";
+  const note = findBySystemKey(accounts, receivable ? "notes_receivable" : "notes_payable");
+  const party = findBySystemKey(accounts, receivable ? "receivable" : "payable");
+  if (!note || !party) return null;
+
+  const line = (accountId: ID, side: "debit" | "credit"): JournalLine => ({
+    accountId,
+    debit: side === "debit" ? amount : 0,
+    credit: side === "credit" ? amount : 0,
+    partnerId: cheque.partnerId,
+  });
+
+  let lines: JournalLine[];
+  let what: string;
+
+  if (phase === "received") {
+    // The party's balance clears; the note takes its place.
+    lines = receivable
+      ? [line(note.id, "debit"), line(party.id, "credit")]
+      : [line(party.id, "debit"), line(note.id, "credit")];
+    what = receivable ? "Cheque received" : "Cheque issued";
+  } else if (phase === "settled") {
+    const treasury = opts.treasuryAccountId
+      ? accounts.find((a) => a.id === opts.treasuryAccountId)
+      : findBySystemKey(accounts, "bank") ?? findBySystemKey(accounts, "cash");
+    if (!treasury) return null;
+    lines = receivable
+      ? [line(treasury.id, "debit"), line(note.id, "credit")]
+      : [line(note.id, "debit"), line(treasury.id, "credit")];
+    what = receivable ? "Cheque collected" : "Cheque paid";
+  } else {
+    // Bounced (or cancelled): undo the note, the debt returns to the party.
+    lines = receivable
+      ? [line(party.id, "debit"), line(note.id, "credit")]
+      : [line(note.id, "debit"), line(party.id, "credit")];
+    what = "Cheque returned unpaid";
+  }
+
+  return {
+    farmId: cheque.farmId,
+    number,
+    date: opts.date ?? cheque.dueDate,
+    description: `${what} — ${cheque.chequeNumber}`,
+    reference: cheque.chequeNumber,
+    status: "posted",
+    lines,
+    sourceKind: "voucher",
+    sourceId: cheque.id,
   };
 }

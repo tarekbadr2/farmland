@@ -783,3 +783,35 @@ export interface FiscalYear {
   status: "open" | "closed";
   closedAt?: string;
 }
+
+/* --------------------------------- Cheques --------------------------------- */
+/* أوراق القبض / أوراق الدفع — post-dated cheques and promissory notes.
+ *
+ * A cheque isn't cash yet: taking one from a customer converts their debt into
+ * a note, and only collecting it turns the note into money. Each step in that
+ * life posts its own journal entry, so the books follow the paper. */
+
+export type ChequeKind = "receivable" | "payable";
+
+/** held → collected, or held → bounced / cancelled. */
+export type ChequeStatus = "held" | "collected" | "bounced" | "cancelled";
+
+export interface Cheque {
+  id: ID;
+  farmId: ID;
+  kind: ChequeKind;
+  /** The number printed on the cheque itself. */
+  chequeNumber: string;
+  amount: number;
+  issuedDate: string;
+  /** When it can be presented — drives the "due soon" view. */
+  dueDate: string;
+  partnerId?: ID;
+  bankName?: string;
+  status: ChequeStatus;
+  notes?: string;
+  /** Journal entries this cheque has produced, in order. */
+  entryIds?: ID[];
+  createdAt?: string;
+  settledAt?: string;
+}

@@ -2,7 +2,15 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getRepository, type AnimalQuery } from "@/core/repositories";
-import type { Account, FarmTask, FiscalYear, ID, JournalEntry } from "@/core/domain/types";
+import type {
+  Account,
+  Cheque,
+  ChequeStatus,
+  FarmTask,
+  FiscalYear,
+  ID,
+  JournalEntry,
+} from "@/core/domain/types";
 import type { CostInput, PurchaseInput } from "@/core/services/automation";
 
 const repo = getRepository();
@@ -32,6 +40,7 @@ export const qk = {
   invoices: ["invoices"] as const,
   partners: ["partners"] as const,
   assets: ["assets"] as const,
+  cheques: ["cheques"] as const,
   accounts: ["accounts"] as const,
   journal: ["journal"] as const,
   fiscalYears: ["fiscal-years"] as const,
@@ -196,6 +205,43 @@ export function useRecordCost() {
     mutationFn: (input: CostInput) => repo.recordCost(input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.transactions });
+      qc.invalidateQueries({ queryKey: qk.journal });
+    },
+  });
+}
+
+/* --------------------------------- Cheques --------------------------------- */
+
+export const useCheques = () =>
+  useQuery({ queryKey: qk.cheques, queryFn: () => repo.getCheques() });
+
+export function useSaveCheque() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (cheque: Omit<Cheque, "id" | "farmId"> & { id?: ID }) => repo.saveCheque(cheque),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.cheques });
+      qc.invalidateQueries({ queryKey: qk.journal }); // it posts an entry
+    },
+  });
+}
+
+export function useSetChequeStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      status,
+      treasuryAccountId,
+      date,
+    }: {
+      id: ID;
+      status: ChequeStatus;
+      treasuryAccountId?: ID;
+      date?: string;
+    }) => repo.setChequeStatus(id, status, { treasuryAccountId, date }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.cheques });
       qc.invalidateQueries({ queryKey: qk.journal });
     },
   });

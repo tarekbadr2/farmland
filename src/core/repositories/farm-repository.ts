@@ -8,6 +8,8 @@
 
 import type {
   Account,
+  Cheque,
+  ChequeStatus,
   Alert,
   Animal,
   AnimalDisposal,
@@ -224,6 +226,20 @@ export interface FarmRepository {
   recordPurchase(input: PurchaseInput): Promise<Transaction>;
   /** Books a non-stock cost (maintenance, transport, wages) the same way. */
   recordCost(input: CostInput): Promise<Transaction>;
+
+  /* -------------------------------- Cheques -------------------------------- */
+  getCheques(): Promise<Cheque[]>;
+  /** Records a cheque and posts the entry moving the debt into notes. */
+  saveCheque(cheque: EventWrite<Omit<Cheque, "id" | "farmId">>): Promise<Cheque>;
+  /**
+   * Settles, returns or cancels a cheque and posts the matching entry —
+   * collecting needs the treasury the money landed in.
+   */
+  setChequeStatus(
+    id: ID,
+    status: ChequeStatus,
+    opts?: { treasuryAccountId?: ID; date?: string },
+  ): Promise<Cheque>;
 
   /* ------------------------------ Accounting ------------------------------ */
   /** The chart of accounts. Seeded with a default farm tree on first read. */

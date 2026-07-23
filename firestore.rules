@@ -209,6 +209,12 @@ service cloud.firestore {
       // The books. Any member may read them; only the people who own the
       // numbers may write. Deleting a posted entry is never allowed — the
       // ledger is corrected with a reversing entry, so the audit trail stands.
+      // Cheques carry money, so they follow the same trust as the books.
+      match /cheques/{chequeId} {
+        allow read: if isMember(farmId);
+        allow write: if hasRole(farmId, ['owner', 'manager', 'accountant']);
+        allow delete: if false;
+      }
       match /accounts/{accountId} {
         allow read: if isMember(farmId);
         allow write: if hasRole(farmId, ['owner', 'accountant']);

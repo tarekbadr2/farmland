@@ -13,9 +13,14 @@
 import { mulberry32, clamp, round } from "@/lib/utils";
 import { addDays, diffDays, rangeDays, toISODate } from "@/lib/date";
 import { defaultChartOfAccounts } from "@/core/data/chart-of-accounts";
-import { journalFromTransactions } from "@/core/services/posting";
+import {
+  chequeNumber,
+  journalEntryFromCheque,
+  journalFromTransactions,
+} from "@/core/services/posting";
 import type {
   Account,
+  Cheque,
   Alert,
   Animal,
   Asset,
@@ -94,6 +99,7 @@ export interface FarmDataset {
   invoices: Invoice[];
   partners: Partner[];
   assets: Asset[];
+  cheques: Cheque[];
   accounts: Account[];
   journalEntries: JournalEntry[];
   fiscalYears: FiscalYear[];
@@ -1270,8 +1276,48 @@ function build(): FarmDataset {
 
   // The books, derived from the money already generated above so the demo
   // ledger always agrees with the finance page.
+  // A couple of live cheques so the أوراق قبض screen isn't empty on day one.
+  const cheques: Cheque[] = [
+    {
+      id: "chq_1",
+      farmId: FARM_ID,
+      kind: "receivable",
+      chequeNumber: "0451203",
+      amount: 185_000,
+      issuedDate: addDays(TODAY, -20),
+      dueDate: addDays(TODAY, 10),
+      partnerId: partners.find((p) => p.kind === "milk_buyer")?.id,
+      bankName: "Banque Misr",
+      status: "held",
+    },
+    {
+      id: "chq_2",
+      farmId: FARM_ID,
+      kind: "payable",
+      chequeNumber: "0088771",
+      amount: 96_000,
+      issuedDate: addDays(TODAY, -12),
+      dueDate: addDays(TODAY, 18),
+      partnerId: partners.find((p) => p.kind === "supplier")?.id,
+      bankName: "CIB",
+      status: "held",
+    },
+  ];
+
   const accounts = defaultChartOfAccounts(FARM_ID);
   const journalEntries = journalFromTransactions(transactions, accounts);
+  // Held cheques must already have moved the debt into notes, or the register
+  // would show paper the books know nothing about.
+  cheques.forEach((c, i) => {
+    const built = journalEntryFromCheque(
+      c,
+      "received",
+      accounts,
+      chequeNumber(c.kind, c.issuedDate, i + 1),
+      { date: c.issuedDate },
+    );
+    if (built) journalEntries.push({ ...built, id: `jv_chq_${c.id}_received` });
+  });
   const fiscalYears: FiscalYear[] = [
     {
       id: "fy_current",
@@ -1302,6 +1348,7 @@ function build(): FarmDataset {
     invoices,
     partners,
     assets,
+    cheques,
     accounts,
     journalEntries,
     fiscalYears,
