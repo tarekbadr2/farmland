@@ -94,7 +94,7 @@ export function PlanPicker({
               <p className="mt-0.5 text-[12px] text-muted-foreground">{meta.tagline}</p>
 
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-semibold tracking-tight">
+                <span className="text-lg font-semibold tracking-tight tabular-nums">
                   {formatEgp(plan.amount, ar ? "ar" : "en")}
                 </span>
                 <span className="text-[12px] text-muted-foreground">{ar ? "/ شهر" : "/ mo"}</span>

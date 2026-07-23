@@ -187,7 +187,7 @@ export default function LandingPage() {
                 <p className="text-[15px] font-semibold">{meta.name}</p>
                 <p className="mt-1 min-h-[34px] text-[12.5px] text-muted-foreground">{meta.tagline}</p>
                 <div className="mt-4 flex items-baseline gap-1">
-                  <span className="text-3xl font-semibold tracking-tight">
+                  <span className="text-xl font-semibold tracking-tight tabular-nums">
                     {formatEgp(plan.amount, ar ? "ar" : "en")}
                   </span>
                   <span className="text-[12px] text-muted-foreground">{ar ? "/ شهر" : "/ mo"}</span>
