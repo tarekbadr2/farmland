@@ -48,7 +48,7 @@ export function BillingSettings() {
   const usagePct = e.aiQuota > 0 ? Math.min(100, Math.round((e.aiUsed / e.aiQuota) * 100)) : 0;
   const periodDate = e.periodEndsAt ? formatDate(e.periodEndsAt, locale) : null;
 
-  const doCancel = async (resume: boolean) => {
+  const doCancel = async (resume: boolean, wasTrial = false) => {
     setBusy(true);
     try {
       const res = await cancelSubscription(resume);
@@ -58,7 +58,9 @@ export function BillingSettings() {
       toast.success(
         resume
           ? ar ? "تم استئناف اشتراكك." : "Your subscription is resumed."
-          : ar ? "تم إلغاء الاشتراك — يبقى نشطًا حتى نهاية الفترة." : "Subscription canceled — active until the period ends.",
+          : wasTrial
+            ? ar ? "تم إلغاء التجربة المجانية. لم تُدفع أي رسوم." : "Free trial canceled — no charge was made."
+            : ar ? "تم إلغاء الاشتراك — يبقى نشطًا حتى نهاية الفترة." : "Subscription canceled — active until the period ends.",
       );
     } catch {
       toast.error(ar ? "تعذّر تنفيذ الطلب. حاول مرة أخرى." : "Couldn't complete that. Try again.");
@@ -132,6 +134,10 @@ export function BillingSettings() {
             <Button variant="ghost" className="w-full text-muted-foreground" onClick={() => setCancelOpen(true)}>
               {ar ? "إلغاء الاشتراك" : "Cancel subscription"}
             </Button>
+          ) : e.trialing ? (
+            <Button variant="ghost" className="w-full text-muted-foreground" onClick={() => setCancelOpen(true)}>
+              {ar ? "إلغاء التجربة المجانية" : "Cancel free trial"}
+            </Button>
           ) : null}
 
           <p className="text-[11.5px] leading-relaxed text-muted-foreground">
@@ -162,20 +168,30 @@ export function BillingSettings() {
       <Dialog open={cancelOpen} onOpenChange={(o) => !busy && setCancelOpen(o)}>
         <DialogContent showClose={!busy}>
           <DialogHeader>
-            <DialogTitle>{ar ? "إلغاء الاشتراك؟" : "Cancel subscription?"}</DialogTitle>
+            <DialogTitle>
+              {e.trialing
+                ? ar ? "إلغاء التجربة المجانية؟" : "Cancel free trial?"
+                : ar ? "إلغاء الاشتراك؟" : "Cancel subscription?"}
+            </DialogTitle>
             <DialogDescription>
-              {ar
-                ? `ستحتفظ بكامل الميزات حتى ${periodDate ?? "نهاية فترتك"}، وبعدها يتوقّف الوصول حتى تشترك من جديد. لن تُفقد أي بيانات.`
-                : `You'll keep full access until ${periodDate ?? "the end of your period"}, after which access pauses until you subscribe again. No data is lost.`}
+              {e.trialing
+                ? ar
+                  ? "لم تُدفع أي رسوم ولا توجد بطاقة مسجّلة. سينتهي وصولك المجاني، ويمكنك الاشتراك في أي وقت لاستعادة الوصول الكامل. لن تُفقد أي بيانات."
+                  : "No card was charged and none is on file. Your free access ends, and you can subscribe anytime to restore full access. No data is lost."
+                : ar
+                  ? `ستحتفظ بكامل الميزات حتى ${periodDate ?? "نهاية فترتك"}، وبعدها يتوقّف الوصول حتى تشترك من جديد. لن تُفقد أي بيانات.`
+                  : `You'll keep full access until ${periodDate ?? "the end of your period"}, after which access pauses until you subscribe again. No data is lost.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCancelOpen(false)} disabled={busy}>
               {ar ? "تراجع" : "Never mind"}
             </Button>
-            <Button variant="destructive" onClick={() => doCancel(false)} disabled={busy}>
+            <Button variant="destructive" onClick={() => doCancel(false, e.trialing)} disabled={busy}>
               {busy ? <Loader2 className="animate-spin" /> : null}
-              {ar ? "إلغاء الاشتراك" : "Cancel subscription"}
+              {e.trialing
+                ? ar ? "إلغاء التجربة" : "Cancel trial"
+                : ar ? "إلغاء الاشتراك" : "Cancel subscription"}
             </Button>
           </DialogFooter>
         </DialogContent>
