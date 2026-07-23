@@ -106,6 +106,8 @@ import { isBalanced } from "@/core/services/accounting";
 import {
   chequeNumber,
   invoiceDocNumber,
+  invoiceSeries,
+  nextSequence,
   journalEntryFromCheque,
   journalEntryFromInvoice,
   journalEntryFromInvoicePayment,
@@ -162,6 +164,12 @@ function clearUndefined<T extends object>(value: T): Record<string, unknown> {
 
 /** Collection reads that back whole-page analytics. Bounded, deliberately. */
 const ANALYTIC_LIMIT = 5000;
+
+/**
+ * How many journal entries the books are read from. Exported so the UI can spot
+ * a truncated ledger and say so, rather than showing confident wrong totals.
+ */
+export const LEDGER_READ_LIMIT = 20_000;
 
 function rows<T>(snap: { docs: QueryDocumentSnapshot<DocumentData>[] }): T[] {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
@@ -832,7 +840,7 @@ export class FirebaseFarmRepository implements FarmRepository {
       const existing = await getDoc(ref);
       const number = existing.exists()
         ? (existing.data() as JournalEntry).number
-        : journalNumber(txn.date, (await this.getJournalEntries()).length + 1);
+        : journalNumber(txn.date, nextSequence((await this.getJournalEntries()).map((e) => e.number), "JV"));
       await setDoc(ref, omitUndefined({ ...entry, number }), { merge: true });
     } catch {
       // Best-effort: the transaction is already saved.
@@ -1022,7 +1030,11 @@ export class FirebaseFarmRepository implements FarmRepository {
       const built = journalEntryFromInvoice(
         invoice,
         accounts,
-        invoiceDocNumber(kind, invoice.issuedAt, (await this.getInvoices()).length),
+        invoiceDocNumber(
+          kind,
+          invoice.issuedAt,
+          nextSequence((await this.getInvoices()).map((i) => i.number), invoiceSeries(kind)),
+        ),
         invoiceTotal(invoice),
       );
       if (!built) return;
@@ -1119,7 +1131,10 @@ export class FirebaseFarmRepository implements FarmRepository {
         voucherNumber(
           (settled.kind ?? "sale") === "sale" ? "receipt" : "payment",
           input.date,
-          (await this.getJournalEntries()).length + 1,
+          nextSequence(
+            (await this.getJournalEntries()).map((e) => e.number),
+            (settled.kind ?? "sale") === "sale" ? "RV" : "PV",
+          ),
         ),
       );
       if (settlement) {
@@ -1318,7 +1333,8 @@ export class FirebaseFarmRepository implements FarmRepository {
       id,
       farmId: this.farmId,
       number:
-        order.number ?? workOrderNumber(order.date, (await this.getWorkOrders()).length + 1),
+        order.number ??
+        workOrderNumber(order.date, nextSequence((await this.getWorkOrders()).map((w) => w.number), "WO")),
     } as WorkOrder;
     await setDoc(doc(this.db, paths.workOrders(this.farmId), id), omitUndefined(record), {
       merge: true,
@@ -1439,7 +1455,7 @@ export class FirebaseFarmRepository implements FarmRepository {
     const transfer: LivestockTransfer = {
       id,
       farmId: this.farmId,
-      number: transferNumber(input.date, existing.length + 1),
+      number: transferNumber(input.date, nextSequence(existing.map((t) => t.number), "LT")),
       date: input.date,
       fromZoneId: commonOrigin(input.animalIds, animals),
       toZoneId: input.toZoneId,
@@ -1568,7 +1584,10 @@ export class FirebaseFarmRepository implements FarmRepository {
     opts: { treasuryAccountId?: ID; date?: string } = {},
   ): Promise<ID | null> {
     const accounts = await this.getAccounts();
-    const seq = (await this.getCheques()).length + 1;
+    const seq = nextSequence(
+      (await this.getJournalEntries()).map((e) => e.number),
+      cheque.kind === "receivable" ? "CR" : "CP",
+    );
     const built = journalEntryFromCheque(
       cheque,
       phase,
@@ -1673,11 +1692,20 @@ export class FirebaseFarmRepository implements FarmRepository {
     await deleteDoc(doc(this.db, paths.accounts(this.farmId), id));
   }
 
+  /**
+   * The ledger.
+   *
+   * Every balance on the accounting screen is computed from this list, so the
+   * bound is a correctness concern, not just a performance one: drop entries
+   * and the trial balance still *balances* (each entry is internally balanced)
+   * while being materially wrong. The UI checks for truncation via
+   * `LEDGER_READ_LIMIT` and refuses to claim the books are correct when hit.
+   */
   getJournalEntries = () =>
     this.all<JournalEntry>(
       paths.journalEntries(this.farmId),
       orderBy("date", "desc"),
-      fsLimit(1000),
+      fsLimit(LEDGER_READ_LIMIT),
     );
 
   private async assertYearOpen(fiscalYearId?: ID): Promise<void> {
@@ -1702,7 +1730,7 @@ export class FirebaseFarmRepository implements FarmRepository {
     const id = entry.id ?? doc(this.col(paths.journalEntries(this.farmId))).id;
     const number =
       entry.number ??
-      journalNumber(entry.date, (await this.getJournalEntries()).length + 1);
+      journalNumber(entry.date, nextSequence((await this.getJournalEntries()).map((e) => e.number), "JV"));
     const record = {
       ...entry,
       id,

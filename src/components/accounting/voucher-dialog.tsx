@@ -25,7 +25,12 @@ import {
   usePartners,
   useSaveJournalEntry,
 } from "@/hooks/use-farm-data";
-import { journalEntryFromVoucher, voucherNumber, type VoucherKind } from "@/core/services/posting";
+import {
+  journalEntryFromVoucher,
+  nextSequence,
+  voucherNumber,
+  type VoucherKind,
+} from "@/core/services/posting";
 import { TODAY } from "@/core/data/seed";
 import { cn } from "@/lib/utils";
 
@@ -84,7 +89,8 @@ export function VoucherDialog({ kind, trigger }: { kind: VoucherKind; trigger: R
 
   const submit = async () => {
     if (!canSave) return;
-    const seq = entries.filter((e) => e.sourceKind === "voucher").length + 1;
+    // Counting would re-issue the same number once the ledger read is capped.
+    const seq = nextSequence(entries.map((e) => e.number), receipt ? "RV" : "PV");
     const number = voucherNumber(kind, date, seq);
     const built = journalEntryFromVoucher(
       { kind, date, amount: value, treasuryAccountId, counterAccountId, description: description.trim(), partnerId: partnerId || undefined },

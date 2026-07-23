@@ -12,6 +12,8 @@ import { isBalanced } from "@/core/services/accounting";
 import {
   chequeNumber,
   invoiceDocNumber,
+  invoiceSeries,
+  nextSequence,
   journalEntryFromCheque,
   journalEntryFromInvoice,
   journalEntryFromInvoicePayment,
@@ -642,7 +644,7 @@ export class DemoFarmRepository implements FarmRepository {
     const entry = journalEntryFromTransaction(
       txn,
       this.db.accounts,
-      journalNumber(txn.date, this.db.journalEntries.length + 1),
+      journalNumber(txn.date, nextSequence(this.db.journalEntries.map((e) => e.number), "JV")),
     );
     if (!entry) return; // chart is missing an account — leave the books untouched
     const idx = this.db.journalEntries.findIndex((e) => e.sourceId === txn.id);
@@ -735,7 +737,11 @@ export class DemoFarmRepository implements FarmRepository {
     const built = journalEntryFromInvoice(
       invoice,
       this.db.accounts,
-      invoiceDocNumber(kind, invoice.issuedAt, this.db.invoices.length),
+      invoiceDocNumber(
+        kind,
+        invoice.issuedAt,
+        nextSequence(this.db.invoices.map((i) => i.number), invoiceSeries(kind)),
+      ),
       invoiceTotal(invoice),
     );
     if (!built) return;
@@ -961,7 +967,9 @@ export class DemoFarmRepository implements FarmRepository {
       ...order,
       id: order.id ?? `wo_${Date.now()}`,
       farmId: this.db.farm.id,
-      number: order.number ?? workOrderNumber(order.date, this.db.workOrders.length + 1),
+      number:
+        order.number ??
+        workOrderNumber(order.date, nextSequence(this.db.workOrders.map((w) => w.number), "WO")),
     } as WorkOrder;
     this.db.workOrders.unshift(created);
     return tick(created);
@@ -1050,7 +1058,10 @@ export class DemoFarmRepository implements FarmRepository {
     const transfer: LivestockTransfer = {
       id: `lt_${Date.now()}`,
       farmId: this.db.farm.id,
-      number: transferNumber(input.date, this.db.livestockTransfers.length + 1),
+      number: transferNumber(
+        input.date,
+        nextSequence(this.db.livestockTransfers.map((t) => t.number), "LT"),
+      ),
       date: input.date,
       // Blank when they came from different pens, rather than misreporting one.
       fromZoneId: commonOrigin(input.animalIds, this.db.animals),
@@ -1155,7 +1166,14 @@ export class DemoFarmRepository implements FarmRepository {
       cheque,
       phase,
       this.db.accounts,
-      chequeNumber(cheque.kind, opts.date ?? cheque.dueDate, this.db.cheques.length + 1),
+      chequeNumber(
+        cheque.kind,
+        opts.date ?? cheque.dueDate,
+        nextSequence(
+          this.db.journalEntries.map((e) => e.number),
+          cheque.kind === "receivable" ? "CR" : "CP",
+        ),
+      ),
       opts,
     );
     if (!built) return;
@@ -1258,7 +1276,9 @@ export class DemoFarmRepository implements FarmRepository {
       ...entry,
       id: entry.id ?? `jv_${Date.now()}`,
       farmId: this.db.farm.id,
-      number: entry.number ?? journalNumber(entry.date, this.db.journalEntries.length + 1),
+      number:
+        entry.number ??
+        journalNumber(entry.date, nextSequence(this.db.journalEntries.map((e) => e.number), "JV")),
       createdAt: new Date().toISOString(),
     } as JournalEntry;
     this.db.journalEntries.unshift(created);

@@ -23,6 +23,7 @@ import {
   journalEntryFromInvoice,
   journalEntryFromInvoicePayment,
   journalEntryFromVoucher,
+  nextSequence,
   reverseEntry,
   voucherNumber,
 } from "./posting";
@@ -665,5 +666,35 @@ describe("invoice payments settle rather than re-recognise revenue", () => {
       id: "e2",
     };
     expect(accountBalances(payAccounts, [inv, pay]).get("p103")!.balance).toBe(3_000);
+  });
+});
+
+describe("nextSequence", () => {
+  it("continues from the highest number already issued", () => {
+    expect(nextSequence(["JV-2026-0001", "JV-2026-0007", "JV-2026-0003"], "JV")).toBe(8);
+  });
+
+  it("starts at 1 when the series is empty", () => {
+    expect(nextSequence([], "JV")).toBe(1);
+    expect(nextSequence([undefined, undefined], "JV")).toBe(1);
+  });
+
+  it("keeps series apart so RV and PV don't share a counter", () => {
+    const all = ["RV-2026-0004", "PV-2026-0009", "JV-2026-0002"];
+    expect(nextSequence(all, "RV")).toBe(5);
+    expect(nextSequence(all, "PV")).toBe(10);
+    expect(nextSequence(all, "JV")).toBe(3);
+  });
+
+  it("does not collide when the list is truncated — the regression this fixes", () => {
+    // A capped read returns the NEWEST entries; counting them would saturate and
+    // re-issue the same number forever. The highest suffix still moves forward.
+    const capped = ["JV-2026-1200", "JV-2026-1199", "JV-2026-1198"];
+    expect(nextSequence(capped, "JV")).toBe(1201);
+    expect(nextSequence([...capped, "JV-2026-1201"], "JV")).toBe(1202);
+  });
+
+  it("ignores malformed or foreign numbers rather than throwing", () => {
+    expect(nextSequence(["JV-bad", "OTHER-2026-0099", "JV-2026-0005"], "JV")).toBe(6);
   });
 });

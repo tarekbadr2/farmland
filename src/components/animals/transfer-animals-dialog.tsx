@@ -73,7 +73,8 @@ export function TransferAnimalsDialog({ trigger }: { trigger: React.ReactNode })
     return list.slice(0, 200);
   }, [movable, search]);
 
-  const animalIds = [...picked];
+  // Memoised: a fresh array each render would re-run the check on every keystroke.
+  const animalIds = React.useMemo(() => [...picked], [picked]);
   const check = React.useMemo(
     () => checkTransfer({ toZoneId, animalIds }, animals, zones),
     [toZoneId, animalIds, animals, zones],

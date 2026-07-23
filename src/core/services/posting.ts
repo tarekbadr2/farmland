@@ -419,3 +419,25 @@ export function journalEntryFromInvoicePayment(
     sourceId: invoice.id,
   };
 }
+
+/**
+ * Next sequence number for a document series.
+ *
+ * Counting existing documents is wrong twice over: reads are bounded, so past
+ * the cap the count saturates and every new document collides on the same
+ * number; and it ignores gaps left by a series that started mid-year. Taking
+ * the highest suffix already issued survives both.
+ *
+ * It's still last-write-wins under true concurrency — two people saving in the
+ * same second can collide. A counter document in a transaction is the complete
+ * answer; this closes the systematic failure, not the racy one.
+ */
+export function nextSequence(existingNumbers: (string | undefined)[], prefix: string): number {
+  let highest = 0;
+  for (const number of existingNumbers) {
+    if (!number || !number.startsWith(`${prefix}-`)) continue;
+    const suffix = Number(number.slice(number.lastIndexOf("-") + 1));
+    if (Number.isFinite(suffix) && suffix > highest) highest = suffix;
+  }
+  return highest + 1;
+}

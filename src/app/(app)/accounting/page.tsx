@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { ArrowDownLeft, ArrowUpRight, BookOpen, CheckCircle2, Lock, Plus, Scale, Sigma, Undo2, Wallet } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, BookOpen, CheckCircle2, Lock, Plus, Scale, Sigma, TriangleAlert, Undo2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
@@ -39,6 +39,7 @@ import { PartnerStatementDialog } from "@/components/accounting/partner-statemen
 import { ChequeDialog, ChequeSettleDialog } from "@/components/accounting/cheque-dialog";
 import { reverseEntry, journalNumber } from "@/core/services/posting";
 import { defaultBranch, entriesForBranch } from "@/core/services/org";
+import { LEDGER_READ_LIMIT } from "@/infrastructure/firebase/firebase-repository";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/menu";
 import { formatDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
@@ -49,6 +50,10 @@ export default function AccountingPage() {
   const ar = locale === "ar";
   const { data: accounts = [] } = useAccounts();
   const { data: allEntries = [] } = useJournalEntries();
+  // Hitting the read bound means the books are computed from a partial ledger.
+  // Each entry is internally balanced, so a truncated set STILL balances — the
+  // totals would look confident and be wrong. Say so instead.
+  const ledgerTruncated = allEntries.length >= LEDGER_READ_LIMIT;
   const { data: branches = [] } = useBranches();
   const [branchScope, setBranchScope] = React.useState<string>("all");
   const fallbackBranch = defaultBranch(branches)?.id;
@@ -74,7 +79,6 @@ export default function AccountingPage() {
     const p = partners.find((x) => x.id === id);
     return p ? (ar ? p.nameAr : p.name) : "—";
   };
-  const heldCheques = cheques.filter((c) => c.status === "held");
   const partnerBal = React.useMemo(
     () => partnerBalances(accounts, entries),
     [accounts, entries],
@@ -178,6 +182,17 @@ export default function AccountingPage() {
           </>
         }
       />
+
+      {ledgerTruncated && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/[0.07] px-4 py-3 text-[13px]">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
+          <span>
+            {ar
+              ? `يُقرأ الدفتر بحد أقصى ${LEDGER_READ_LIMIT.toLocaleString("ar-EG")} قيد. الأرصدة أدناه محسوبة من جزء من الدفتر وقد تكون ناقصة — أغلق سنة مالية أو رحّل الأرشيف.`
+              : `The ledger read is capped at ${LEDGER_READ_LIMIT.toLocaleString()} entries. The totals below are computed from part of the ledger and may be incomplete — close a fiscal year or archive older entries.`}
+          </span>
+        </div>
+      )}
 
       <motion.div
         variants={gridStagger}
@@ -408,9 +423,13 @@ export default function AccountingPage() {
             <div className="px-5 pb-2 pt-4">
               <CardTitle>{ar ? "ميزان المراجعة" : "Trial balance"}</CardTitle>
               <CardDescription>
-                {tb.balanced
-                  ? ar ? "الميزان متوازن." : "The ledger balances."
-                  : ar ? "الميزان غير متوازن!" : "The ledger does not balance!"}
+                {ledgerTruncated
+                  ? ar
+                    ? "محسوب من جزء من الدفتر — غير مؤكَّد."
+                    : "Computed from a partial ledger — not a confirmation."
+                  : tb.balanced
+                    ? ar ? "الميزان متوازن." : "The ledger balances."
+                    : ar ? "الميزان غير متوازن!" : "The ledger does not balance!"}
               </CardDescription>
             </div>
             <CardContent className="px-0">
