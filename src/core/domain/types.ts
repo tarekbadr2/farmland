@@ -425,6 +425,22 @@ export interface InventoryItem {
   batchNo?: string;
 }
 
+/* --------------------------------- Stores ---------------------------------- */
+/* المخازن — a farm keeps stock in more than one place: a feed store, a
+ * medicine cupboard, a silage bunker. Movements say which store they happened
+ * in, so each one has its own balance and can be counted on its own. */
+
+export interface Warehouse {
+  id: ID;
+  farmId: ID;
+  name: string;
+  nameAr: string;
+  /** The store that unassigned (pre-multi-store) movements belong to. */
+  isDefault?: boolean;
+  location?: string;
+  active: boolean;
+}
+
 export interface StockMovement {
   id: ID;
   farmId: ID;
@@ -434,6 +450,13 @@ export interface StockMovement {
   quantity: number;
   reference?: string;
   userId?: ID;
+  /** Which store. Absent on rows written before stores existed — those are
+   *  treated as the default store rather than as belonging nowhere. */
+  warehouseId?: ID;
+  /** Links the two halves of a transfer (اذن تحويل): one `out`, one `in`. */
+  transferId?: ID;
+  /** On a stocktake adjustment, what was actually counted on the shelf. */
+  countedQty?: number;
 }
 
 /* -------------------------------- Employees -------------------------------- */

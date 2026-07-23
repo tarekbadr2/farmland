@@ -154,6 +154,10 @@ service cloud.firestore {
         allow read: if isMember(farmId);
         allow write: if canManage(farmId);
       }
+      match /warehouses/{warehouseId} {
+        allow read: if isMember(farmId);
+        allow write: if canManage(farmId);
+      }
       match /stockMovements/{movementId} {
         allow read: if isMember(farmId);
         allow create: if isMember(farmId);

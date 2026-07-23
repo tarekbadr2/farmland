@@ -39,6 +39,7 @@ import type {
   TimelineEntry,
   Transaction,
   UtilityReading,
+  Warehouse,
   WeatherNow,
   Zone,
 } from "@/core/domain/types";
@@ -127,6 +128,24 @@ export interface AttendanceInput {
   status: Attendance["status"];
   clockIn?: string;
   clockOut?: string;
+}
+
+/** One item moving from one store to another. */
+export interface StockTransferInput {
+  itemId: ID;
+  fromWarehouseId: ID;
+  toWarehouseId: ID;
+  quantity: number;
+  date: string;
+  reference?: string;
+}
+
+/** A physical count of one store on one day. */
+export interface StocktakeInput {
+  warehouseId: ID;
+  date: string;
+  lines: { itemId: ID; counted: number }[];
+  reference?: string;
 }
 
 /** A payment received against an invoice. */
@@ -226,6 +245,21 @@ export interface FarmRepository {
   recordPurchase(input: PurchaseInput): Promise<Transaction>;
   /** Books a non-stock cost (maintenance, transport, wages) the same way. */
   recordCost(input: CostInput): Promise<Transaction>;
+
+  /* -------------------------------- Stores --------------------------------- */
+  getWarehouses(): Promise<Warehouse[]>;
+  saveWarehouse(warehouse: EventWrite<Omit<Warehouse, "id" | "farmId">>): Promise<Warehouse>;
+  /**
+   * اذن تحويل — moves stock between stores as a paired out/in. Rejects a
+   * transfer larger than the source store actually holds; the farm-wide total
+   * is unchanged either way, so only the per-store check can catch it.
+   */
+  transferStock(input: StockTransferInput): Promise<StockMovement[]>;
+  /**
+   * جرد — reconciles counted quantities against expected, writing one signed
+   * adjustment per line that differs. Lines that match write nothing.
+   */
+  recordStocktake(input: StocktakeInput): Promise<StockMovement[]>;
 
   /* -------------------------------- Cheques -------------------------------- */
   getCheques(): Promise<Cheque[]>;

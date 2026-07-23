@@ -19,12 +19,16 @@ import {
   Boxes,
   CalendarX,
   Package,
+  ArrowLeftRight,
+  ClipboardCheck,
   ShoppingCart,
   Trash2,
 } from "lucide-react";
 
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
 import { PurchaseDialog } from "@/components/common/purchase-dialog";
+import { StocktakeDialog, TransferStockDialog } from "@/components/inventory/store-dialogs";
+import { stockInWarehouse, warehouseValue } from "@/core/services/warehouse";
 import { StatCard } from "@/components/common/stat-card";
 import { ChartCard, ChartTooltip, CHART_COLORS, axisProps, gridProps } from "@/components/common/chart";
 import { DataTable, type Column } from "@/components/common/data-table";
@@ -35,7 +39,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/primitives";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/menu";
 import { useI18n } from "@/lib/i18n/provider";
-import { useInventory, useMovements, usePartners } from "@/hooks/use-farm-data";
+import { useInventory, useMovements, usePartners, useWarehouses } from "@/hooks/use-farm-data";
 import { TODAY } from "@/core/data/seed";
 import { diffDays, formatDate } from "@/lib/date";
 import { inventoryMetrics } from "@/core/services/metrics";
@@ -47,6 +51,7 @@ export default function InventoryPage() {
   const { t, ln, locale, formatNumber, formatCurrency, formatCompact } = useI18n();
   const { data: items = [], isLoading } = useInventory();
   const { data: movements = [] } = useMovements();
+  const { data: warehouses = [] } = useWarehouses();
   const { data: partners = [] } = usePartners();
   const [category, setCategory] = React.useState("all");
 
@@ -201,6 +206,20 @@ export default function InventoryPage() {
         subtitle={t("inventory.subtitle")}
         actions={
           <>
+            <TransferStockDialog
+              trigger={
+                <Button variant="outline" size="sm">
+                  <ArrowLeftRight /> {locale === "ar" ? "تحويل" : "Transfer"}
+                </Button>
+              }
+            />
+            <StocktakeDialog
+              trigger={
+                <Button variant="outline" size="sm">
+                  <ClipboardCheck /> {locale === "ar" ? "جرد" : "Stocktake"}
+                </Button>
+              }
+            />
             <PurchaseDialog
               kind="inventory"
               trigger={
@@ -357,6 +376,7 @@ export default function InventoryPage() {
                 <TabsList className="mb-2">
                   <TabsTrigger value="items">{t("inventory.stock")}</TabsTrigger>
                   <TabsTrigger value="movements">{t("inventory.movements")}</TabsTrigger>
+                  <TabsTrigger value="stores">{locale === "ar" ? "المخازن" : "Stores"}</TabsTrigger>
                 </TabsList>
               </div>
 
@@ -403,6 +423,66 @@ export default function InventoryPage() {
                     );
                   }}
                 />
+              </TabsContent>
+              {/* --------------------------------- Stores -------------------------------- */}
+              <TabsContent value="stores">
+                <div className="grid gap-3 px-5 pb-5 md:grid-cols-2 xl:grid-cols-3">
+                  {warehouses.map((w) => {
+                    const holdings = items
+                      .map((i) => ({ item: i, qty: stockInWarehouse(i, w.id, movements) }))
+                      .filter((h) => h.qty !== 0);
+                    const value = warehouseValue(w.id, items, movements);
+                    return (
+                      <Card key={w.id} className="p-4">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-[14px] font-semibold">
+                              {locale === "ar" ? w.nameAr : w.name}
+                            </p>
+                            <p className="text-[11.5px] text-muted-foreground">
+                              {formatNumber(holdings.length)}{" "}
+                              {locale === "ar" ? "صنف" : holdings.length === 1 ? "item" : "items"}
+                            </p>
+                          </div>
+                          {w.isDefault && (
+                            <Badge variant="outline">
+                              {locale === "ar" ? "افتراضي" : "Default"}
+                            </Badge>
+                          )}
+                        </div>
+
+                        <p className="mt-3 text-[11px] text-muted-foreground">
+                          {locale === "ar" ? "قيمة المخزون" : "Stock value"}
+                        </p>
+                        <p className="text-lg font-semibold">{formatCurrency(value)}</p>
+
+                        <div className="mt-3 space-y-1 border-t border-border/60 pt-2">
+                          {holdings.slice(0, 6).map((h) => (
+                            <div key={h.item.id} className="flex items-center justify-between text-[12px]">
+                              <span className="min-w-0 truncate">
+                                {locale === "ar" ? h.item.nameAr : h.item.name}
+                              </span>
+                              <span className="tabular-nums text-muted-foreground">
+                                {formatNumber(h.qty)} {h.item.unit}
+                              </span>
+                            </div>
+                          ))}
+                          {holdings.length > 6 && (
+                            <p className="pt-1 text-[11px] text-muted-foreground">
+                              +{formatNumber(holdings.length - 6)}{" "}
+                              {locale === "ar" ? "أصناف أخرى" : "more"}
+                            </p>
+                          )}
+                          {holdings.length === 0 && (
+                            <p className="py-3 text-center text-[12px] text-muted-foreground">
+                              {locale === "ar" ? "فارغ" : "Empty"}
+                            </p>
+                          )}
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
               </TabsContent>
             </Tabs>
           </CardContent>

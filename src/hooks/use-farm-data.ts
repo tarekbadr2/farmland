@@ -5,6 +5,7 @@ import { getRepository, type AnimalQuery } from "@/core/repositories";
 import type {
   Account,
   Cheque,
+  Warehouse,
   ChequeStatus,
   FarmTask,
   FiscalYear,
@@ -12,6 +13,7 @@ import type {
   JournalEntry,
 } from "@/core/domain/types";
 import type { CostInput, PurchaseInput } from "@/core/services/automation";
+import type { StockTransferInput, StocktakeInput } from "@/core/repositories/farm-repository";
 
 const repo = getRepository();
 
@@ -40,6 +42,7 @@ export const qk = {
   invoices: ["invoices"] as const,
   partners: ["partners"] as const,
   assets: ["assets"] as const,
+  warehouses: ["warehouses"] as const,
   cheques: ["cheques"] as const,
   accounts: ["accounts"] as const,
   journal: ["journal"] as const,
@@ -243,6 +246,42 @@ export function useSetChequeStatus() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.cheques });
       qc.invalidateQueries({ queryKey: qk.journal });
+    },
+  });
+}
+
+/* --------------------------------- Stores ---------------------------------- */
+
+export const useWarehouses = () =>
+  useQuery({ queryKey: qk.warehouses, queryFn: () => repo.getWarehouses() });
+
+export function useSaveWarehouse() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (w: Omit<Warehouse, "id" | "farmId"> & { id?: ID }) => repo.saveWarehouse(w),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.warehouses }),
+  });
+}
+
+/** Both of these change where stock sits, so the movement log must refresh. */
+export function useTransferStock() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: StockTransferInput) => repo.transferStock(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.movements });
+      qc.invalidateQueries({ queryKey: qk.inventory });
+    },
+  });
+}
+
+export function useRecordStocktake() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: StocktakeInput) => repo.recordStocktake(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.movements });
+      qc.invalidateQueries({ queryKey: qk.inventory });
     },
   });
 }

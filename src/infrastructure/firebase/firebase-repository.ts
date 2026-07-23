@@ -40,6 +40,7 @@ import { getActiveFarm } from "./tenant";
 import type {
   Account,
   Cheque,
+  Warehouse,
   ChequeStatus,
   Alert,
   Animal,
@@ -76,6 +77,8 @@ import type {
 import type {
   AnimalQuery,
   AttendanceInput,
+  StockTransferInput,
+  StocktakeInput,
   EventWrite,
   FarmRepository,
   FeedConsumptionInput,
@@ -115,6 +118,11 @@ import {
   type CostInput,
   type PurchaseInput,
 } from "@/core/services/automation";
+import {
+  DEFAULT_WAREHOUSE_ID,
+  stockInWarehouse,
+  stocktakeVariance,
+} from "@/core/services/warehouse";
 import { round } from "@/lib/utils";
 
 /**
@@ -1210,6 +1218,99 @@ export class FirebaseFarmRepository implements FarmRepository {
       animalId: input.animalId,
       paymentMethod: input.paymentMethod,
     });
+  }
+
+  /* ---------------------------------- Stores -------------------------------- */
+
+  /** Seeds a default store on first read so stock always has somewhere to be. */
+  getWarehouses = async (): Promise<Warehouse[]> => {
+    const existing = await this.all<Warehouse>(paths.warehouses(this.farmId), orderBy("name"));
+    if (existing.length > 0) return existing;
+    const seeded: Warehouse[] = [
+      {
+        id: DEFAULT_WAREHOUSE_ID,
+        farmId: this.farmId,
+        name: "Main store",
+        nameAr: "المخزن الرئيسي",
+        isDefault: true,
+        active: true,
+      },
+    ];
+    await setDoc(
+      doc(this.db, paths.warehouses(this.farmId), DEFAULT_WAREHOUSE_ID),
+      omitUndefined(seeded[0]),
+    );
+    return seeded;
+  };
+
+  async saveWarehouse(warehouse: EventWrite<Omit<Warehouse, "id" | "farmId">>): Promise<Warehouse> {
+    const id = warehouse.id ?? doc(this.col(paths.warehouses(this.farmId))).id;
+    const record = { ...warehouse, id, farmId: this.farmId } as Warehouse;
+    await setDoc(doc(this.db, paths.warehouses(this.farmId), id), omitUndefined(record), {
+      merge: true,
+    });
+    return record;
+  }
+
+  async transferStock(input: StockTransferInput): Promise<StockMovement[]> {
+    if (input.fromWarehouseId === input.toWarehouseId) throw new Error("same-store");
+    const qty = Math.abs(input.quantity);
+    if (qty === 0) throw new Error("zero-quantity");
+
+    const [items, movements] = await Promise.all([this.getInventory(), this.getStockMovements()]);
+    const item = items.find((i) => i.id === input.itemId);
+    if (!item) throw new Error("item-not-found");
+    // Only a per-store check can catch this: the farm-wide total is unchanged.
+    if (qty > stockInWarehouse(item, input.fromWarehouseId, movements))
+      throw new Error("insufficient-in-store");
+
+    const transferId = doc(this.col(paths.stockMovements(this.farmId))).id;
+    const base = {
+      farmId: this.farmId,
+      itemId: input.itemId,
+      date: input.date,
+      quantity: qty,
+      transferId,
+      reference: input.reference ?? "Transfer",
+    };
+    const out = { ...base, id: `${transferId}_out`, kind: "out" as const, warehouseId: input.fromWarehouseId };
+    const into = { ...base, id: `${transferId}_in`, kind: "in" as const, warehouseId: input.toWarehouseId };
+
+    // Batched, and deliberately not through saveStockMovement: the pair nets to
+    // zero so the item's total must not move.
+    const batch = writeBatch(this.db);
+    batch.set(doc(this.db, paths.stockMovements(this.farmId), out.id), omitUndefined(out));
+    batch.set(doc(this.db, paths.stockMovements(this.farmId), into.id), omitUndefined(into));
+    await trackWrite(batch.commit());
+    return [out, into];
+  }
+
+  async recordStocktake(input: StocktakeInput): Promise<StockMovement[]> {
+    const [items, movements] = await Promise.all([this.getInventory(), this.getStockMovements()]);
+    const written: StockMovement[] = [];
+
+    for (const line of input.lines) {
+      const item = items.find((i) => i.id === line.itemId);
+      if (!item) continue;
+      const expected = stockInWarehouse(item, input.warehouseId, movements);
+      const [variance] = stocktakeVariance([
+        { itemId: line.itemId, expected, counted: line.counted },
+      ]);
+      if (variance.variance === 0) continue;
+
+      written.push(
+        await this.saveStockMovement({
+          itemId: line.itemId,
+          date: input.date,
+          kind: "adjustment",
+          quantity: variance.variance,
+          warehouseId: input.warehouseId,
+          countedQty: line.counted,
+          reference: input.reference ?? "Stocktake",
+        }),
+      );
+    }
+    return written;
   }
 
   /* --------------------------------- Cheques -------------------------------- */

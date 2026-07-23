@@ -20,6 +20,8 @@ import {
   journalNumber,
   type ChequePhase,
 } from "@/core/services/posting";
+import { stockInWarehouse } from "@/core/services/warehouse";
+import { stocktakeVariance } from "@/core/services/warehouse";
 import {
   FEED_EXPENSE_CATEGORY,
   INVENTORY_EXPENSE_CATEGORY,
@@ -38,6 +40,7 @@ import {
 import type {
   Account,
   Cheque,
+  Warehouse,
   ChequeStatus,
   Animal,
   AnimalDisposal,
@@ -63,6 +66,8 @@ import type {
 import type {
   AnimalQuery,
   AttendanceInput,
+  StockTransferInput,
+  StocktakeInput,
   EventWrite,
   FarmRepository,
   FeedConsumptionInput,
@@ -875,6 +880,77 @@ export class DemoFarmRepository implements FarmRepository {
       animalId: input.animalId,
       paymentMethod: input.paymentMethod,
     });
+  }
+
+  /* --------------------------------- Stores --------------------------------- */
+
+  getWarehouses = () => tick(this.db.warehouses);
+
+  async saveWarehouse(warehouse: EventWrite<Omit<Warehouse, "id" | "farmId">>) {
+    const idx = warehouse.id ? this.db.warehouses.findIndex((w) => w.id === warehouse.id) : -1;
+    if (idx >= 0) {
+      this.db.warehouses[idx] = { ...this.db.warehouses[idx], ...warehouse } as Warehouse;
+      return tick(this.db.warehouses[idx]);
+    }
+    const created = {
+      ...warehouse,
+      id: warehouse.id ?? `wh_${Date.now()}`,
+      farmId: this.db.farm.id,
+    } as Warehouse;
+    this.db.warehouses.push(created);
+    return tick(created);
+  }
+
+  async transferStock(input: StockTransferInput) {
+    if (input.fromWarehouseId === input.toWarehouseId) throw new Error("same-store");
+    const qty = Math.abs(input.quantity);
+    if (qty === 0) throw new Error("zero-quantity");
+
+    const item = this.db.inventory.find((i) => i.id === input.itemId);
+    if (!item) throw new Error("item-not-found");
+
+    // The farm-wide total doesn't change on a transfer, so the usual negative
+    // -stock guard can't catch moving more than the source store holds.
+    const available = stockInWarehouse(item, input.fromWarehouseId, this.db.movements);
+    if (qty > available) throw new Error("insufficient-in-store");
+
+    const transferId = `tr_${Date.now()}`;
+    const base = { itemId: input.itemId, date: input.date, quantity: qty, transferId,
+      reference: input.reference ?? "Transfer" };
+    const out = { ...base, id: `${transferId}_out`, farmId: this.db.farm.id, kind: "out" as const,
+      warehouseId: input.fromWarehouseId };
+    const into = { ...base, id: `${transferId}_in`, farmId: this.db.farm.id, kind: "in" as const,
+      warehouseId: input.toWarehouseId };
+
+    // Written straight to the log: the pair nets to zero, so the item's total
+    // must not move (saveStockMovement would apply each delta to it).
+    this.db.movements.unshift(out, into);
+    return tick([out, into]);
+  }
+
+  async recordStocktake(input: StocktakeInput) {
+    const written: StockMovement[] = [];
+    for (const line of input.lines) {
+      const item = this.db.inventory.find((i) => i.id === line.itemId);
+      if (!item) continue;
+      const expected = stockInWarehouse(item, input.warehouseId, this.db.movements);
+      const [variance] = stocktakeVariance([
+        { itemId: line.itemId, expected, counted: line.counted },
+      ]);
+      if (variance.variance === 0) continue; // a matching line needs no correction
+
+      const move = await this.saveStockMovement({
+        itemId: line.itemId,
+        date: input.date,
+        kind: "adjustment",
+        quantity: variance.variance, // signed
+        warehouseId: input.warehouseId,
+        countedQty: line.counted,
+        reference: input.reference ?? "Stocktake",
+      });
+      written.push(move);
+    }
+    return tick(written);
   }
 
   /* -------------------------------- Cheques -------------------------------- */

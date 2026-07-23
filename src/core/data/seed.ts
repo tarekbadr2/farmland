@@ -21,6 +21,7 @@ import {
 import type {
   Account,
   Cheque,
+  Warehouse,
   Alert,
   Animal,
   Asset,
@@ -99,6 +100,7 @@ export interface FarmDataset {
   invoices: Invoice[];
   partners: Partner[];
   assets: Asset[];
+  warehouses: Warehouse[];
   cheques: Cheque[];
   accounts: Account[];
   journalEntries: JournalEntry[];
@@ -1276,6 +1278,14 @@ function build(): FarmDataset {
 
   // The books, derived from the money already generated above so the demo
   // ledger always agrees with the finance page.
+  // The stores stock actually sits in. The first is the default: anything the
+  // movements don't place explicitly is reported as being here.
+  const warehouses: Warehouse[] = [
+    { id: "wh_main", farmId: FARM_ID, name: "Main store", nameAr: "المخزن الرئيسي", isDefault: true, active: true },
+    { id: "wh_feed", farmId: FARM_ID, name: "Feed store", nameAr: "مخزن الأعلاف", active: true },
+    { id: "wh_vet", farmId: FARM_ID, name: "Medicine store", nameAr: "مخزن الأدوية", active: true },
+  ];
+
   // A couple of live cheques so the أوراق قبض screen isn't empty on day one.
   const cheques: Cheque[] = [
     {
@@ -1348,6 +1358,7 @@ function build(): FarmDataset {
     invoices,
     partners,
     assets,
+    warehouses,
     cheques,
     accounts,
     journalEntries,

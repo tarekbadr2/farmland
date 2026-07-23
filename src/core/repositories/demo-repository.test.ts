@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import { DemoFarmRepository } from "./demo-repository";
 import { trialBalance } from "@/core/services/accounting";
 import { TODAY } from "@/core/data/seed";
+import { DEFAULT_WAREHOUSE_ID, stockInWarehouse } from "@/core/services/warehouse";
 
 /**
  * Integration cover for the document → ledger wiring.
@@ -170,5 +171,112 @@ describe("demo repository — documents reach the ledger", () => {
     expect((await balanceOf("cash")) - cashBefore).toBe(7_500);
     expect(await balanceOf("notes_receivable")).toBe(beforeNotes);
     expect(await booksBalance()).toBe(true);
+  });
+});
+
+describe("demo repository — stores, transfers and stocktake", () => {
+  it("a transfer moves stock between stores without changing the farm total", async () => {
+    const items = await repo.getInventory();
+    const item = items[0];
+    const totalBefore = item.stock;
+
+    const before = await repo.getStockMovements();
+    const fromHeld = stockInWarehouse(item, DEFAULT_WAREHOUSE_ID, before);
+    const qty = Math.min(5, fromHeld);
+
+    await repo.transferStock({
+      itemId: item.id,
+      fromWarehouseId: DEFAULT_WAREHOUSE_ID,
+      toWarehouseId: "wh_feed",
+      quantity: qty,
+      date: TODAY,
+    });
+
+    const after = await repo.getStockMovements();
+    const refreshed = (await repo.getInventory()).find((i) => i.id === item.id)!;
+
+    // The farm still owns the same amount — it just sits elsewhere.
+    expect(refreshed.stock).toBe(totalBefore);
+    expect(stockInWarehouse(refreshed, DEFAULT_WAREHOUSE_ID, after)).toBe(fromHeld - qty);
+    expect(stockInWarehouse(refreshed, "wh_feed", after)).toBe(qty);
+  });
+
+  it("writes the transfer as a linked out/in pair", async () => {
+    const item = (await repo.getInventory())[1];
+    const [out, into] = await repo.transferStock({
+      itemId: item.id,
+      fromWarehouseId: DEFAULT_WAREHOUSE_ID,
+      toWarehouseId: "wh_vet",
+      quantity: 1,
+      date: TODAY,
+    });
+    expect(out.kind).toBe("out");
+    expect(into.kind).toBe("in");
+    expect(out.transferId).toBe(into.transferId);
+  });
+
+  it("refuses to move more than the source store holds", async () => {
+    const item = (await repo.getInventory())[0];
+    await expect(
+      repo.transferStock({
+        itemId: item.id,
+        fromWarehouseId: "wh_vet", // holds ~nothing of this item
+        toWarehouseId: DEFAULT_WAREHOUSE_ID,
+        quantity: 100_000,
+        date: TODAY,
+      }),
+    ).rejects.toThrow("insufficient-in-store");
+  });
+
+  it("refuses a transfer to the same store", async () => {
+    const item = (await repo.getInventory())[0];
+    await expect(
+      repo.transferStock({
+        itemId: item.id,
+        fromWarehouseId: DEFAULT_WAREHOUSE_ID,
+        toWarehouseId: DEFAULT_WAREHOUSE_ID,
+        quantity: 1,
+        date: TODAY,
+      }),
+    ).rejects.toThrow("same-store");
+  });
+
+  it("a stocktake writes an adjustment only where the count differs", async () => {
+    const items = await repo.getInventory();
+    const [a, b] = items;
+    const movements = await repo.getStockMovements();
+    const expectedA = stockInWarehouse(a, DEFAULT_WAREHOUSE_ID, movements);
+    const expectedB = stockInWarehouse(b, DEFAULT_WAREHOUSE_ID, movements);
+
+    const written = await repo.recordStocktake({
+      warehouseId: DEFAULT_WAREHOUSE_ID,
+      date: TODAY,
+      lines: [
+        { itemId: a.id, counted: expectedA - 3 }, // short by 3
+        { itemId: b.id, counted: expectedB }, // matches — no movement
+      ],
+    });
+
+    expect(written).toHaveLength(1);
+    expect(written[0].itemId).toBe(a.id);
+    expect(written[0].quantity).toBe(-3);
+    expect(written[0].countedQty).toBe(expectedA - 3);
+  });
+
+  it("after a stocktake the store holds exactly what was counted", async () => {
+    const item = (await repo.getInventory())[2];
+    const movements = await repo.getStockMovements();
+    const expected = stockInWarehouse(item, DEFAULT_WAREHOUSE_ID, movements);
+    const counted = expected + 7; // found more than the system thought
+
+    await repo.recordStocktake({
+      warehouseId: DEFAULT_WAREHOUSE_ID,
+      date: TODAY,
+      lines: [{ itemId: item.id, counted }],
+    });
+
+    const after = await repo.getStockMovements();
+    const refreshed = (await repo.getInventory()).find((i) => i.id === item.id)!;
+    expect(stockInWarehouse(refreshed, DEFAULT_WAREHOUSE_ID, after)).toBe(counted);
   });
 });
