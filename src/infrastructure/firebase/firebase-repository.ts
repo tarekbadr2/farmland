@@ -104,7 +104,7 @@ import {
 } from "@/core/domain/rules";
 import { addDays, toISODate } from "@/lib/date";
 import { defaultChartOfAccounts } from "@/core/data/chart-of-accounts";
-import { isBalanced } from "@/core/services/accounting";
+import { isBalanced, LEDGER_READ_LIMIT } from "@/core/services/accounting";
 import {
   chequeNumber,
   invoiceDocNumber,
@@ -168,11 +168,7 @@ function clearUndefined<T extends object>(value: T): Record<string, unknown> {
 /** Collection reads that back whole-page analytics. Bounded, deliberately. */
 const ANALYTIC_LIMIT = 5000;
 
-/**
- * How many journal entries the books are read from. Exported so the UI can spot
- * a truncated ledger and say so, rather than showing confident wrong totals.
- */
-export const LEDGER_READ_LIMIT = 20_000;
+
 
 function rows<T>(snap: { docs: QueryDocumentSnapshot<DocumentData>[] }): T[] {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
@@ -1154,7 +1150,9 @@ export class FirebaseFarmRepository implements FarmRepository {
         ),
       );
       if (settlement) {
-        const entryId = `jv_pay_${invoice.id}_${input.date}_${input.amount}`;
+        // Tie the settlement to the (unique) payment transaction so two equal
+        // same-day payments produce distinct entries.
+        const entryId = `jv_pay_${txnId}`;
         await setDoc(
           doc(this.db, paths.journalEntries(this.farmId), entryId),
           omitUndefined({ ...settlement, id: entryId, farmId: this.farmId }),

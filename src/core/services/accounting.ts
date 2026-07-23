@@ -16,6 +16,14 @@ import type {
 } from "@/core/domain/types";
 import { round } from "@/lib/utils";
 
+/**
+ * How many journal entries the books are read from. Lives here — a pure,
+ * dependency-free module — so the accounting page can import it without pulling
+ * the Firestore adapter (and its SDK) into its bundle. The Firebase adapter
+ * re-exports it for its own read bound.
+ */
+export const LEDGER_READ_LIMIT = 20_000;
+
 /** Which side increases this kind of account (طبيعة الحساب). */
 export function normalBalance(type: AccountType): AccountNature {
   return type === "asset" || type === "expense" ? "debit" : "credit";

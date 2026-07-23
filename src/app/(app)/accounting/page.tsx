@@ -31,6 +31,7 @@ import {
   incomeStatement,
   balanceSheet,
   partnerBalances,
+  LEDGER_READ_LIMIT,
 } from "@/core/services/accounting";
 import { JournalEntryDialog } from "@/components/accounting/journal-entry-dialog";
 import { AccountFormDialog } from "@/components/accounting/account-form-dialog";
@@ -39,7 +40,7 @@ import { PartnerStatementDialog } from "@/components/accounting/partner-statemen
 import { ChequeDialog, ChequeSettleDialog } from "@/components/accounting/cheque-dialog";
 import { reverseEntry, journalNumber } from "@/core/services/posting";
 import { defaultBranch, entriesForBranch } from "@/core/services/org";
-import { LEDGER_READ_LIMIT } from "@/infrastructure/firebase/firebase-repository";
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/menu";
 import { formatDate } from "@/lib/date";
 import { cn } from "@/lib/utils";

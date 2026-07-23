@@ -508,3 +508,31 @@ describe("demo repository — invoice payment direction", () => {
     expect(payment?.kind).toBe("income");
   });
 });
+
+describe("demo repository — duplicate same-day payments", () => {
+  it("two equal payments on one day both reach the ledger (no id collision)", async () => {
+    const sale = await repo.saveInvoice({
+      kind: "sale",
+      number: "TEST-DUP-PAY",
+      customerId: "partner_z",
+      issuedAt: TODAY,
+      dueAt: TODAY,
+      lines: [{ description: "Milk", qty: 1, unitPrice: 2_000 }],
+      paidAmount: 0,
+      status: "sent",
+    });
+
+    const before = (await repo.getJournalEntries()).filter((e) =>
+      e.id.startsWith(`jv_pay_`),
+    ).length;
+
+    // Same amount, same day — the old composite id would have collided.
+    await repo.recordInvoicePayment({ invoiceId: sale.id, amount: 1_000, date: TODAY, paymentMethod: "cash" });
+    await repo.recordInvoicePayment({ invoiceId: sale.id, amount: 1_000, date: TODAY, paymentMethod: "cash" });
+
+    const settlements = (await repo.getJournalEntries()).filter((e) => e.id.startsWith("jv_pay_"));
+    expect(settlements.length).toBe(before + 2); // two distinct settlement entries
+    const updated = (await repo.getInvoices()).find((i) => i.id === sale.id)!;
+    expect(updated.status).toBe("paid"); // 1000 + 1000 = 2000
+  });
+});

@@ -788,8 +788,11 @@ export class DemoFarmRepository implements FarmRepository {
           : "other_income"
       : "other_expense";
 
+    // One settlement entry per payment transaction — a shared id, so two equal
+    // same-day payments don't collide and overwrite each other.
+    const payTxnId = `tx_${Date.now()}_${this.db.transactions.length}`;
     this.db.transactions.unshift({
-      id: `tx_${Date.now()}`,
+      id: payTxnId,
       farmId: this.db.farm.id,
       kind: incoming ? "income" : "expense",
       category,
@@ -821,7 +824,7 @@ export class DemoFarmRepository implements FarmRepository {
     if (settlement) {
       this.db.journalEntries.unshift({
         ...settlement,
-        id: `jv_pay_${updated.id}_${input.date}_${input.amount}`,
+        id: `jv_pay_${payTxnId}`,
       } as JournalEntry);
     }
 
