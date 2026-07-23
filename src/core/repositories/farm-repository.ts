@@ -40,6 +40,7 @@ import type {
   WeatherNow,
   Zone,
 } from "@/core/domain/types";
+import type { CostInput, PurchaseInput } from "@/core/services/automation";
 
 export interface AnimalQuery {
   search?: string;
@@ -213,6 +214,16 @@ export interface FarmRepository {
   getAssets(): Promise<Asset[]>;
   saveAsset(asset: EventWrite<Omit<Asset, "id" | "farmId">>): Promise<Asset>;
   deleteAsset(id: ID): Promise<void>;
+
+  /* ------------------------------ Automation ------------------------------- */
+  /**
+   * Buys stock: raises the item's level, blends its unit cost, and books the
+   * spend as an expense — which auto-posts to the ledger. One action, and the
+   * store, the expense list and the books all agree.
+   */
+  recordPurchase(input: PurchaseInput): Promise<Transaction>;
+  /** Books a non-stock cost (maintenance, transport, wages) the same way. */
+  recordCost(input: CostInput): Promise<Transaction>;
 
   /* ------------------------------ Accounting ------------------------------ */
   /** The chart of accounts. Seeded with a default farm tree on first read. */

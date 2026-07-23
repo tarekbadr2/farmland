@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getRepository, type AnimalQuery } from "@/core/repositories";
 import type { Account, FarmTask, FiscalYear, ID, JournalEntry } from "@/core/domain/types";
+import type { CostInput, PurchaseInput } from "@/core/services/automation";
 
 const repo = getRepository();
 
@@ -167,5 +168,35 @@ export function useSaveFiscalYear() {
     mutationFn: (year: Omit<FiscalYear, "id" | "farmId"> & { id?: ID }) =>
       repo.saveFiscalYear(year),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.fiscalYears }),
+  });
+}
+
+/* ------------------------------- Automation -------------------------------- */
+
+/** Buy stock: raises the item, books the expense, posts to the ledger. */
+export function useRecordPurchase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PurchaseInput) => repo.recordPurchase(input),
+    onSuccess: () => {
+      // Touches stock, movements, expenses and the books at once.
+      qc.invalidateQueries({ queryKey: qk.feedItems });
+      qc.invalidateQueries({ queryKey: qk.inventory });
+      qc.invalidateQueries({ queryKey: qk.movements });
+      qc.invalidateQueries({ queryKey: qk.transactions });
+      qc.invalidateQueries({ queryKey: qk.journal });
+    },
+  });
+}
+
+/** Book a non-stock cost (maintenance, transport, wages). */
+export function useRecordCost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CostInput) => repo.recordCost(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.transactions });
+      qc.invalidateQueries({ queryKey: qk.journal });
+    },
   });
 }

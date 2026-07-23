@@ -564,6 +564,8 @@ export type AssetCategory =
   | "machine"
   | "equipment"
   | "vehicle"
+  /** Purchased breeding/fattening stock — capital, not an operating cost. */
+  | "livestock"
   | "other";
 
 /** A capital/fixed asset — land, buildings, machinery, vehicles, equipment.

@@ -94,6 +94,15 @@ import { addDays, toISODate } from "@/lib/date";
 import { defaultChartOfAccounts } from "@/core/data/chart-of-accounts";
 import { isBalanced } from "@/core/services/accounting";
 import { journalEntryFromTransaction, journalNumber } from "@/core/services/posting";
+import {
+  FEED_EXPENSE_CATEGORY,
+  INVENTORY_EXPENSE_CATEGORY,
+  blendedUnitCost,
+  purchaseTotal,
+  livestockAssetFor,
+  type CostInput,
+  type PurchaseInput,
+} from "@/core/services/automation";
 import { round } from "@/lib/utils";
 
 /**
@@ -494,7 +503,19 @@ export class FirebaseFarmRepository implements FarmRepository {
         : {};
     const ref = doc(this.db, paths.animals(this.farmId), id);
     await setDoc(ref, { ...patch, ...searchable, farmId: this.farmId }, { merge: true });
-    return (await this.getAnimal(id))!;
+    const saved = (await this.getAnimal(id))!;
+
+    // An animal bought for money is capital — mirror its purchase price into
+    // the asset register rather than booking it as an expense.
+    const asset = livestockAssetFor(saved);
+    if (asset) {
+      await setDoc(
+        doc(this.db, paths.assets(this.farmId), asset.id),
+        omitUndefined({ ...asset, farmId: this.farmId }),
+        { merge: true },
+      );
+    }
+    return saved;
   }
 
   async disposeAnimal(id: ID, disposal: AnimalDisposal): Promise<Animal> {
@@ -1044,6 +1065,85 @@ export class FirebaseFarmRepository implements FarmRepository {
 
   async deleteAsset(id: ID): Promise<void> {
     await deleteDoc(doc(this.db, paths.assets(this.farmId), id));
+  }
+
+  /* ------------------------------- Automation ------------------------------- */
+
+  async recordPurchase(input: PurchaseInput): Promise<Transaction> {
+    const total = purchaseTotal(input);
+    const path = input.kind === "feed" ? paths.feedItems(this.farmId) : paths.inventory(this.farmId);
+    const ref = doc(this.db, path, input.itemId);
+
+    // Blend the unit cost and raise stock in one transaction so two people
+    // receiving deliveries at once can't clobber each other's numbers.
+    const meta = await runTransaction(this.db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error("item-not-found");
+      // Feed and inventory docs differ (costPerUnit vs unitCost, and their
+      // category enums don't overlap), so read the common shape structurally.
+      const item = snap.data() as {
+        name: string;
+        unit: string;
+        stock?: number;
+        costPerUnit?: number;
+        unitCost?: number;
+        category: FeedItem["category"] | InventoryItem["category"];
+      };
+      const currentCost = input.kind === "feed" ? item.costPerUnit : item.unitCost;
+      const blended = blendedUnitCost(item.stock ?? 0, currentCost ?? 0, input.quantity, input.unitCost);
+      const nextStock = round((item.stock ?? 0) + input.quantity, 2);
+      tx.update(
+        ref,
+        input.kind === "feed"
+          ? { stock: nextStock, costPerUnit: blended }
+          : { stock: nextStock, unitCost: blended },
+      );
+      return {
+        name: item.name,
+        unit: item.unit,
+        category:
+          input.kind === "feed"
+            ? FEED_EXPENSE_CATEGORY
+            : INVENTORY_EXPENSE_CATEGORY[item.category as InventoryItem["category"]],
+      };
+    });
+
+    const moveId = doc(this.col(paths.stockMovements(this.farmId))).id;
+    await setDoc(
+      doc(this.db, paths.stockMovements(this.farmId), moveId),
+      omitUndefined({
+        id: moveId,
+        farmId: this.farmId,
+        itemId: input.itemId,
+        date: input.date,
+        kind: "in",
+        quantity: input.quantity,
+        reference: input.note ?? `Purchase @ ${input.unitCost}/${meta.unit}`,
+      }),
+    );
+
+    return this.saveTransaction({
+      date: input.date,
+      kind: "expense",
+      category: meta.category,
+      amount: total,
+      description: `${meta.name} — ${input.quantity} ${meta.unit}`,
+      counterpartyId: input.supplierId,
+      paymentMethod: input.paymentMethod,
+    });
+  }
+
+  async recordCost(input: CostInput): Promise<Transaction> {
+    return this.saveTransaction({
+      date: input.date,
+      kind: "expense",
+      category: input.category,
+      amount: input.amount,
+      description: input.description,
+      counterpartyId: input.partnerId,
+      animalId: input.animalId,
+      paymentMethod: input.paymentMethod,
+    });
   }
 
   /* ------------------------------- Accounting ------------------------------- */

@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
+import { PurchaseDialog } from "@/components/common/purchase-dialog";
 import { StatCard } from "@/components/common/stat-card";
 import { ChartCard, ChartTooltip, CHART_COLORS, axisProps, gridProps } from "@/components/common/chart";
 import { DataTable, type Column } from "@/components/common/data-table";
@@ -200,6 +201,14 @@ export default function InventoryPage() {
         subtitle={t("inventory.subtitle")}
         actions={
           <>
+            <PurchaseDialog
+              kind="inventory"
+              trigger={
+                <Button variant="outline" size="sm">
+                  <ShoppingCart /> {t("inventory.recordPurchase")}
+                </Button>
+              }
+            />
             <Button
               variant="outline"
               size="sm"

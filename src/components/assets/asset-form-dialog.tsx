@@ -30,6 +30,7 @@ export const ASSET_CATEGORIES: { value: AssetCategory; en: string; ar: string }[
   { value: "machine", en: "Machine", ar: "آلة" },
   { value: "equipment", en: "Equipment", ar: "معدات" },
   { value: "vehicle", en: "Vehicle", ar: "مركبة" },
+  { value: "livestock", en: "Livestock", ar: "ثروة حيوانية" },
   { value: "other", en: "Other", ar: "أخرى" },
 ];
 

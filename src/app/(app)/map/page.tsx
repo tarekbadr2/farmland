@@ -26,6 +26,11 @@ import { average, round } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { Zone, ZoneKind } from "@/core/domain/types";
 
+/** Only these zones hold livestock — a feed store or office has a capacity in
+ *  tons or desks, not head, so occupancy must never be reported for them. */
+const ANIMAL_ZONES: ZoneKind[] = ["pen", "barn", "quarantine"];
+const housesAnimals = (kind: ZoneKind) => ANIMAL_ZONES.includes(kind);
+
 const KIND_STYLE: Record<ZoneKind, { fill: string; stroke: string; icon: typeof Beef }> = {
   pen: { fill: "var(--chart-1)", stroke: "var(--chart-1)", icon: Beef },
   barn: { fill: "var(--chart-2)", stroke: "var(--chart-2)", icon: Warehouse },
@@ -104,7 +109,7 @@ export default function FarmMapPage() {
                         >
                           {z.name.split(" — ")[0]}
                         </text>
-                        {z.capacity > 0 && (
+                        {housesAnimals(z.kind) && z.capacity > 0 && (
                           <text
                             x={z.x + z.w / 2}
                             y={z.y + z.h / 2 + 2.6}
@@ -165,7 +170,7 @@ export default function FarmMapPage() {
                     </div>
                   </div>
                   <CardContent>
-                    {selected.capacity > 0 && (
+                    {housesAnimals(selected.kind) && selected.capacity > 0 && (
                       <div className="mb-4">
                         <div className="mb-1.5 flex items-center justify-between text-[12px]">
                           <span className="text-muted-foreground">{t("map.occupancy")}</span>
@@ -204,43 +209,50 @@ export default function FarmMapPage() {
                           value={`${formatNumber(avgYield)} ${t("common.liters")}`}
                         />
                       )}
-                      <Stat
-                        icon={Beef}
-                        label={t("map.animalsInside")}
-                        value={formatNumber(inZone.length)}
-                      />
-                    </div>
-
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      {t("map.animalsInside")}
-                    </p>
-                    <div className="max-h-[380px] space-y-1 overflow-y-auto pe-1">
-                      {inZone.slice(0, 60).map((a) => (
-                        <Link
-                          key={a.id}
-                          href={`/animal?id=${a.id}`}
-                          className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-accent/50"
-                        >
-                          <span className="tabular text-[12px] font-medium">{a.tag}</span>
-                          <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">
-                            {ln(a)}
-                          </span>
-                          <MilkStatusPill value={a.milkStatus} />
-                        </Link>
-                      ))}
-                      {!inZone.length && (
-                        <p className="py-8 text-center text-[12px] text-muted-foreground">
-                          {t("common.none")}
-                        </p>
+                      {housesAnimals(selected.kind) && (
+                        <Stat
+                          icon={Beef}
+                          label={t("map.animalsInside")}
+                          value={formatNumber(inZone.length)}
+                        />
                       )}
                     </div>
 
-                    {inZone.length > 60 && (
-                      <Button variant="ghost" size="sm" className="mt-2 w-full" asChild>
-                        <Link href={`/animals?pen=${selected.id}`}>
-                          {t("common.viewAll")} ({formatNumber(inZone.length)})
-                        </Link>
-                      </Button>
+                    {/* The roster only makes sense for a zone that houses stock. */}
+                    {housesAnimals(selected.kind) && (
+                      <>
+                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {t("map.animalsInside")}
+                        </p>
+                        <div className="max-h-[380px] space-y-1 overflow-y-auto pe-1">
+                          {inZone.slice(0, 60).map((a) => (
+                            <Link
+                              key={a.id}
+                              href={`/animal?id=${a.id}`}
+                              className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-accent/50"
+                            >
+                              <span className="tabular text-[12px] font-medium">{a.tag}</span>
+                              <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">
+                                {ln(a)}
+                              </span>
+                              <MilkStatusPill value={a.milkStatus} />
+                            </Link>
+                          ))}
+                          {!inZone.length && (
+                            <p className="py-8 text-center text-[12px] text-muted-foreground">
+                              {t("common.none")}
+                            </p>
+                          )}
+                        </div>
+
+                        {inZone.length > 60 && (
+                          <Button variant="ghost" size="sm" className="mt-2 w-full" asChild>
+                            <Link href={`/animals?pen=${selected.id}`}>
+                              {t("common.viewAll")} ({formatNumber(inZone.length)})
+                            </Link>
+                          </Button>
+                        )}
+                      </>
                     )}
                   </CardContent>
                 </>

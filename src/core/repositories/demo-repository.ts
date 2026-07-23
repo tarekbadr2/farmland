@@ -11,6 +11,15 @@ import { mulberry32, round, clamp, sum } from "@/lib/utils";
 import { isBalanced } from "@/core/services/accounting";
 import { journalEntryFromTransaction, journalNumber } from "@/core/services/posting";
 import {
+  FEED_EXPENSE_CATEGORY,
+  INVENTORY_EXPENSE_CATEGORY,
+  blendedUnitCost,
+  purchaseTotal,
+  livestockAssetFor,
+  type CostInput,
+  type PurchaseInput,
+} from "@/core/services/automation";
+import {
   applyBreedingEvent,
   applyHealthEvent,
   attendanceFromClock,
@@ -338,6 +347,7 @@ export class DemoFarmRepository implements FarmRepository {
     const idx = this.db.animals.findIndex((a) => a.id === patch.id);
     if (idx >= 0) {
       this.db.animals[idx] = { ...this.db.animals[idx], ...patch };
+      this.syncLivestockAsset(this.db.animals[idx]);
       return tick(this.db.animals[idx]);
     }
     const created = {
@@ -345,7 +355,21 @@ export class DemoFarmRepository implements FarmRepository {
       id: patch.id ?? `an_${Date.now()}`,
     };
     this.db.animals.unshift(created);
+    this.syncLivestockAsset(created);
     return tick(created);
+  }
+
+  /**
+   * An animal bought for money is capital, not an expense — mirror its purchase
+   * price into the asset register instead of the expense list.
+   */
+  private syncLivestockAsset(animal: Animal) {
+    const asset = livestockAssetFor(animal);
+    if (!asset) return;
+    const record = { ...asset, farmId: this.db.farm.id } as Asset;
+    const idx = this.db.assets.findIndex((a) => a.id === record.id);
+    if (idx >= 0) this.db.assets[idx] = { ...this.db.assets[idx], ...record };
+    else this.db.assets.unshift(record);
   }
 
   async disposeAnimal(id: ID, disposal: AnimalDisposal) {
@@ -734,6 +758,68 @@ export class DemoFarmRepository implements FarmRepository {
   async deleteAsset(id: ID) {
     this.db.assets = this.db.assets.filter((a) => a.id !== id);
     return tick(undefined);
+  }
+
+  /* ------------------------------ Automation ------------------------------- */
+
+  async recordPurchase(input: PurchaseInput): Promise<Transaction> {
+    const total = purchaseTotal(input);
+    let name = "";
+    let unit = "";
+    let category: Transaction["category"];
+
+    if (input.kind === "feed") {
+      const item = this.db.feedItems.find((f) => f.id === input.itemId);
+      if (!item) throw new Error("item-not-found");
+      item.costPerUnit = blendedUnitCost(item.stock, item.costPerUnit, input.quantity, input.unitCost);
+      item.stock = round(item.stock + input.quantity, 2);
+      name = item.name;
+      unit = item.unit;
+      category = FEED_EXPENSE_CATEGORY;
+    } else {
+      const item = this.db.inventory.find((i) => i.id === input.itemId);
+      if (!item) throw new Error("item-not-found");
+      item.unitCost = blendedUnitCost(item.stock, item.unitCost, input.quantity, input.unitCost);
+      item.stock = round(item.stock + input.quantity, 2);
+      name = item.name;
+      unit = item.unit;
+      category = INVENTORY_EXPENSE_CATEGORY[item.category];
+    }
+
+    // The goods-in movement, so the stock ledger shows where the quantity came from.
+    this.db.movements.unshift({
+      id: `mv_${Date.now()}`,
+      farmId: this.db.farm.id,
+      itemId: input.itemId,
+      date: input.date,
+      kind: "in",
+      quantity: input.quantity,
+      reference: input.note ?? `Purchase @ ${input.unitCost}/${unit}`,
+    });
+
+    // Booking the expense auto-posts it to the ledger.
+    return this.saveTransaction({
+      date: input.date,
+      kind: "expense",
+      category,
+      amount: total,
+      description: `${name} — ${input.quantity} ${unit}`,
+      counterpartyId: input.supplierId,
+      paymentMethod: input.paymentMethod,
+    });
+  }
+
+  async recordCost(input: CostInput): Promise<Transaction> {
+    return this.saveTransaction({
+      date: input.date,
+      kind: "expense",
+      category: input.category,
+      amount: input.amount,
+      description: input.description,
+      counterpartyId: input.partnerId,
+      animalId: input.animalId,
+      paymentMethod: input.paymentMethod,
+    });
   }
 
   /* ------------------------------ Accounting ------------------------------ */

@@ -16,9 +16,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { AlertTriangle, Boxes, Leaf, Package, Percent, Wheat } from "lucide-react";
+import { AlertTriangle, Boxes, Leaf, Package, Percent, ShoppingCart, Wheat } from "lucide-react";
 
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
+import { PurchaseDialog } from "@/components/common/purchase-dialog";
+import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/common/stat-card";
 import { ChartCard, ChartTooltip, CHART_COLORS, axisProps, gridProps } from "@/components/common/chart";
 import { DataTable, type Column } from "@/components/common/data-table";
@@ -188,7 +190,19 @@ export default function FeedPage() {
       <PageHeader
         title={t("feed.title")}
         subtitle={t("feed.subtitle")}
-        actions={<LogFeedingDialog />}
+        actions={
+          <>
+            <PurchaseDialog
+              kind="feed"
+              trigger={
+                <Button variant="outline" size="sm">
+                  <ShoppingCart /> {t("feed.buyFeed")}
+                </Button>
+              }
+            />
+            <LogFeedingDialog />
+          </>
+        }
       />
 
       <motion.div

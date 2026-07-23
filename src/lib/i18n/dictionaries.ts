@@ -360,6 +360,7 @@ export const en = {
   },
   feed: {
     title: "Feed",
+    buyFeed: "Buy feed",
     subtitle: "Inventory, rations and conversion efficiency.",
     inventory: "Feed inventory",
     rations: "Rations",
@@ -466,6 +467,7 @@ export const en = {
   },
   inventory: {
     title: "Inventory",
+    recordPurchase: "Record purchase",
     subtitle: "Medicine, parts, fuel and consumables.",
     sku: "SKU",
     category: "Category",
@@ -1208,6 +1210,7 @@ export const ar: DeepPartialSame<typeof en> = {
   },
   feed: {
     title: "الأعلاف",
+    buyFeed: "شراء علف",
     subtitle: "المخزون والخلطات وكفاءة التحويل.",
     inventory: "مخزون الأعلاف",
     rations: "الخلطات",
@@ -1314,6 +1317,7 @@ export const ar: DeepPartialSame<typeof en> = {
   },
   inventory: {
     title: "المخزون",
+    recordPurchase: "تسجيل شراء",
     subtitle: "الأدوية وقطع الغيار والوقود والمستهلكات.",
     sku: "الكود",
     category: "التصنيف",
