@@ -8,3 +8,16 @@ contextBridge.exposeInMainWorld("desktopAuth", {
   // OAuth id token, which the app exchanges for a Firebase session.
   signInWithGoogle: () => ipcRenderer.invoke("desktop-google-signin"),
 });
+
+// Self-update controls for the Settings screen. check() triggers a manual
+// look at GitHub Releases; onStatus() streams progress ("checking" → "none" |
+// "available" → "downloading" → "ready"); version() returns the running build.
+contextBridge.exposeInMainWorld("desktopUpdater", {
+  check: () => ipcRenderer.invoke("check-for-updates"),
+  version: () => ipcRenderer.invoke("app-version"),
+  onStatus: (cb) => {
+    const handler = (_e, payload) => cb(payload);
+    ipcRenderer.on("update-status", handler);
+    return () => ipcRenderer.removeListener("update-status", handler);
+  },
+});

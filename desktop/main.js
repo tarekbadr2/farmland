@@ -168,12 +168,31 @@ function createWindow() {
 // the background, and offers a one-click restart to apply it. Runs only in the
 // packaged app — dev builds have no update feed (app-update.yml).
 function setupAutoUpdates(win) {
-  if (!app.isPackaged) return;
+  // The current version is always answerable, packaged or not, so Settings can
+  // show it in dev too.
+  ipcMain.handle("app-version", () => app.getVersion());
+
+  if (!app.isPackaged) {
+    // No update feed in dev — tell the UI so the button can explain itself.
+    ipcMain.handle("check-for-updates", async () => ({ ok: false, reason: "dev" }));
+    return;
+  }
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
+  // Push each step to the renderer so a Settings button can show live status.
+  const send = (status, extra) => {
+    if (!win.isDestroyed()) win.webContents.send("update-status", { status, ...extra });
+  };
+
+  autoUpdater.on("checking-for-update", () => send("checking"));
+  autoUpdater.on("update-available", (info) => send("available", { version: info.version }));
+  autoUpdater.on("update-not-available", () => send("none", { version: app.getVersion() }));
+  autoUpdater.on("download-progress", (p) => send("downloading", { percent: Math.round(p.percent) }));
+
   autoUpdater.on("update-downloaded", async (info) => {
+    send("ready", { version: info.version });
     const { response } = await dialog.showMessageBox(win, {
       type: "info",
       buttons: ["Restart now", "Later"],
@@ -190,18 +209,19 @@ function setupAutoUpdates(win) {
   // the user or block the app.
   autoUpdater.on("error", (err) => {
     console.error("Auto-update check failed:", err && err.message ? err.message : err);
+    send("error");
   });
 
   const check = () => autoUpdater.checkForUpdates().catch(() => {});
   check();
   setInterval(check, 6 * 60 * 60 * 1000); // re-check every 6h for always-on installs
 
-  // Lets the app trigger a manual check later (e.g. a Settings button) and hear
-  // back whether an update was found.
+  // Lets the app trigger a manual check (the Settings button). Progress comes
+  // back through the update-status events above.
   ipcMain.handle("check-for-updates", async () => {
     try {
-      const r = await autoUpdater.checkForUpdates();
-      return { ok: true, version: (r && r.updateInfo && r.updateInfo.version) || null };
+      await autoUpdater.checkForUpdates();
+      return { ok: true };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e) };
     }

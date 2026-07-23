@@ -33,6 +33,7 @@ import { downloadJson } from "@/lib/export";
 import { getDataset } from "@/core/data/seed";
 import { TeamManager } from "@/components/settings/team-manager";
 import { BillingSettings } from "@/components/settings/billing-settings";
+import { UpdateChecker } from "@/components/settings/update-checker";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/core/domain/types";
 
@@ -257,6 +258,10 @@ export default function SettingsPage() {
                   </div>
                 </CardContent>
               </Card>
+            </motion.div>
+
+            <motion.div variants={cardIn} className="lg:col-span-2">
+              <UpdateChecker />
             </motion.div>
           </motion.div>
         </TabsContent>
