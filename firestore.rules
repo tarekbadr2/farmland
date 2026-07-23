@@ -154,6 +154,16 @@ service cloud.firestore {
         allow read: if isMember(farmId);
         allow write: if canManage(farmId);
       }
+      // Branches and rates shape every report, so only the people who own the
+      // numbers may change them.
+      match /branches/{branchId} {
+        allow read: if isMember(farmId);
+        allow write: if hasRole(farmId, ['owner', 'accountant']);
+      }
+      match /currencies/{currencyId} {
+        allow read: if isMember(farmId);
+        allow write: if hasRole(farmId, ['owner', 'accountant']);
+      }
       match /workOrders/{orderId} {
         allow read: if isMember(farmId);
         allow create, update: if canManage(farmId);

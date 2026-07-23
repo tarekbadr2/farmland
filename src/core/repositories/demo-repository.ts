@@ -22,6 +22,7 @@ import {
 } from "@/core/services/posting";
 import { stockInWarehouse } from "@/core/services/warehouse";
 import { checkTransfer, commonOrigin, transferNumber } from "@/core/services/livestock";
+import { isValidRate } from "@/core/services/org";
 import {
   allocateOutputCosts,
   checkWorkOrder,
@@ -46,7 +47,9 @@ import {
 } from "@/core/domain/rules";
 import type {
   Account,
+  Branch,
   Cheque,
+  Currency,
   LivestockTransfer,
   Warehouse,
   WorkOrder,
@@ -891,6 +894,53 @@ export class DemoFarmRepository implements FarmRepository {
       animalId: input.animalId,
       paymentMethod: input.paymentMethod,
     });
+  }
+
+  /* ------------------------------ Organisation ------------------------------ */
+
+  getBranches = () => tick(this.db.branches);
+
+  async saveBranch(branch: EventWrite<Omit<Branch, "id" | "farmId">>) {
+    const idx = branch.id ? this.db.branches.findIndex((b) => b.id === branch.id) : -1;
+    if (idx >= 0) {
+      this.db.branches[idx] = { ...this.db.branches[idx], ...branch } as Branch;
+      return tick(this.db.branches[idx]);
+    }
+    const created = {
+      ...branch,
+      id: branch.id ?? `br_${Date.now()}`,
+      farmId: this.db.farm.id,
+    } as Branch;
+    this.db.branches.push(created);
+    return tick(created);
+  }
+
+  getCurrencies = () => tick(this.db.currencies);
+
+  async saveCurrency(currency: EventWrite<Omit<Currency, "id" | "farmId">>) {
+    if (!isValidRate(currency.rateToBase)) throw new Error("invalid-rate");
+    const idx = currency.id
+      ? this.db.currencies.findIndex((c) => c.id === currency.id)
+      : this.db.currencies.findIndex((c) => c.code === currency.code);
+    if (idx >= 0) {
+      // The base currency is the yardstick — its rate can never be anything but 1.
+      const isBase = this.db.currencies[idx].isBase;
+      this.db.currencies[idx] = {
+        ...this.db.currencies[idx],
+        ...currency,
+        rateToBase: isBase ? 1 : currency.rateToBase,
+        updatedAt: new Date().toISOString(),
+      } as Currency;
+      return tick(this.db.currencies[idx]);
+    }
+    const created = {
+      ...currency,
+      id: currency.id ?? `cur_${currency.code}`,
+      farmId: this.db.farm.id,
+      updatedAt: new Date().toISOString(),
+    } as Currency;
+    this.db.currencies.push(created);
+    return tick(created);
   }
 
   /* -------------------------------- Production ------------------------------ */

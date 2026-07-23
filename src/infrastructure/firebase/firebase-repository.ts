@@ -39,7 +39,9 @@ import { PREFIX_END, animalSearchFields, paths } from "./paths";
 import { getActiveFarm } from "./tenant";
 import type {
   Account,
+  Branch,
   Cheque,
+  Currency,
   LivestockTransfer,
   Warehouse,
   WorkOrder,
@@ -122,6 +124,7 @@ import {
   type PurchaseInput,
 } from "@/core/services/automation";
 import { checkTransfer, commonOrigin, transferNumber } from "@/core/services/livestock";
+import { isValidRate } from "@/core/services/org";
 import {
   allocateOutputCosts,
   checkWorkOrder,
@@ -1228,6 +1231,72 @@ export class FirebaseFarmRepository implements FarmRepository {
       animalId: input.animalId,
       paymentMethod: input.paymentMethod,
     });
+  }
+
+  /* ------------------------------ Organisation ------------------------------ */
+
+  /** Seeds one branch on first read, so postings always have somewhere to land. */
+  getBranches = async (): Promise<Branch[]> => {
+    const existing = await this.all<Branch>(paths.branches(this.farmId), orderBy("name"));
+    if (existing.length > 0) return existing;
+    const seeded: Branch = {
+      id: "br_main",
+      farmId: this.farmId,
+      name: "Main farm",
+      nameAr: "المزرعة الرئيسية",
+      isDefault: true,
+      active: true,
+    };
+    await setDoc(doc(this.db, paths.branches(this.farmId), seeded.id), omitUndefined(seeded));
+    return [seeded];
+  };
+
+  async saveBranch(branch: EventWrite<Omit<Branch, "id" | "farmId">>): Promise<Branch> {
+    const id = branch.id ?? doc(this.col(paths.branches(this.farmId))).id;
+    const record = { ...branch, id, farmId: this.farmId } as Branch;
+    await setDoc(doc(this.db, paths.branches(this.farmId), id), omitUndefined(record), {
+      merge: true,
+    });
+    return record;
+  }
+
+  /** Seeds the farm's own currency as base on first read. */
+  getCurrencies = async (): Promise<Currency[]> => {
+    const existing = await this.all<Currency>(paths.currencies(this.farmId), orderBy("code"));
+    if (existing.length > 0) return existing;
+    const farm = await this.getFarm();
+    const code = farm.currency || "EGP";
+    const seeded: Currency = {
+      id: `cur_${code}`,
+      farmId: this.farmId,
+      code,
+      name: code,
+      nameAr: code,
+      rateToBase: 1,
+      isBase: true,
+      active: true,
+    };
+    await setDoc(doc(this.db, paths.currencies(this.farmId), seeded.id), omitUndefined(seeded));
+    return [seeded];
+  };
+
+  async saveCurrency(currency: EventWrite<Omit<Currency, "id" | "farmId">>): Promise<Currency> {
+    if (!isValidRate(currency.rateToBase)) throw new Error("invalid-rate");
+    const id = currency.id ?? `cur_${currency.code}`;
+    const existing = await getDoc(doc(this.db, paths.currencies(this.farmId), id));
+    // The base currency is the yardstick — its rate stays 1 whatever is sent.
+    const isBase = existing.exists() ? (existing.data() as Currency).isBase : currency.isBase;
+    const record = {
+      ...currency,
+      id,
+      farmId: this.farmId,
+      rateToBase: isBase ? 1 : currency.rateToBase,
+      updatedAt: new Date().toISOString(),
+    } as Currency;
+    await setDoc(doc(this.db, paths.currencies(this.farmId), id), omitUndefined(record), {
+      merge: true,
+    });
+    return record;
   }
 
   /* -------------------------------- Production ------------------------------ */

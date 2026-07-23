@@ -33,6 +33,7 @@ import { downloadJson } from "@/lib/export";
 import { getDataset } from "@/core/data/seed";
 import { TeamManager } from "@/components/settings/team-manager";
 import { BillingSettings } from "@/components/settings/billing-settings";
+import { OrganisationSettings } from "@/components/settings/organisation-settings";
 import { UpdateChecker } from "@/components/settings/update-checker";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/core/domain/types";
@@ -87,6 +88,9 @@ export default function SettingsPage() {
           </TabsTrigger>
           <TabsTrigger value="appearance">
             <Palette /> {t("settings.appearance")}
+          </TabsTrigger>
+          <TabsTrigger value="org">
+            <Building2 className="size-3.5" /> {locale === "ar" ? "الفروع والعملات" : "Branches & currencies"}
           </TabsTrigger>
           <TabsTrigger value="team">
             <Users /> {t("settings.team")}
@@ -267,6 +271,10 @@ export default function SettingsPage() {
         </TabsContent>
 
         {/* ---------------------------------- Roles -------------------------------- */}
+        <TabsContent value="org">
+          <OrganisationSettings />
+        </TabsContent>
+
         <TabsContent value="team">
           <motion.div variants={cardIn} initial="hidden" animate="show">
             <TeamManager />

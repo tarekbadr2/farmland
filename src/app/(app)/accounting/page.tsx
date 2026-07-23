@@ -21,6 +21,7 @@ import {
   usePartners,
   useSaveJournalEntry,
   useCheques,
+  useBranches,
 } from "@/hooks/use-farm-data";
 import {
   accountBalances,
@@ -37,6 +38,8 @@ import { VoucherDialog } from "@/components/accounting/voucher-dialog";
 import { PartnerStatementDialog } from "@/components/accounting/partner-statement-dialog";
 import { ChequeDialog, ChequeSettleDialog } from "@/components/accounting/cheque-dialog";
 import { reverseEntry, journalNumber } from "@/core/services/posting";
+import { defaultBranch, entriesForBranch } from "@/core/services/org";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/menu";
 import { formatDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import type { Account, Cheque, JournalEntry, Partner } from "@/core/domain/types";
@@ -45,7 +48,16 @@ export default function AccountingPage() {
   const { locale, formatCurrency } = useI18n();
   const ar = locale === "ar";
   const { data: accounts = [] } = useAccounts();
-  const { data: entries = [] } = useJournalEntries();
+  const { data: allEntries = [] } = useJournalEntries();
+  const { data: branches = [] } = useBranches();
+  const [branchScope, setBranchScope] = React.useState<string>("all");
+  const fallbackBranch = defaultBranch(branches)?.id;
+  // Everything below reads the scoped set, so the whole screen — balances,
+  // trial balance, statements — follows the branch selector.
+  const entries = React.useMemo(
+    () => entriesForBranch(allEntries, branchScope, fallbackBranch),
+    [allEntries, branchScope, fallbackBranch],
+  );
   const { data: years = [] } = useFiscalYears();
   const setStatus = useSetJournalStatus();
   const closeYear = useCloseFiscalYear();
@@ -124,6 +136,22 @@ export default function AccountingPage() {
         }
         actions={
           <>
+            {/* Only worth showing once the farm actually has more than one site. */}
+            {branches.length > 1 && (
+              <Select value={branchScope} onValueChange={setBranchScope}>
+                <SelectTrigger className="h-8 w-44 text-[12.5px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{ar ? "كل الفروع" : "All branches"}</SelectItem>
+                  {branches.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {ar ? b.nameAr : b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <VoucherDialog
               kind="receipt"
               trigger={

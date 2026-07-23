@@ -920,3 +920,39 @@ export interface WorkOrder {
   notes?: string;
   completedAt?: string;
 }
+
+/* ------------------------------ Organisation -------------------------------- */
+/* الفروع والعملات — a farm that grows into several sites, and one that buys
+ * from abroad, both need the books to say *where* and *in what money*. Both
+ * fields already live on Account and JournalEntry, so switching these on is
+ * additive rather than a migration. */
+
+export interface Branch {
+  id: ID;
+  farmId: ID;
+  name: string;
+  nameAr: string;
+  /** Where postings land when nothing else is chosen. */
+  isDefault?: boolean;
+  location?: string;
+  active: boolean;
+}
+
+/**
+ * A currency the farm transacts in.
+ *
+ * `rateToBase` converts one unit into the farm's base currency: with EGP as
+ * base, USD sits at ~48. The base currency itself is always exactly 1.
+ */
+export interface Currency {
+  id: ID;
+  farmId: ID;
+  /** ISO code — USD, EUR, EGP. */
+  code: string;
+  name: string;
+  nameAr: string;
+  rateToBase: number;
+  isBase?: boolean;
+  active: boolean;
+  updatedAt?: string;
+}

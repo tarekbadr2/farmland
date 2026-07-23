@@ -8,8 +8,10 @@
 
 import type {
   Account,
+  Branch,
   Cheque,
   ChequeStatus,
+  Currency,
   Alert,
   Animal,
   AnimalDisposal,
@@ -257,6 +259,13 @@ export interface FarmRepository {
   recordPurchase(input: PurchaseInput): Promise<Transaction>;
   /** Books a non-stock cost (maintenance, transport, wages) the same way. */
   recordCost(input: CostInput): Promise<Transaction>;
+
+  /* ------------------------------ Organisation ------------------------------ */
+  getBranches(): Promise<Branch[]>;
+  saveBranch(branch: EventWrite<Omit<Branch, "id" | "farmId">>): Promise<Branch>;
+  getCurrencies(): Promise<Currency[]>;
+  /** Rates are quoted against the farm's base currency, which is always 1. */
+  saveCurrency(currency: EventWrite<Omit<Currency, "id" | "farmId">>): Promise<Currency>;
 
   /* -------------------------------- Production ------------------------------ */
   getWorkOrders(): Promise<WorkOrder[]>;

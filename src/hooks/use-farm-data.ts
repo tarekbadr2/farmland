@@ -10,6 +10,8 @@ import type {
   FarmTask,
   FiscalYear,
   ID,
+  Branch,
+  Currency,
   JournalEntry,
   WorkOrder,
 } from "@/core/domain/types";
@@ -50,6 +52,8 @@ export const qk = {
   warehouses: ["warehouses"] as const,
   livestockTransfers: ["livestock-transfers"] as const,
   workOrders: ["work-orders"] as const,
+  branches: ["branches"] as const,
+  currencies: ["currencies"] as const,
   cheques: ["cheques"] as const,
   accounts: ["accounts"] as const,
   journal: ["journal"] as const,
@@ -336,5 +340,29 @@ export function useCompleteWorkOrder() {
       qc.invalidateQueries({ queryKey: qk.feedItems });
       qc.invalidateQueries({ queryKey: qk.movements });
     },
+  });
+}
+
+/* ------------------------------ Organisation -------------------------------- */
+
+export const useBranches = () =>
+  useQuery({ queryKey: qk.branches, queryFn: () => repo.getBranches() });
+
+export const useCurrencies = () =>
+  useQuery({ queryKey: qk.currencies, queryFn: () => repo.getCurrencies() });
+
+export function useSaveBranch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: Omit<Branch, "id" | "farmId"> & { id?: ID }) => repo.saveBranch(b),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.branches }),
+  });
+}
+
+export function useSaveCurrency() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (c: Omit<Currency, "id" | "farmId"> & { id?: ID }) => repo.saveCurrency(c),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.currencies }),
   });
 }

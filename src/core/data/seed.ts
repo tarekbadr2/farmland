@@ -20,7 +20,9 @@ import {
 } from "@/core/services/posting";
 import type {
   Account,
+  Branch,
   Cheque,
+  Currency,
   LivestockTransfer,
   Warehouse,
   WorkOrder,
@@ -105,6 +107,8 @@ export interface FarmDataset {
   warehouses: Warehouse[];
   livestockTransfers: LivestockTransfer[];
   workOrders: WorkOrder[];
+  branches: Branch[];
+  currencies: Currency[];
   cheques: Cheque[];
   accounts: Account[];
   journalEntries: JournalEntry[];
@@ -1282,6 +1286,17 @@ function build(): FarmDataset {
 
   // The books, derived from the money already generated above so the demo
   // ledger always agrees with the finance page.
+  // One site and the local currency to begin with; both are additive so a farm
+  // that never grows past this never sees the complexity.
+  const branches: Branch[] = [
+    { id: "br_main", farmId: FARM_ID, name: "Main farm", nameAr: "المزرعة الرئيسية", isDefault: true, active: true },
+  ];
+  const currencies: Currency[] = [
+    { id: "cur_EGP", farmId: FARM_ID, code: "EGP", name: "Egyptian pound", nameAr: "جنيه مصري", rateToBase: 1, isBase: true, active: true },
+    { id: "cur_USD", farmId: FARM_ID, code: "USD", name: "US dollar", nameAr: "دولار أمريكي", rateToBase: 48, active: true },
+    { id: "cur_EUR", farmId: FARM_ID, code: "EUR", name: "Euro", nameAr: "يورو", rateToBase: 52, active: true },
+  ];
+
   // Production runs start empty too.
   const workOrders: WorkOrder[] = [];
 
@@ -1371,6 +1386,8 @@ function build(): FarmDataset {
     warehouses,
     livestockTransfers,
     workOrders,
+    branches,
+    currencies,
     cheques,
     accounts,
     journalEntries,
