@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getRepository, type AnimalQuery } from "@/core/repositories";
-import type { FarmTask, ID } from "@/core/domain/types";
+import type { Account, FarmTask, FiscalYear, ID, JournalEntry } from "@/core/domain/types";
 
 const repo = getRepository();
 
@@ -31,6 +31,9 @@ export const qk = {
   invoices: ["invoices"] as const,
   partners: ["partners"] as const,
   assets: ["assets"] as const,
+  accounts: ["accounts"] as const,
+  journal: ["journal"] as const,
+  fiscalYears: ["fiscal-years"] as const,
   alerts: ["alerts"] as const,
   weather: ["weather"] as const,
   utilities: ["utilities"] as const,
@@ -100,5 +103,69 @@ export function useMarkAlertRead() {
   return useMutation({
     mutationFn: (id: ID) => repo.markAlertRead(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.alerts }),
+  });
+}
+
+/* ------------------------------- Accounting -------------------------------- */
+
+export const useAccounts = () =>
+  useQuery({ queryKey: qk.accounts, queryFn: () => repo.getAccounts() });
+
+export const useJournalEntries = () =>
+  useQuery({ queryKey: qk.journal, queryFn: () => repo.getJournalEntries() });
+
+export const useFiscalYears = () =>
+  useQuery({ queryKey: qk.fiscalYears, queryFn: () => repo.getFiscalYears() });
+
+export function useSaveAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (account: Omit<Account, "id" | "farmId"> & { id?: ID }) =>
+      repo.saveAccount(account),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.accounts }),
+  });
+}
+
+export function useDeleteAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: ID) => repo.deleteAccount(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.accounts }),
+  });
+}
+
+export function useSaveJournalEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      entry: Omit<JournalEntry, "id" | "farmId" | "number"> & { id?: ID; number?: string },
+    ) => repo.saveJournalEntry(entry),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.journal }),
+  });
+}
+
+export function useSetJournalStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: ID; status: JournalEntry["status"] }) =>
+      repo.setJournalStatus(id, status),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.journal }),
+  });
+}
+
+export function useCloseFiscalYear() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: ID) => repo.closeFiscalYear(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.fiscalYears }),
+  });
+}
+
+export function useSaveFiscalYear() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (year: Omit<FiscalYear, "id" | "farmId"> & { id?: ID }) =>
+      repo.saveFiscalYear(year),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.fiscalYears }),
   });
 }

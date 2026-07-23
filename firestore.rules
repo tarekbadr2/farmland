@@ -206,6 +206,24 @@ service cloud.firestore {
         allow write: if hasRole(farmId, ['owner', 'manager', 'accountant']);
       }
 
+      // The books. Any member may read them; only the people who own the
+      // numbers may write. Deleting a posted entry is never allowed — the
+      // ledger is corrected with a reversing entry, so the audit trail stands.
+      match /accounts/{accountId} {
+        allow read: if isMember(farmId);
+        allow write: if hasRole(farmId, ['owner', 'accountant']);
+      }
+      match /journalEntries/{entryId} {
+        allow read: if isMember(farmId);
+        allow create, update: if hasRole(farmId, ['owner', 'manager', 'accountant']);
+        allow delete: if false;
+      }
+      match /fiscalYears/{yearId} {
+        allow read: if isMember(farmId);
+        allow write: if hasRole(farmId, ['owner', 'accountant']);
+        allow delete: if false;
+      }
+
       // ------------------------- Telemetry ---------------------------
       match /alerts/{alertId} {
         allow read: if isMember(farmId);

@@ -12,7 +12,10 @@
 
 import { mulberry32, clamp, round } from "@/lib/utils";
 import { addDays, diffDays, rangeDays, toISODate } from "@/lib/date";
+import { defaultChartOfAccounts } from "@/core/data/chart-of-accounts";
+import { journalFromTransactions } from "@/core/services/posting";
 import type {
+  Account,
   Alert,
   Animal,
   Asset,
@@ -27,9 +30,11 @@ import type {
   FeedConsumption,
   FeedItem,
   FeedRation,
+  FiscalYear,
   HealthEvent,
   InventoryItem,
   Invoice,
+  JournalEntry,
   Partner,
   SemenStraw,
   StockMovement,
@@ -89,6 +94,9 @@ export interface FarmDataset {
   invoices: Invoice[];
   partners: Partner[];
   assets: Asset[];
+  accounts: Account[];
+  journalEntries: JournalEntry[];
+  fiscalYears: FiscalYear[];
   alerts: Alert[];
   weather: WeatherNow;
   utilities: UtilityReading[];
@@ -1260,6 +1268,21 @@ function build(): FarmDataset {
     { id: "asset_generator", farmId: FARM_ID, name: "Diesel generator", nameAr: "مولّد ديزل", category: "equipment", acquiredDate: "2021-07-18", cost: 180_000, usefulLifeYears: 8, salvageValue: 15_000, status: "active" },
   ];
 
+  // The books, derived from the money already generated above so the demo
+  // ledger always agrees with the finance page.
+  const accounts = defaultChartOfAccounts(FARM_ID);
+  const journalEntries = journalFromTransactions(transactions, accounts);
+  const fiscalYears: FiscalYear[] = [
+    {
+      id: "fy_current",
+      farmId: FARM_ID,
+      name: String(new Date(TODAY).getFullYear()),
+      startDate: `${new Date(TODAY).getFullYear()}-01-01`,
+      endDate: `${new Date(TODAY).getFullYear()}-12-31`,
+      status: "open",
+    },
+  ];
+
   return {
     farm,
     zones,
@@ -1279,6 +1302,9 @@ function build(): FarmDataset {
     invoices,
     partners,
     assets,
+    accounts,
+    journalEntries,
+    fiscalYears,
     alerts,
     weather,
     utilities,

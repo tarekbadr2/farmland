@@ -8,6 +8,8 @@
 import { getDataset, TODAY, woodsCurve, woodsShape, seasonalFactor } from "@/core/data/seed";
 import { addDays, diffDays, rangeDays } from "@/lib/date";
 import { mulberry32, round, clamp, sum } from "@/lib/utils";
+import { isBalanced } from "@/core/services/accounting";
+import { journalEntryFromTransaction, journalNumber } from "@/core/services/posting";
 import {
   applyBreedingEvent,
   applyHealthEvent,
@@ -15,6 +17,7 @@ import {
   kgPerUnit,
 } from "@/core/domain/rules";
 import type {
+  Account,
   Animal,
   AnimalDisposal,
   Asset,
@@ -23,9 +26,11 @@ import type {
   Employee,
   FarmTask,
   FeedConsumption,
+  FiscalYear,
   HealthEvent,
   ID,
   Invoice,
+  JournalEntry,
   Member,
   MilkRecord,
   PendingInvite,
@@ -569,7 +574,25 @@ export class DemoFarmRepository implements FarmRepository {
       farmId: this.db.farm.id,
     } as Transaction;
     this.db.transactions.unshift(saved);
+    this.autoPost(saved);
     return tick(saved);
+  }
+
+  /**
+   * Mirrors a transaction into the general ledger so the books never have to be
+   * kept by hand. Re-saving the same transaction replaces its entry rather than
+   * double-posting.
+   */
+  private autoPost(txn: Transaction) {
+    const entry = journalEntryFromTransaction(
+      txn,
+      this.db.accounts,
+      journalNumber(txn.date, this.db.journalEntries.length + 1),
+    );
+    if (!entry) return; // chart is missing an account — leave the books untouched
+    const idx = this.db.journalEntries.findIndex((e) => e.sourceId === txn.id);
+    if (idx >= 0) this.db.journalEntries[idx] = entry;
+    else this.db.journalEntries.unshift(entry);
   }
 
   async recordMilkSession(input: MilkSessionInput): Promise<WriteOutcome> {
@@ -711,6 +734,105 @@ export class DemoFarmRepository implements FarmRepository {
   async deleteAsset(id: ID) {
     this.db.assets = this.db.assets.filter((a) => a.id !== id);
     return tick(undefined);
+  }
+
+  /* ------------------------------ Accounting ------------------------------ */
+
+  getAccounts = () => tick(this.db.accounts);
+
+  async saveAccount(account: EventWrite<Omit<Account, "id" | "farmId">>) {
+    const idx = account.id ? this.db.accounts.findIndex((a) => a.id === account.id) : -1;
+    if (idx >= 0) {
+      this.db.accounts[idx] = { ...this.db.accounts[idx], ...account } as Account;
+      return tick(this.db.accounts[idx]);
+    }
+    const created = {
+      ...account,
+      id: account.id ?? `acc_${account.code}`,
+      farmId: this.db.farm.id,
+    } as Account;
+    this.db.accounts.push(created);
+    return tick(created);
+  }
+
+  async deleteAccount(id: ID) {
+    const account = this.db.accounts.find((a) => a.id === id);
+    if (!account) return tick(undefined);
+    // Guard the three ways deleting an account would corrupt the books.
+    if (account.systemKey) throw new Error("system-account");
+    if (this.db.accounts.some((a) => a.parentId === id)) throw new Error("has-children");
+    if (this.db.journalEntries.some((e) => e.lines.some((l) => l.accountId === id)))
+      throw new Error("has-postings");
+    this.db.accounts = this.db.accounts.filter((a) => a.id !== id);
+    return tick(undefined);
+  }
+
+  getJournalEntries = () => tick(this.db.journalEntries);
+
+  private assertYearOpen(fiscalYearId?: ID) {
+    if (!fiscalYearId) return;
+    const year = this.db.fiscalYears.find((y) => y.id === fiscalYearId);
+    if (year && year.status === "closed") throw new Error("year-closed");
+  }
+
+  async saveJournalEntry(
+    entry: EventWrite<Omit<JournalEntry, "id" | "farmId" | "number"> & { number?: string }>,
+  ) {
+    if (!isBalanced(entry.lines)) throw new Error("unbalanced");
+    this.assertYearOpen(entry.fiscalYearId);
+
+    const idx = entry.id ? this.db.journalEntries.findIndex((e) => e.id === entry.id) : -1;
+    if (idx >= 0) {
+      // A posted entry is history — correct it with a reversal, never an edit.
+      if (this.db.journalEntries[idx].status === "posted") throw new Error("posted-immutable");
+      this.db.journalEntries[idx] = { ...this.db.journalEntries[idx], ...entry } as JournalEntry;
+      return tick(this.db.journalEntries[idx]);
+    }
+
+    const created = {
+      ...entry,
+      id: entry.id ?? `jv_${Date.now()}`,
+      farmId: this.db.farm.id,
+      number: entry.number ?? journalNumber(entry.date, this.db.journalEntries.length + 1),
+      createdAt: new Date().toISOString(),
+    } as JournalEntry;
+    this.db.journalEntries.unshift(created);
+    return tick(created);
+  }
+
+  async setJournalStatus(id: ID, status: JournalEntry["status"]) {
+    const entry = this.db.journalEntries.find((e) => e.id === id);
+    if (!entry) throw new Error("not-found");
+    this.assertYearOpen(entry.fiscalYearId);
+    if (status === "posted" && !isBalanced(entry.lines)) throw new Error("unbalanced");
+    entry.status = status;
+    if (status === "posted") entry.postedAt = new Date().toISOString();
+    return tick(entry);
+  }
+
+  getFiscalYears = () => tick(this.db.fiscalYears);
+
+  async saveFiscalYear(year: EventWrite<Omit<FiscalYear, "id" | "farmId">>) {
+    const idx = year.id ? this.db.fiscalYears.findIndex((y) => y.id === year.id) : -1;
+    if (idx >= 0) {
+      this.db.fiscalYears[idx] = { ...this.db.fiscalYears[idx], ...year } as FiscalYear;
+      return tick(this.db.fiscalYears[idx]);
+    }
+    const created = {
+      ...year,
+      id: year.id ?? `fy_${year.startDate.slice(0, 4)}`,
+      farmId: this.db.farm.id,
+    } as FiscalYear;
+    this.db.fiscalYears.push(created);
+    return tick(created);
+  }
+
+  async closeFiscalYear(id: ID) {
+    const year = this.db.fiscalYears.find((y) => y.id === id);
+    if (!year) throw new Error("not-found");
+    year.status = "closed";
+    year.closedAt = new Date().toISOString();
+    return tick(year);
   }
 
   getAlerts = () => tick(this.db.alerts);

@@ -38,6 +38,7 @@ import { getFirebase } from "./client";
 import { PREFIX_END, animalSearchFields, paths } from "./paths";
 import { getActiveFarm } from "./tenant";
 import type {
+  Account,
   Alert,
   Animal,
   AnimalDisposal,
@@ -51,10 +52,12 @@ import type {
   FeedConsumption,
   FeedItem,
   FeedRation,
+  FiscalYear,
   HealthEvent,
   ID,
   InventoryItem,
   Invoice,
+  JournalEntry,
   Member,
   MilkRecord,
   Partner,
@@ -88,6 +91,9 @@ import {
   kgPerUnit,
 } from "@/core/domain/rules";
 import { addDays, toISODate } from "@/lib/date";
+import { defaultChartOfAccounts } from "@/core/data/chart-of-accounts";
+import { isBalanced } from "@/core/services/accounting";
+import { journalEntryFromTransaction, journalNumber } from "@/core/services/posting";
 import { round } from "@/lib/utils";
 
 /**
@@ -754,7 +760,29 @@ export class FirebaseFarmRepository implements FarmRepository {
     const id = txn.id ?? doc(this.col(paths.transactions(this.farmId))).id;
     const record = { ...txn, id, farmId: this.farmId } as Transaction;
     await setDoc(doc(this.db, paths.transactions(this.farmId), id), omitUndefined(record));
+    await this.autoPost(record);
     return record;
+  }
+
+  /**
+   * Mirrors a transaction into the general ledger. Keyed on the transaction id
+   * so re-saving replaces the entry instead of double-posting. Never throws —
+   * a ledger hiccup must not lose the money record the user just entered.
+   */
+  private async autoPost(txn: Transaction): Promise<void> {
+    try {
+      const accounts = await this.getAccounts();
+      const entry = journalEntryFromTransaction(txn, accounts, journalNumber(txn.date, 0));
+      if (!entry) return;
+      const ref = doc(this.db, paths.journalEntries(this.farmId), entry.id);
+      const existing = await getDoc(ref);
+      const number = existing.exists()
+        ? (existing.data() as JournalEntry).number
+        : journalNumber(txn.date, (await this.getJournalEntries()).length + 1);
+      await setDoc(ref, omitUndefined({ ...entry, number }), { merge: true });
+    } catch {
+      // Best-effort: the transaction is already saved.
+    }
   }
 
   /* -------------------------------- Breeding ------------------------------- */
@@ -1016,6 +1044,127 @@ export class FirebaseFarmRepository implements FarmRepository {
 
   async deleteAsset(id: ID): Promise<void> {
     await deleteDoc(doc(this.db, paths.assets(this.farmId), id));
+  }
+
+  /* ------------------------------- Accounting ------------------------------- */
+
+  /**
+   * The chart of accounts. A farm that has never opened the books gets the
+   * default tree written on first read, so accounting is usable immediately
+   * rather than starting from an empty screen.
+   */
+  getAccounts = async (): Promise<Account[]> => {
+    const existing = await this.all<Account>(paths.accounts(this.farmId), orderBy("code"));
+    if (existing.length > 0) return existing;
+
+    const seeded = defaultChartOfAccounts(this.farmId);
+    const batch = writeBatch(this.db);
+    for (const account of seeded) {
+      batch.set(doc(this.db, paths.accounts(this.farmId), account.id), omitUndefined(account));
+    }
+    await batch.commit();
+    return seeded;
+  };
+
+  async saveAccount(account: EventWrite<Omit<Account, "id" | "farmId">>): Promise<Account> {
+    const id = account.id ?? doc(this.col(paths.accounts(this.farmId))).id;
+    const record = { ...account, id, farmId: this.farmId } as Account;
+    await setDoc(doc(this.db, paths.accounts(this.farmId), id), omitUndefined(record), {
+      merge: true,
+    });
+    return record;
+  }
+
+  async deleteAccount(id: ID): Promise<void> {
+    const [accounts, entries] = await Promise.all([this.getAccounts(), this.getJournalEntries()]);
+    const account = accounts.find((a) => a.id === id);
+    if (!account) return;
+    // The same three guards as the demo adapter — an account the books depend
+    // on must not vanish.
+    if (account.systemKey) throw new Error("system-account");
+    if (accounts.some((a) => a.parentId === id)) throw new Error("has-children");
+    if (entries.some((e) => e.lines.some((l) => l.accountId === id)))
+      throw new Error("has-postings");
+    await deleteDoc(doc(this.db, paths.accounts(this.farmId), id));
+  }
+
+  getJournalEntries = () =>
+    this.all<JournalEntry>(
+      paths.journalEntries(this.farmId),
+      orderBy("date", "desc"),
+      fsLimit(1000),
+    );
+
+  private async assertYearOpen(fiscalYearId?: ID): Promise<void> {
+    if (!fiscalYearId) return;
+    const years = await this.getFiscalYears();
+    const year = years.find((y) => y.id === fiscalYearId);
+    if (year && year.status === "closed") throw new Error("year-closed");
+  }
+
+  async saveJournalEntry(
+    entry: EventWrite<Omit<JournalEntry, "id" | "farmId" | "number"> & { number?: string }>,
+  ): Promise<JournalEntry> {
+    if (!isBalanced(entry.lines)) throw new Error("unbalanced");
+    await this.assertYearOpen(entry.fiscalYearId);
+
+    if (entry.id) {
+      const snap = await getDoc(doc(this.db, paths.journalEntries(this.farmId), entry.id));
+      if (snap.exists() && (snap.data() as JournalEntry).status === "posted")
+        throw new Error("posted-immutable");
+    }
+
+    const id = entry.id ?? doc(this.col(paths.journalEntries(this.farmId))).id;
+    const number =
+      entry.number ??
+      journalNumber(entry.date, (await this.getJournalEntries()).length + 1);
+    const record = {
+      ...entry,
+      id,
+      farmId: this.farmId,
+      number,
+      createdAt: entry.createdAt ?? new Date().toISOString(),
+    } as JournalEntry;
+    await setDoc(
+      doc(this.db, paths.journalEntries(this.farmId), id),
+      omitUndefined(record),
+      { merge: true },
+    );
+    return record;
+  }
+
+  async setJournalStatus(id: ID, status: JournalEntry["status"]): Promise<JournalEntry> {
+    const ref = doc(this.db, paths.journalEntries(this.farmId), id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) throw new Error("not-found");
+    const entry = snap.data() as JournalEntry;
+    await this.assertYearOpen(entry.fiscalYearId);
+    if (status === "posted" && !isBalanced(entry.lines)) throw new Error("unbalanced");
+    const patch: Partial<JournalEntry> = { status };
+    if (status === "posted") patch.postedAt = new Date().toISOString();
+    await setDoc(ref, omitUndefined(patch), { merge: true });
+    return { ...entry, ...patch };
+  }
+
+  getFiscalYears = () =>
+    this.all<FiscalYear>(paths.fiscalYears(this.farmId), orderBy("startDate", "desc"));
+
+  async saveFiscalYear(year: EventWrite<Omit<FiscalYear, "id" | "farmId">>): Promise<FiscalYear> {
+    const id = year.id ?? doc(this.col(paths.fiscalYears(this.farmId))).id;
+    const record = { ...year, id, farmId: this.farmId } as FiscalYear;
+    await setDoc(doc(this.db, paths.fiscalYears(this.farmId), id), omitUndefined(record), {
+      merge: true,
+    });
+    return record;
+  }
+
+  async closeFiscalYear(id: ID): Promise<FiscalYear> {
+    const ref = doc(this.db, paths.fiscalYears(this.farmId), id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) throw new Error("not-found");
+    const patch = { status: "closed" as const, closedAt: new Date().toISOString() };
+    await setDoc(ref, patch, { merge: true });
+    return { ...(snap.data() as FiscalYear), ...patch };
   }
 
   /* --------------------------------- Alerts -------------------------------- */

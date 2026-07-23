@@ -693,3 +693,91 @@ export interface TimelineEntry {
   detailAr?: string;
   icon?: string;
 }
+
+/* ------------------------------- Accounting -------------------------------- */
+/* Double-entry bookkeeping (شجرة الحسابات / القيود). Mirrors the structure an
+ * Egyptian accountant expects: a coded account tree, journal entries whose
+ * debits must equal credits, and fiscal years that can be closed. Branch and
+ * currency live on the records from day one so multi-branch / multi-currency
+ * can switch on without a data migration. */
+
+/** أصول / خصوم / حقوق ملكية / إيرادات / مصروفات */
+export type AccountType = "asset" | "liability" | "equity" | "revenue" | "expense";
+
+/** طبيعة الحساب — which side increases the account. */
+export type AccountNature = "debit" | "credit";
+
+export interface Account {
+  id: ID;
+  farmId: ID;
+  /** Hierarchical code, e.g. "1", "102", "10201". Sorts the tree and is what
+   *  accountants actually refer to. */
+  code: string;
+  parentId?: ID | null;
+  name: string;
+  nameAr: string;
+  type: AccountType;
+  nature: AccountNature;
+  /** Group (parent) accounts are headers — you post to leaves only. */
+  isGroup: boolean;
+  /** Opening balance carried into the first fiscal year, in `nature` terms. */
+  openingBalance?: number;
+  /** ISO currency; defaults to the farm currency. */
+  currency?: string;
+  branchId?: ID;
+  active: boolean;
+  /** Marks accounts the system relies on (cash, AR, AP…) so they can't be deleted. */
+  systemKey?: string;
+  createdAt?: string;
+}
+
+export interface JournalLine {
+  accountId: ID;
+  /** Exactly one of debit/credit is non-zero on a well-formed line. */
+  debit: number;
+  credit: number;
+  description?: string;
+  /** Optional analytical tags — lets the ledger answer "per animal / per pen". */
+  partnerId?: ID;
+  animalId?: ID;
+  zoneId?: ID;
+}
+
+export type JournalStatus = "draft" | "posted" | "void";
+
+/** A journal entry (قيد يومية). Source documents (invoices, vouchers, stock
+ *  notes) will each post one of these, tagged via `sourceKind`/`sourceId`. */
+export interface JournalEntry {
+  id: ID;
+  farmId: ID;
+  /** Human-facing sequential number, e.g. "JV-2026-0001". */
+  number: string;
+  date: string;
+  description: string;
+  descriptionAr?: string;
+  reference?: string;
+  fiscalYearId?: ID;
+  branchId?: ID;
+  currency?: string;
+  /** Rate to the farm's base currency (1 when same). */
+  exchangeRate?: number;
+  status: JournalStatus;
+  lines: JournalLine[];
+  /** What produced this entry — "manual" for hand-keyed ones. */
+  sourceKind?: "manual" | "invoice" | "purchase" | "voucher" | "stock" | "payroll" | "depreciation";
+  sourceId?: ID;
+  createdAt?: string;
+  createdBy?: ID;
+  postedAt?: string;
+}
+
+/** السنة المالية — postings are only allowed into an open year. */
+export interface FiscalYear {
+  id: ID;
+  farmId: ID;
+  name: string;
+  startDate: string;
+  endDate: string;
+  status: "open" | "closed";
+  closedAt?: string;
+}

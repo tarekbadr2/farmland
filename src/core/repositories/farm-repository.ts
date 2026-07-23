@@ -7,6 +7,7 @@
  */
 
 import type {
+  Account,
   Alert,
   Animal,
   AnimalDisposal,
@@ -20,10 +21,12 @@ import type {
   FeedConsumption,
   FeedItem,
   FeedRation,
+  FiscalYear,
   HealthEvent,
   ID,
   InventoryItem,
   Invoice,
+  JournalEntry,
   Member,
   MilkRecord,
   Partner,
@@ -210,6 +213,28 @@ export interface FarmRepository {
   getAssets(): Promise<Asset[]>;
   saveAsset(asset: EventWrite<Omit<Asset, "id" | "farmId">>): Promise<Asset>;
   deleteAsset(id: ID): Promise<void>;
+
+  /* ------------------------------ Accounting ------------------------------ */
+  /** The chart of accounts. Seeded with a default farm tree on first read. */
+  getAccounts(): Promise<Account[]>;
+  saveAccount(account: EventWrite<Omit<Account, "id" | "farmId">>): Promise<Account>;
+  /** Refuses to delete system accounts, group accounts with children, or any
+   *  account that already carries postings. */
+  deleteAccount(id: ID): Promise<void>;
+
+  getJournalEntries(): Promise<JournalEntry[]>;
+  /** Saves a draft or posted entry; rejects one whose debits ≠ credits. */
+  saveJournalEntry(
+    entry: EventWrite<Omit<JournalEntry, "id" | "farmId" | "number"> & { number?: string }>,
+  ): Promise<JournalEntry>;
+  /** Posts a draft into the ledger (or voids a posted entry — never deletes,
+   *  so the audit trail survives). */
+  setJournalStatus(id: ID, status: JournalEntry["status"]): Promise<JournalEntry>;
+
+  getFiscalYears(): Promise<FiscalYear[]>;
+  saveFiscalYear(year: EventWrite<Omit<FiscalYear, "id" | "farmId">>): Promise<FiscalYear>;
+  /** Closes a year: locks further posting into it. */
+  closeFiscalYear(id: ID): Promise<FiscalYear>;
 
   getAlerts(): Promise<Alert[]>;
   markAlertRead(id: ID): Promise<void>;
