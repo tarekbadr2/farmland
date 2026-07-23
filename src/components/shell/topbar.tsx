@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { AnimatePresence, motion } from "framer-motion";
 import { Languages, Menu, Moon, QrCode, Search, Sun } from "lucide-react";
@@ -21,7 +21,6 @@ import {
 import { useI18n } from "@/lib/i18n/provider";
 import { useFarm } from "@/hooks/use-farm-data";
 import { useAuth } from "@/lib/auth/provider";
-import { allNavItems } from "@/lib/nav";
 import { SidebarNav } from "./sidebar";
 import { CommandPalette } from "./command-palette";
 import { useSyncStatus } from "@/hooks/use-sync-status";
@@ -32,7 +31,6 @@ import { useFullApp } from "@/lib/work-mode";
 import { WorkModeToggle } from "@/components/shell/work-mode-toggle";
 
 export function Topbar() {
-  const pathname = usePathname();
   const router = useRouter();
   const { t, ln, locale, toggleLocale } = useI18n();
   const { user, signOut } = useAuth();
@@ -63,9 +61,6 @@ export function Topbar() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const current = allNavItems.find(
-    (i) => pathname === i.href || pathname.startsWith(`${i.href}/`),
-  );
 
   return (
     <>
@@ -82,10 +77,6 @@ export function Topbar() {
           </Button>
 
           <WorkModeToggle />
-
-          <h1 className="truncate text-[15px] font-semibold tracking-tight lg:text-base">
-            {current ? t(current.labelKey) : t("app.name")}
-          </h1>
 
           <button
             onClick={() => setPaletteOpen(true)}
