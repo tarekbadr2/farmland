@@ -13,6 +13,8 @@ import {
   incomeStatement,
   balanceSheet,
   accountLedger,
+  partnerBalances,
+  partnerStatement,
 } from "./accounting";
 import { journalEntryFromVoucher, voucherNumber } from "./posting";
 import type { Account, JournalEntry } from "@/core/domain/types";
@@ -318,5 +320,54 @@ describe("vouchers", () => {
     expect(tb.balanced).toBe(true);
     // Cash rose from 105,000 to 110,000.
     expect(tb.rows.find((r) => r.account.id === "a101")!.debit).toBe(110_000);
+  });
+});
+
+describe("partner balances (AR/AP)", () => {
+  // Give the fixture real AR/AP accounts to key off.
+  const withKeys: Account[] = ACCOUNTS.map((a) =>
+    a.id === "a102" ? { ...a, systemKey: "receivable" } : a.id === "a201" ? { ...a, systemKey: "payable" } : a,
+  );
+
+  const partnerEntries: JournalEntry[] = [
+    // Sold milk to P1 on credit — they owe 8,000.
+    entry("p1", "JV-1001", "2026-03-01", [
+      { accountId: "a102", debit: 8_000 },
+      { accountId: "a401", credit: 8_000 },
+    ]),
+    // P1 pays 3,000.
+    entry("p2", "JV-1002", "2026-03-05", [
+      { accountId: "a101", debit: 3_000 },
+      { accountId: "a102", credit: 3_000 },
+    ]),
+    // Bought feed from P2 on credit — the farm owes 2,500.
+    entry("p3", "JV-1003", "2026-03-06", [
+      { accountId: "a501", debit: 2_500 },
+      { accountId: "a201", credit: 2_500 },
+    ]),
+  ].map((e) => ({
+    ...e,
+    lines: e.lines.map((l) => ({
+      ...l,
+      partnerId: e.id === "p3" ? "supplier_2" : "customer_1",
+    })),
+  }));
+
+  it("nets what each party owes, positive when they owe the farm", () => {
+    const b = partnerBalances(withKeys, partnerEntries);
+    expect(b.get("customer_1")).toMatchObject({ debit: 8_000, credit: 3_000, balance: 5_000 });
+    // A supplier the farm owes shows negative.
+    expect(b.get("supplier_2")!.balance).toBe(-2_500);
+  });
+
+  it("ignores revenue/expense lines even when they carry a partner", () => {
+    // The milk-sales credit is tagged with customer_1 but must not count.
+    expect(partnerBalances(withKeys, partnerEntries).get("customer_1")!.credit).toBe(3_000);
+  });
+
+  it("builds a statement with a running balance", () => {
+    const { rows, closing } = partnerStatement("customer_1", withKeys, partnerEntries);
+    expect(rows.map((r) => r.running)).toEqual([8_000, 5_000]);
+    expect(closing).toBe(5_000);
   });
 });

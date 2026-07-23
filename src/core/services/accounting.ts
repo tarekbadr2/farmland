@@ -370,3 +370,93 @@ export function accountLedger(
   }
   return { rows, closing: round(running, 2) };
 }
+
+/* --------------------------- Partner balances (AR/AP) ---------------------- */
+
+/** The accounts that represent money owed either way. */
+const PARTNER_ACCOUNT_KEYS = new Set([
+  "receivable",
+  "payable",
+  "notes_receivable",
+  "notes_payable",
+]);
+
+export interface PartnerBalance {
+  partnerId: ID;
+  debit: number;
+  credit: number;
+  /** Positive → they owe the farm. Negative → the farm owes them. */
+  balance: number;
+}
+
+/**
+ * ارصدة عملاء / موردين — what each party owes or is owed.
+ *
+ * Only receivable/payable accounts count. A milk sale line tagged with the
+ * customer must not inflate their balance — the revenue is the farm's, the
+ * debt is what sits in receivables.
+ */
+export function partnerBalances(
+  accounts: Account[],
+  entries: JournalEntry[],
+): Map<ID, PartnerBalance> {
+  const arApIds = new Set(
+    accounts.filter((a) => a.systemKey && PARTNER_ACCOUNT_KEYS.has(a.systemKey)).map((a) => a.id),
+  );
+  const out = new Map<ID, PartnerBalance>();
+
+  for (const entry of entries) {
+    if (entry.status !== "posted") continue;
+    for (const line of entry.lines) {
+      if (!line.partnerId || !arApIds.has(line.accountId)) continue;
+      const row =
+        out.get(line.partnerId) ??
+        { partnerId: line.partnerId, debit: 0, credit: 0, balance: 0 };
+      row.debit += line.debit || 0;
+      row.credit += line.credit || 0;
+      out.set(line.partnerId, row);
+    }
+  }
+
+  for (const row of out.values()) {
+    row.debit = round(row.debit, 2);
+    row.credit = round(row.credit, 2);
+    row.balance = round(row.debit - row.credit, 2);
+  }
+  return out;
+}
+
+export interface StatementRow {
+  entry: JournalEntry;
+  debit: number;
+  credit: number;
+  running: number;
+}
+
+/** One party's account movements in date order, with a running balance. */
+export function partnerStatement(
+  partnerId: ID,
+  accounts: Account[],
+  entries: JournalEntry[],
+): { rows: StatementRow[]; closing: number } {
+  const arApIds = new Set(
+    accounts.filter((a) => a.systemKey && PARTNER_ACCOUNT_KEYS.has(a.systemKey)).map((a) => a.id),
+  );
+  const rows: StatementRow[] = [];
+  let running = 0;
+
+  const ordered = [...entries]
+    .filter((e) => e.status === "posted")
+    .sort((a, b) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number));
+
+  for (const entry of ordered) {
+    for (const line of entry.lines) {
+      if (line.partnerId !== partnerId || !arApIds.has(line.accountId)) continue;
+      const debit = line.debit || 0;
+      const credit = line.credit || 0;
+      running += debit - credit;
+      rows.push({ entry, debit, credit, running: round(running, 2) });
+    }
+  }
+  return { rows, closing: round(running, 2) };
+}

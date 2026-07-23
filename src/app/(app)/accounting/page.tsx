@@ -18,6 +18,7 @@ import {
   useFiscalYears,
   useSetJournalStatus,
   useCloseFiscalYear,
+  usePartners,
 } from "@/hooks/use-farm-data";
 import {
   accountBalances,
@@ -26,6 +27,7 @@ import {
   trialBalance,
   incomeStatement,
   balanceSheet,
+  partnerBalances,
 } from "@/core/services/accounting";
 import { JournalEntryDialog } from "@/components/accounting/journal-entry-dialog";
 import { AccountFormDialog } from "@/components/accounting/account-form-dialog";
@@ -49,6 +51,20 @@ export default function AccountingPage() {
   const tb = React.useMemo(() => trialBalance(accounts, entries), [accounts, entries]);
   const pl = React.useMemo(() => incomeStatement(accounts, entries), [accounts, entries]);
   const bs = React.useMemo(() => balanceSheet(accounts, entries), [accounts, entries]);
+  const { data: partners = [] } = usePartners();
+  const partnerBal = React.useMemo(
+    () => partnerBalances(accounts, entries),
+    [accounts, entries],
+  );
+  // Positive means they owe the farm; negative means the farm owes them.
+  const receivables = partners
+    .map((p) => ({ partner: p, row: partnerBal.get(p.id) }))
+    .filter((x) => x.row && x.row.balance > 0);
+  const payables = partners
+    .map((p) => ({ partner: p, row: partnerBal.get(p.id) }))
+    .filter((x) => x.row && x.row.balance < 0);
+  const totalReceivable = receivables.reduce((s, x) => s + (x.row?.balance ?? 0), 0);
+  const totalPayable = payables.reduce((s, x) => s + Math.abs(x.row?.balance ?? 0), 0);
 
   const openYear = years.find((y) => y.status === "open");
   const label = (a: Account) => (ar ? a.nameAr : a.name);
@@ -145,6 +161,7 @@ export default function AccountingPage() {
           <TabsTrigger value="tree">{ar ? "شجرة الحسابات" : "Chart of accounts"}</TabsTrigger>
           <TabsTrigger value="journal">{ar ? "القيود" : "Journal"}</TabsTrigger>
           <TabsTrigger value="trial">{ar ? "ميزان المراجعة" : "Trial balance"}</TabsTrigger>
+          <TabsTrigger value="balances">{ar ? "أرصدة العملاء والموردين" : "Customer & supplier balances"}</TabsTrigger>
           <TabsTrigger value="statements">{ar ? "القوائم المالية" : "Statements"}</TabsTrigger>
         </TabsList>
 
@@ -363,6 +380,37 @@ export default function AccountingPage() {
           </Card>
         </TabsContent>
 
+        {/* --------------------- Customer / supplier balances --------------------- */}
+        <TabsContent value="balances">
+          <div className="grid gap-3 lg:grid-cols-2">
+            <PartnerBalanceCard
+              title={ar ? "أرصدة العملاء" : "Customer balances"}
+              caption={ar ? "مستحق لنا" : "Owed to the farm"}
+              total={totalReceivable}
+              rows={receivables.map((x) => ({
+                id: x.partner.id,
+                name: ar ? x.partner.nameAr : x.partner.name,
+                amount: x.row!.balance,
+              }))}
+              empty={ar ? "لا توجد مستحقات." : "Nothing outstanding."}
+              formatCurrency={formatCurrency}
+            />
+            <PartnerBalanceCard
+              title={ar ? "أرصدة الموردين" : "Supplier balances"}
+              caption={ar ? "مستحق عليها" : "Owed by the farm"}
+              total={totalPayable}
+              tone="destructive"
+              rows={payables.map((x) => ({
+                id: x.partner.id,
+                name: ar ? x.partner.nameAr : x.partner.name,
+                amount: Math.abs(x.row!.balance),
+              }))}
+              empty={ar ? "لا توجد التزامات." : "Nothing owed."}
+              formatCurrency={formatCurrency}
+            />
+          </div>
+        </TabsContent>
+
         {/* ------------------------------ Statements ------------------------------ */}
         <TabsContent value="statements">
           <div className="grid gap-3 lg:grid-cols-2">
@@ -520,5 +568,50 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
       <span className="truncate">{label}</span>
       <span className="tabular-nums">{value}</span>
     </div>
+  );
+}
+
+/** One side of the AR/AP picture — who owes what, and the total. */
+function PartnerBalanceCard({
+  title,
+  caption,
+  total,
+  rows,
+  empty,
+  formatCurrency,
+  tone,
+}: {
+  title: string;
+  caption: string;
+  total: number;
+  rows: { id: string; name: string; amount: number }[];
+  empty: string;
+  formatCurrency: (n: number) => string;
+  tone?: "destructive";
+}) {
+  return (
+    <Card>
+      <div className="px-5 pb-2 pt-4">
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{caption}</CardDescription>
+      </div>
+      <CardContent className="space-y-1.5 text-[13px]">
+        {rows.length === 0 && <p className="py-6 text-center text-muted-foreground">{empty}</p>}
+        {rows.map((r) => (
+          <div key={r.id} className="flex items-center justify-between border-b border-border/50 py-1.5">
+            <span className="truncate">{r.name}</span>
+            <span className="tabular-nums">{formatCurrency(r.amount)}</span>
+          </div>
+        ))}
+        {rows.length > 0 && (
+          <div className="flex items-center justify-between pt-2 text-[14px] font-semibold">
+            <span>{caption}</span>
+            <span className={cn("tabular-nums", tone === "destructive" && "text-destructive")}>
+              {formatCurrency(total)}
+            </span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
