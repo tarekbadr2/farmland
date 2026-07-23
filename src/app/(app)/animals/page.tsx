@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Download, Filter, Plus, QrCode, Search, X } from "lucide-react";
+import { ArrowRightLeft, Download, Filter, Plus, QrCode, Search, X } from "lucide-react";
 
 import { PageHeader, gridStagger } from "@/components/common/page-header";
 import { StatCard } from "@/components/common/stat-card";
@@ -35,6 +35,7 @@ import { herdComposition } from "@/core/services/metrics";
 import type { Animal } from "@/core/domain/types";
 import { downloadTableXlsx } from "@/lib/export";
 import { ScanTagDialog } from "@/components/animals/scan-tag-dialog";
+import { TransferAnimalsDialog } from "@/components/animals/transfer-animals-dialog";
 import { Beef, Droplets, Baby, Activity } from "lucide-react";
 
 const PAGE_SIZE = 25;
@@ -245,6 +246,13 @@ export default function AnimalsPage() {
               trigger={
                 <Button variant="outline" size="sm">
                   <QrCode /> {t("animals.scanTag")}
+                </Button>
+              }
+            />
+            <TransferAnimalsDialog
+              trigger={
+                <Button variant="outline" size="sm">
+                  <ArrowRightLeft /> {locale === "ar" ? "تحويل رؤوس" : "Transfer"}
                 </Button>
               }
             />

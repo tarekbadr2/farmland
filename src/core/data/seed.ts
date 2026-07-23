@@ -21,6 +21,7 @@ import {
 import type {
   Account,
   Cheque,
+  LivestockTransfer,
   Warehouse,
   Alert,
   Animal,
@@ -101,6 +102,7 @@ export interface FarmDataset {
   partners: Partner[];
   assets: Asset[];
   warehouses: Warehouse[];
+  livestockTransfers: LivestockTransfer[];
   cheques: Cheque[];
   accounts: Account[];
   journalEntries: JournalEntry[];
@@ -1278,6 +1280,9 @@ function build(): FarmDataset {
 
   // The books, derived from the money already generated above so the demo
   // ledger always agrees with the finance page.
+  // Pen moves start empty — the farm records them as it goes.
+  const livestockTransfers: LivestockTransfer[] = [];
+
   // The stores stock actually sits in. The first is the default: anything the
   // movements don't place explicitly is reported as being here.
   const warehouses: Warehouse[] = [
@@ -1359,6 +1364,7 @@ function build(): FarmDataset {
     partners,
     assets,
     warehouses,
+    livestockTransfers,
     cheques,
     accounts,
     journalEntries,

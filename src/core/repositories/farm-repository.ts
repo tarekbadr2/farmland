@@ -29,6 +29,7 @@ import type {
   InventoryItem,
   Invoice,
   JournalEntry,
+  LivestockTransfer,
   Member,
   MilkRecord,
   Partner,
@@ -38,6 +39,7 @@ import type {
   StockMovement,
   TimelineEntry,
   Transaction,
+  TransferReason,
   UtilityReading,
   Warehouse,
   WeatherNow,
@@ -128,6 +130,15 @@ export interface AttendanceInput {
   status: Attendance["status"];
   clockIn?: string;
   clockOut?: string;
+}
+
+/** Head moving from wherever they are into one pen. */
+export interface LivestockTransferInput {
+  toZoneId: ID;
+  animalIds: ID[];
+  date: string;
+  reason?: TransferReason;
+  notes?: string;
 }
 
 /** One item moving from one store to another. */
@@ -245,6 +256,15 @@ export interface FarmRepository {
   recordPurchase(input: PurchaseInput): Promise<Transaction>;
   /** Books a non-stock cost (maintenance, transport, wages) the same way. */
   recordCost(input: CostInput): Promise<Transaction>;
+
+  /* --------------------------- Livestock transfers -------------------------- */
+  getLivestockTransfers(): Promise<LivestockTransfer[]>;
+  /**
+   * اذن تحويل رؤوس — records the document and moves every animal's pen in one
+   * go, so the paperwork and the herd can't disagree. Rejects a move the
+   * validator refuses (empty, wrong kind of zone, animals that have left).
+   */
+  recordLivestockTransfer(input: LivestockTransferInput): Promise<LivestockTransfer>;
 
   /* -------------------------------- Stores --------------------------------- */
   getWarehouses(): Promise<Warehouse[]>;

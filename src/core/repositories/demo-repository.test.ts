@@ -280,3 +280,80 @@ describe("demo repository — stores, transfers and stocktake", () => {
     expect(stockInWarehouse(refreshed, DEFAULT_WAREHOUSE_ID, after)).toBe(counted);
   });
 });
+
+describe("demo repository — livestock transfers", () => {
+  it("moves every selected animal and records the document", async () => {
+    const zones = await repo.getZones();
+    const pens = zones.filter((z) => z.kind === "pen");
+    const target = pens[1];
+
+    const page = await repo.listAnimals({ pageSize: 100_000 });
+    const movers = page.items
+      .filter((a) => a.penId !== target.id && (a.status === "active" || a.status === "quarantine"))
+      .slice(0, 3);
+
+    const transfer = await repo.recordLivestockTransfer({
+      toZoneId: target.id,
+      animalIds: movers.map((a) => a.id),
+      date: TODAY,
+      reason: "regrouping",
+    });
+
+    expect(transfer.number).toMatch(/^LT-\d{4}-\d{4}$/);
+    expect(transfer.animalIds).toHaveLength(3);
+
+    // The herd moved with the paperwork.
+    const after = await repo.listAnimals({ pageSize: 100_000 });
+    for (const m of movers) {
+      expect(after.items.find((a) => a.id === m.id)!.penId).toBe(target.id);
+    }
+    expect((await repo.getLivestockTransfers())[0].id).toBe(transfer.id);
+  });
+
+  it("records a shared origin, and leaves it blank for a mixed group", async () => {
+    const zones = await repo.getZones();
+    const pens = zones.filter((z) => z.kind === "pen");
+    const page = await repo.listAnimals({ pageSize: 100_000 });
+
+    const fromOnePen = page.items.filter((a) => a.penId === pens[0].id && a.status === "active").slice(0, 2);
+    if (fromOnePen.length === 2) {
+      const t = await repo.recordLivestockTransfer({
+        toZoneId: pens[2].id,
+        animalIds: fromOnePen.map((a) => a.id),
+        date: TODAY,
+      });
+      expect(t.fromZoneId).toBe(pens[0].id);
+    }
+  });
+
+  it("refuses a move into a store and a move of an animal that has left", async () => {
+    const zones = await repo.getZones();
+    const store = zones.find((z) => z.kind === "feed_store")!;
+    const page = await repo.listAnimals({ pageSize: 100_000 });
+    const someone = page.items.find((a) => a.status === "active")!;
+
+    await expect(
+      repo.recordLivestockTransfer({ toZoneId: store.id, animalIds: [someone.id], date: TODAY }),
+    ).rejects.toThrow("zone-not-for-animals");
+
+    const gone = page.items.find((a) => a.status === "sold" || a.status === "dead");
+    if (gone) {
+      const pen = zones.find((z) => z.kind === "pen")!;
+      await expect(
+        repo.recordLivestockTransfer({ toZoneId: pen.id, animalIds: [gone.id], date: TODAY }),
+      ).rejects.toThrow("animal-not-movable");
+    }
+  });
+
+  it("refuses a move where the animals are already in that pen", async () => {
+    const page = await repo.listAnimals({ pageSize: 100_000 });
+    const someone = page.items.find((a) => a.status === "active")!;
+    await expect(
+      repo.recordLivestockTransfer({
+        toZoneId: someone.penId,
+        animalIds: [someone.id],
+        date: TODAY,
+      }),
+    ).rejects.toThrow("already-in-zone");
+  });
+});

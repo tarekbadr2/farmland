@@ -21,6 +21,7 @@ import {
   type ChequePhase,
 } from "@/core/services/posting";
 import { stockInWarehouse } from "@/core/services/warehouse";
+import { checkTransfer, commonOrigin, transferNumber } from "@/core/services/livestock";
 import { stocktakeVariance } from "@/core/services/warehouse";
 import {
   FEED_EXPENSE_CATEGORY,
@@ -40,6 +41,7 @@ import {
 import type {
   Account,
   Cheque,
+  LivestockTransfer,
   Warehouse,
   ChequeStatus,
   Animal,
@@ -66,6 +68,7 @@ import type {
 import type {
   AnimalQuery,
   AttendanceInput,
+  LivestockTransferInput,
   StockTransferInput,
   StocktakeInput,
   EventWrite,
@@ -880,6 +883,37 @@ export class DemoFarmRepository implements FarmRepository {
       animalId: input.animalId,
       paymentMethod: input.paymentMethod,
     });
+  }
+
+  /* --------------------------- Livestock transfers -------------------------- */
+
+  getLivestockTransfers = () => tick(this.db.livestockTransfers);
+
+  async recordLivestockTransfer(input: LivestockTransferInput) {
+    const check = checkTransfer(input, this.db.animals, this.db.zones);
+    if (!check.ok) throw new Error(check.errors[0]);
+
+    const transfer: LivestockTransfer = {
+      id: `lt_${Date.now()}`,
+      farmId: this.db.farm.id,
+      number: transferNumber(input.date, this.db.livestockTransfers.length + 1),
+      date: input.date,
+      // Blank when they came from different pens, rather than misreporting one.
+      fromZoneId: commonOrigin(input.animalIds, this.db.animals),
+      toZoneId: input.toZoneId,
+      animalIds: [...input.animalIds],
+      reason: input.reason,
+      notes: input.notes,
+      createdAt: new Date().toISOString(),
+    };
+
+    // The document and the herd move together.
+    for (const id of input.animalIds) {
+      const animal = this.db.animals.find((a) => a.id === id);
+      if (animal) animal.penId = input.toZoneId;
+    }
+    this.db.livestockTransfers.unshift(transfer);
+    return tick(transfer);
   }
 
   /* --------------------------------- Stores --------------------------------- */

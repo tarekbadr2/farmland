@@ -24,12 +24,8 @@ import { useI18n } from "@/lib/i18n/provider";
 import { useAnimals, useZones } from "@/hooks/use-farm-data";
 import { average, round } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { housesAnimals } from "@/core/services/livestock";
 import type { Zone, ZoneKind } from "@/core/domain/types";
-
-/** Only these zones hold livestock — a feed store or office has a capacity in
- *  tons or desks, not head, so occupancy must never be reported for them. */
-const ANIMAL_ZONES: ZoneKind[] = ["pen", "barn", "quarantine"];
-const housesAnimals = (kind: ZoneKind) => ANIMAL_ZONES.includes(kind);
 
 const KIND_STYLE: Record<ZoneKind, { fill: string; stroke: string; icon: typeof Beef }> = {
   pen: { fill: "var(--chart-1)", stroke: "var(--chart-1)", icon: Beef },

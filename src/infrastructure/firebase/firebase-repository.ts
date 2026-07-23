@@ -40,6 +40,7 @@ import { getActiveFarm } from "./tenant";
 import type {
   Account,
   Cheque,
+  LivestockTransfer,
   Warehouse,
   ChequeStatus,
   Alert,
@@ -77,6 +78,7 @@ import type {
 import type {
   AnimalQuery,
   AttendanceInput,
+  LivestockTransferInput,
   StockTransferInput,
   StocktakeInput,
   EventWrite,
@@ -118,6 +120,7 @@ import {
   type CostInput,
   type PurchaseInput,
 } from "@/core/services/automation";
+import { checkTransfer, commonOrigin, transferNumber } from "@/core/services/livestock";
 import {
   DEFAULT_WAREHOUSE_ID,
   stockInWarehouse,
@@ -1218,6 +1221,55 @@ export class FirebaseFarmRepository implements FarmRepository {
       animalId: input.animalId,
       paymentMethod: input.paymentMethod,
     });
+  }
+
+  /* --------------------------- Livestock transfers -------------------------- */
+
+  getLivestockTransfers = () =>
+    this.all<LivestockTransfer>(
+      paths.livestockTransfers(this.farmId),
+      orderBy("date", "desc"),
+      fsLimit(500),
+    );
+
+  async recordLivestockTransfer(input: LivestockTransferInput): Promise<LivestockTransfer> {
+    const [page, zones, existing] = await Promise.all([
+      this.listAnimals({ pageSize: 100_000 }),
+      this.getZones(),
+      this.getLivestockTransfers(),
+    ]);
+    const animals = page.items;
+
+    const check = checkTransfer(input, animals, zones);
+    if (!check.ok) throw new Error(check.errors[0]);
+
+    const id = doc(this.col(paths.livestockTransfers(this.farmId))).id;
+    const transfer: LivestockTransfer = {
+      id,
+      farmId: this.farmId,
+      number: transferNumber(input.date, existing.length + 1),
+      date: input.date,
+      fromZoneId: commonOrigin(input.animalIds, animals),
+      toZoneId: input.toZoneId,
+      animalIds: [...input.animalIds],
+      reason: input.reason,
+      notes: input.notes,
+      createdAt: new Date().toISOString(),
+    };
+
+    // One batch, so the document and every animal's pen land together.
+    const batch = writeBatch(this.db);
+    batch.set(
+      doc(this.db, paths.livestockTransfers(this.farmId), id),
+      omitUndefined(transfer),
+    );
+    for (const animalId of input.animalIds) {
+      batch.update(doc(this.db, paths.animals(this.farmId), animalId), {
+        penId: input.toZoneId,
+      });
+    }
+    await trackWrite(batch.commit());
+    return transfer;
   }
 
   /* ---------------------------------- Stores -------------------------------- */

@@ -854,3 +854,32 @@ export interface Cheque {
   createdAt?: string;
   settledAt?: string;
 }
+
+/* --------------------------- Livestock transfers --------------------------- */
+/* اذن تحويل رؤوس — moving head between pens is a document, not a silent field
+ * edit: it says who moved what, when and why, and it's what a vet or an auditor
+ * asks for when a group's history stops making sense. */
+
+export type TransferReason =
+  | "regrouping"
+  | "medical"
+  | "dry_off"
+  | "calving"
+  | "sale_prep"
+  | "other";
+
+export interface LivestockTransfer {
+  id: ID;
+  farmId: ID;
+  /** Sequential document number, e.g. LT-2026-0001. */
+  number: string;
+  date: string;
+  /** Absent when the animals came from different pens. */
+  fromZoneId?: ID;
+  toZoneId: ID;
+  animalIds: ID[];
+  reason?: TransferReason;
+  notes?: string;
+  createdBy?: ID;
+  createdAt?: string;
+}

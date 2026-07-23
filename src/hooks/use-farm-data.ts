@@ -13,7 +13,11 @@ import type {
   JournalEntry,
 } from "@/core/domain/types";
 import type { CostInput, PurchaseInput } from "@/core/services/automation";
-import type { StockTransferInput, StocktakeInput } from "@/core/repositories/farm-repository";
+import type {
+  LivestockTransferInput,
+  StockTransferInput,
+  StocktakeInput,
+} from "@/core/repositories/farm-repository";
 
 const repo = getRepository();
 
@@ -43,6 +47,7 @@ export const qk = {
   partners: ["partners"] as const,
   assets: ["assets"] as const,
   warehouses: ["warehouses"] as const,
+  livestockTransfers: ["livestock-transfers"] as const,
   cheques: ["cheques"] as const,
   accounts: ["accounts"] as const,
   journal: ["journal"] as const,
@@ -282,6 +287,24 @@ export function useRecordStocktake() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.movements });
       qc.invalidateQueries({ queryKey: qk.inventory });
+    },
+  });
+}
+
+/* --------------------------- Livestock transfers --------------------------- */
+
+export const useLivestockTransfers = () =>
+  useQuery({ queryKey: qk.livestockTransfers, queryFn: () => repo.getLivestockTransfers() });
+
+export function useRecordLivestockTransfer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: LivestockTransferInput) => repo.recordLivestockTransfer(input),
+    onSuccess: () => {
+      // Animals changed pen, so anything keyed on the herd is now stale.
+      qc.invalidateQueries({ queryKey: qk.livestockTransfers });
+      qc.invalidateQueries({ queryKey: ["animals"] });
+      qc.invalidateQueries({ queryKey: qk.zones });
     },
   });
 }
