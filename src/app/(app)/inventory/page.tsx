@@ -28,6 +28,7 @@ import {
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
 import { PurchaseDialog } from "@/components/common/purchase-dialog";
 import { StocktakeDialog, TransferStockDialog } from "@/components/inventory/store-dialogs";
+import { StockLedgerDialog } from "@/components/inventory/stock-ledger-dialog";
 import { stockInWarehouse, warehouseValue } from "@/core/services/warehouse";
 import { StatCard } from "@/components/common/stat-card";
 import { ChartCard, ChartTooltip, CHART_COLORS, axisProps, gridProps } from "@/components/common/chart";
@@ -52,6 +53,7 @@ export default function InventoryPage() {
   const { data: items = [], isLoading } = useInventory();
   const { data: movements = [] } = useMovements();
   const { data: warehouses = [] } = useWarehouses();
+  const [ledgerItem, setLedgerItem] = React.useState<InventoryItem | null>(null);
   const { data: partners = [] } = usePartners();
   const [category, setCategory] = React.useState("all");
 
@@ -385,6 +387,7 @@ export default function InventoryPage() {
                   columns={columns}
                   rows={filtered}
                   loading={isLoading}
+                  onRowClick={setLedgerItem}
                   mobileCard={(i) => (
                     <div>
                       <div className="flex items-center justify-between gap-2">
@@ -485,6 +488,8 @@ export default function InventoryPage() {
                 </div>
               </TabsContent>
             </Tabs>
+
+            <StockLedgerDialog item={ledgerItem} onClose={() => setLedgerItem(null)} />
           </CardContent>
         </Card>
       </motion.div>
