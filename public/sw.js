@@ -41,7 +41,11 @@ self.addEventListener("install", (event) => {
       Promise.all(PRECACHE.map((url) => cache.add(url).catch(() => undefined))),
     ),
   );
-  self.skipWaiting();
+  // NB: no skipWaiting() here. On first install (no existing worker) the browser
+  // activates immediately anyway; on an UPDATE we deliberately wait so the open
+  // tab keeps running the matching build until the user reloads. The page tells
+  // us to take over — via the SKIP_WAITING message below — only when the user
+  // accepts the "new version" prompt, which then triggers a clean reload.
 });
 
 self.addEventListener("activate", (event) => {
@@ -51,6 +55,12 @@ self.addEventListener("activate", (event) => {
       .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))),
   );
   self.clients.claim();
+});
+
+// The page posts this when the user accepts the update prompt: activate now,
+// which fires controllerchange in the page and reloads it onto the new build.
+self.addEventListener("message", (event) => {
+  if (event.data === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("fetch", (event) => {
