@@ -20,11 +20,61 @@ import type {
   FeedRation,
   HealthEvent,
   InventoryItem,
+  Sex,
   Transaction,
   UtilityReading,
 } from "@/core/domain/types";
 
 /* --------------------------------- Herd ---------------------------------- */
+
+/**
+ * The exclusive herd subcategories. Every live animal falls into exactly one,
+ * split by sex in the UI: females run the dairy lifecycle, males are calf →
+ * fattening.
+ */
+export type HerdSub = "lactating" | "pregnant" | "dry" | "heifer" | "fattening" | "calf";
+
+export interface HerdSlot {
+  sex: Sex;
+  sub: HerdSub;
+}
+
+/**
+ * Bucket one animal into exactly one herd subcategory, auto-derived from the
+ * fields the app already maintains so it stays in sync as events update the
+ * record. Weaning (`isCalf`) is the calf boundary; then sex; then the female
+ * lifecycle. A milking cow counts as *lactating* even when she's also in calf —
+ * her current job is the bucket — so *pregnant* here means the in-calf females
+ * that are NOT currently milking (the springing / dry-pregnant group).
+ */
+export function classifyAnimal(a: Animal): HerdSlot {
+  if (a.isCalf) return { sex: a.sex, sub: "calf" };
+  if (a.sex === "male") return { sex: "male", sub: "fattening" };
+  if (a.milkStatus === "lactating") return { sex: "female", sub: "lactating" };
+  if (a.reproStatus === "pregnant") return { sex: "female", sub: "pregnant" };
+  if (a.milkStatus === "dry") return { sex: "female", sub: "dry" };
+  return { sex: "female", sub: "heifer" };
+}
+
+/** Live-herd counts grouped by sex → subcategory, for the dashboard and filters. */
+export function herdStructure(animals: Animal[]) {
+  const live = animals.filter((a) => a.status === "active" || a.status === "quarantine");
+  const female = { lactating: 0, pregnant: 0, dry: 0, heifer: 0, calf: 0 };
+  const male = { fattening: 0, calf: 0 };
+  for (const a of live) {
+    const { sex, sub } = classifyAnimal(a);
+    if (sex === "female") female[sub as keyof typeof female] += 1;
+    else male[sub as keyof typeof male] += 1;
+  }
+  const femaleTotal = female.lactating + female.pregnant + female.dry + female.heifer + female.calf;
+  const maleTotal = male.fattening + male.calf;
+  return {
+    total: live.length,
+    female: { total: femaleTotal, ...female },
+    male: { total: maleTotal, ...male },
+    calves: female.calf + male.calf,
+  };
+}
 
 export function herdComposition(animals: Animal[]) {
   const live = animals.filter((a) => a.status === "active" || a.status === "quarantine");

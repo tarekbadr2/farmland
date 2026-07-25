@@ -31,8 +31,9 @@ import { useI18n } from "@/lib/i18n/provider";
 import { useAnimals, useZones } from "@/hooks/use-farm-data";
 import { ageFromDOB } from "@/lib/date";
 import { TODAY } from "@/core/data/seed";
-import { herdComposition } from "@/core/services/metrics";
+import { herdComposition, herdStructure, classifyAnimal, type HerdSub } from "@/core/services/metrics";
 import type { Animal } from "@/core/domain/types";
+import { cn } from "@/lib/utils";
 import { downloadTableXlsx } from "@/lib/export";
 import { ScanTagDialog } from "@/components/animals/scan-tag-dialog";
 import { TransferAnimalsDialog } from "@/components/animals/transfer-animals-dialog";
@@ -47,7 +48,10 @@ export default function AnimalsPage() {
 
   const [search, setSearch] = React.useState("");
   const [debounced, setDebounced] = React.useState("");
-  const [group, setGroup] = React.useState<"all" | "adults" | "calves" | "bulls">("all");
+  // Sex + subcategory tab (null = whole herd). Auto-derived per animal.
+  const [cat, setCat] = React.useState<{ sex: "female" | "male"; sub: HerdSub | "all" } | null>(
+    null,
+  );
   const [milkStatus, setMilkStatus] = React.useState<string>("all");
   const [reproStatus, setReproStatus] = React.useState<string>("all");
   const [penId, setPenId] = React.useState<string>("all");
@@ -64,34 +68,71 @@ export default function AnimalsPage() {
     return () => clearTimeout(id);
   }, [search]);
 
-  const query = {
-    search: debounced,
-    group,
-    milkStatus: milkStatus as never,
-    reproStatus: reproStatus as never,
-    penId,
-    sortBy: sortBy as never,
-    sortDir,
-    page,
-    pageSize: PAGE_SIZE,
-  };
+  const { data: allAnimals, isLoading } = useAnimals({ pageSize: 100000 });
+  const all = React.useMemo(() => allAnimals?.items ?? [], [allAnimals?.items]);
+  // The list is the LIVE herd (active + quarantine). Sold/dead animals leave the
+  // herd and drop off this view; their records stay in reports and the sales
+  // ledger. Keeping one population means the chip counts, the stat cards and the
+  // dashboard herd structure all agree.
+  const live = React.useMemo(
+    () => all.filter((a) => a.status === "active" || a.status === "quarantine"),
+    [all],
+  );
+  const herd = React.useMemo(() => herdComposition(all), [all]);
+  const structure = React.useMemo(() => herdStructure(all), [all]);
 
-  const { data, isLoading } = useAnimals(query);
-  const { data: allAnimals } = useAnimals({ pageSize: 100000 });
-  const herd = React.useMemo(
-    () => herdComposition(allAnimals?.items ?? []),
-    [allAnimals?.items],
+  // The whole page filters/sorts/paginates client-side over the live herd: a
+  // single farm's herd is bounded, the list is already loaded for the stat
+  // cards, and the subcategory buckets are derived (not plain Firestore fields),
+  // so this keeps the chip counts and the table perfectly in sync.
+  const filtered = React.useMemo(() => {
+    const q = debounced.trim().toLowerCase();
+    const items = live.filter((a) => {
+      if (cat) {
+        const c = classifyAnimal(a);
+        if (c.sex !== cat.sex) return false;
+        if (cat.sub !== "all" && c.sub !== cat.sub) return false;
+      }
+      if (milkStatus !== "all" && a.milkStatus !== milkStatus) return false;
+      if (reproStatus !== "all" && a.reproStatus !== reproStatus) return false;
+      if (penId !== "all" && a.penId !== penId) return false;
+      if (q) {
+        const hay = `${a.tag} ${a.name} ${a.nameAr} ${a.rfid} ${a.bloodline ?? ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...items].sort((a, b) => {
+      switch (sortBy) {
+        case "milk":
+          return (a.avgDailyMilkL - b.avgDailyMilkL) * dir;
+        case "age":
+          return a.dateOfBirth.localeCompare(b.dateOfBirth) * dir;
+        case "weight":
+          return (a.weightKg - b.weightKg) * dir;
+        case "health":
+          return (a.healthScore - b.healthScore) * dir;
+        case "name":
+          return a.name.localeCompare(b.name) * dir;
+        default:
+          return a.tag.localeCompare(b.tag, undefined, { numeric: true }) * dir;
+      }
+    });
+  }, [live, cat, milkStatus, reproStatus, penId, debounced, sortBy, sortDir]);
+
+  const pageItems = React.useMemo(
+    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filtered, page],
   );
 
   const activeFilters = [
-    group !== "all" && group,
     milkStatus !== "all" && milkStatus,
     reproStatus !== "all" && reproStatus,
     penId !== "all" && penId,
   ].filter(Boolean).length;
 
   const resetFilters = () => {
-    setGroup("all");
     setMilkStatus("all");
     setReproStatus("all");
     setPenId("all");
@@ -328,25 +369,51 @@ export default function AnimalsPage() {
           </div>
         </div>
 
+        {/* Sex + subcategory tabs — auto-derived buckets, counts stay in sync. */}
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-border/70 px-3 py-2.5">
+          <CatChip active={!cat} onClick={() => { setCat(null); setPage(1); }}>
+            {t("common.all")} <Count n={structure.total} active={!cat} />
+          </CatChip>
+
+          <span className="ms-1 text-[12px] font-semibold text-muted-foreground">♀</span>
+          {([
+            { sub: "all", label: t("herd.females"), n: structure.female.total },
+            { sub: "lactating", label: t("herd.lactating"), n: structure.female.lactating },
+            { sub: "pregnant", label: t("herd.pregnant"), n: structure.female.pregnant },
+            { sub: "dry", label: t("herd.dry"), n: structure.female.dry },
+            { sub: "heifer", label: t("herd.heifers"), n: structure.female.heifer },
+            { sub: "calf", label: t("herd.calves"), n: structure.female.calf },
+          ] as const).map((c) => {
+            const on = cat?.sex === "female" && cat.sub === c.sub;
+            return (
+              <CatChip key={`f-${c.sub}`} active={on} onClick={() => { setCat({ sex: "female", sub: c.sub }); setPage(1); }}>
+                {c.label} <Count n={c.n} active={on} />
+              </CatChip>
+            );
+          })}
+
+          <span className="ms-2 text-[12px] font-semibold text-muted-foreground">♂</span>
+          {([
+            { sub: "all", label: t("herd.males"), n: structure.male.total },
+            { sub: "fattening", label: t("herd.fattening"), n: structure.male.fattening },
+            { sub: "calf", label: t("herd.calves"), n: structure.male.calf },
+          ] as const).map((c) => {
+            const on = cat?.sex === "male" && cat.sub === c.sub;
+            return (
+              <CatChip key={`m-${c.sub}`} active={on} onClick={() => { setCat({ sex: "male", sub: c.sub }); setPage(1); }}>
+                {c.label} <Count n={c.n} active={on} />
+              </CatChip>
+            );
+          })}
+        </div>
+
         {showFilters && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             className="overflow-hidden border-b border-border/70"
           >
-            <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Select value={group} onValueChange={(v) => { setGroup(v as never); setPage(1); }}>
-                <SelectTrigger size="sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("common.all")}</SelectItem>
-                  <SelectItem value="adults">{t("kpi.lactating")} / {t("kpi.dry")}</SelectItem>
-                  <SelectItem value="calves">{t("kpi.calves")}</SelectItem>
-                  <SelectItem value="bulls">{t("kpi.bulls")}</SelectItem>
-                </SelectContent>
-              </Select>
-
+            <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
               <Select value={milkStatus} onValueChange={(v) => { setMilkStatus(v); setPage(1); }}>
                 <SelectTrigger size="sm">
                   <SelectValue placeholder={t("animals.milkStatus")} />
@@ -393,7 +460,7 @@ export default function AnimalsPage() {
 
         <DataTable
           columns={columns}
-          rows={data?.items ?? []}
+          rows={pageItems}
           loading={isLoading}
           onRowClick={(a) => router.push(`/animal?id=${a.id}`)}
           sortKey={sortBy}
@@ -401,7 +468,7 @@ export default function AnimalsPage() {
           onSort={onSort}
           page={page}
           pageSize={PAGE_SIZE}
-          total={data?.total}
+          total={filtered.length}
           onPageChange={setPage}
           mobileCard={(a) => (
             <div className="flex items-center gap-3">
@@ -434,8 +501,46 @@ export default function AnimalsPage() {
       </Card>
 
       <p className="mt-3 text-center text-[11px] text-muted-foreground" dir={locale === "ar" ? "rtl" : "ltr"}>
-        {formatNumber(data?.total ?? 0)} {t("common.results")}
+        {formatNumber(filtered.length)} {t("common.results")}
       </p>
     </>
+  );
+}
+
+function CatChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] font-medium transition",
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border bg-card text-muted-foreground hover:border-ring/40 hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Count({ n, active }: { n: number; active: boolean }) {
+  return (
+    <span
+      className={cn(
+        "tabular rounded-full px-1.5 text-[10.5px] font-semibold",
+        active ? "bg-primary-foreground/20" : "bg-muted text-muted-foreground",
+      )}
+    >
+      {n}
+    </span>
   );
 }

@@ -74,6 +74,7 @@ import {
   growthMetrics,
   healthMetrics,
   herdComposition,
+  herdStructure,
   inventoryMetrics,
   meatMetrics,
   milkSummary,
@@ -110,6 +111,7 @@ export default function DashboardPage() {
   const daily = React.useMemo(() => milk.data ?? [], [milk.data]);
 
   const herd = React.useMemo(() => herdComposition(list), [list]);
+  const structure = React.useMemo(() => herdStructure(list), [list]);
   const milkStats = React.useMemo(() => milkSummary(daily, TODAY), [daily]);
   const meat$ = React.useMemo(() => meatMetrics(list, txns.data ?? [], TODAY), [list, txns.data]);
   const growth$ = React.useMemo(() => growthMetrics(list, TODAY), [list]);
@@ -155,12 +157,27 @@ export default function DashboardPage() {
   const greeting =
     hour < 12 ? "dashboard.greetingMorning" : hour < 18 ? "dashboard.greetingAfternoon" : "dashboard.greetingEvening";
 
+  // Donut slices (calves merged so 6 palette colours cover it); the legend
+  // below splits calves back out under each sex.
   const composition = [
-    { key: "lactating", value: herd.lactating, color: CHART_COLORS[0] },
-    { key: "dry", value: herd.dry, color: CHART_COLORS[2] },
-    { key: "heifers", value: herd.heifers, color: CHART_COLORS[1] },
-    { key: "calves", value: herd.calves, color: CHART_COLORS[3] },
-    { key: "bulls", value: herd.bulls, color: CHART_COLORS[4] },
+    { key: "lactating", value: structure.female.lactating, color: CHART_COLORS[0] },
+    { key: "pregnant", value: structure.female.pregnant, color: CHART_COLORS[1] },
+    { key: "dry", value: structure.female.dry, color: CHART_COLORS[2] },
+    { key: "heifers", value: structure.female.heifer, color: CHART_COLORS[3] },
+    { key: "fattening", value: structure.male.fattening, color: CHART_COLORS[4] },
+    { key: "calves", value: structure.calves, color: CHART_COLORS[5] },
+  ].filter((s) => s.value > 0);
+
+  const femaleRows = [
+    { label: t("herd.lactating"), value: structure.female.lactating, color: CHART_COLORS[0] },
+    { label: t("herd.pregnant"), value: structure.female.pregnant, color: CHART_COLORS[1] },
+    { label: t("herd.dry"), value: structure.female.dry, color: CHART_COLORS[2] },
+    { label: t("herd.heifers"), value: structure.female.heifer, color: CHART_COLORS[3] },
+    { label: t("herd.calves"), value: structure.female.calf, color: CHART_COLORS[5] },
+  ];
+  const maleRows = [
+    { label: t("herd.fattening"), value: structure.male.fattening, color: CHART_COLORS[4] },
+    { label: t("herd.calves"), value: structure.male.calf, color: CHART_COLORS[5] },
   ];
 
   const topProducers = [...list]
@@ -523,9 +540,9 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title={t("dashboard.herdComposition")} description={`${formatNumber(herd.total)} ${t("common.head")}`}>
-          <div className="flex items-center">
-            <ResponsiveContainer width="55%" height={220}>
+        <ChartCard title={t("herd.structure")} description={`${formatNumber(herd.total)} ${t("common.head")}`}>
+          <div className="flex items-center gap-2">
+            <ResponsiveContainer width="42%" height={220}>
               <PieChart>
                 <Pie
                   data={composition}
@@ -543,15 +560,18 @@ export default function DashboardPage() {
                 <Tooltip content={<ChartTooltip formatter={(v) => formatNumber(v)} />} />
               </PieChart>
             </ResponsiveContainer>
-            <ul className="flex-1 space-y-2 pe-3">
-              {composition.map((c) => (
-                <li key={c.key} className="flex items-center gap-2 text-[12px]">
-                  <span className="size-2 rounded-[3px]" style={{ background: c.color }} />
-                  <span className="text-muted-foreground">{t(`kpi.${c.key}` as never)}</span>
-                  <span className="tabular ms-auto font-medium">{formatNumber(c.value)}</span>
-                </li>
-              ))}
-            </ul>
+            <div className="flex-1 space-y-3 pe-2">
+              <HerdGroup
+                title={`${t("herd.females")} · ${formatNumber(structure.female.total)}`}
+                rows={femaleRows}
+                formatNumber={formatNumber}
+              />
+              <HerdGroup
+                title={`${t("herd.males")} · ${formatNumber(structure.male.total)}`}
+                rows={maleRows}
+                formatNumber={formatNumber}
+              />
+            </div>
           </div>
         </ChartCard>
 
@@ -888,6 +908,33 @@ export default function DashboardPage() {
         />
       </motion.div>
     </>
+  );
+}
+
+function HerdGroup({
+  title,
+  rows,
+  formatNumber,
+}: {
+  title: string;
+  rows: { label: string; value: number; color: string }[];
+  formatNumber: (n: number) => string;
+}) {
+  return (
+    <div>
+      <p className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {title}
+      </p>
+      <ul className="space-y-1">
+        {rows.map((r) => (
+          <li key={r.label} className="flex items-center gap-2 text-[12px]">
+            <span className="size-2 rounded-[3px]" style={{ background: r.color }} />
+            <span className="text-muted-foreground">{r.label}</span>
+            <span className="tabular ms-auto font-medium">{formatNumber(r.value)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
