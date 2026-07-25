@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { IS_DESKTOP } from "@/lib/platform";
 import { useBackgroundMode } from "@/lib/background-mode";
 import { canNotify, showDesktopNotification } from "@/lib/desktop-notify";
+import { notificationsAllowed } from "@/lib/notification-prefs";
 
 /**
  * Bridges farm alerts to native desktop notifications while background mode is
@@ -40,9 +41,14 @@ function DesktopAlertsInner() {
     }
 
     const fresh = alerts.filter((a) => !a.read && !seen.current!.has(a.id));
-    // Cap the burst so a big sync can't spam the OS.
+    // Honour the per-device notification prefs (mute / per-category), read at
+    // fire time so a change takes effect immediately. Cap the burst so a big
+    // sync can't spam the OS. A suppressed alert is still marked seen, so
+    // un-muting later doesn't replay everything that arrived while muted.
     for (const a of fresh.slice(0, 3)) {
-      showDesktopNotification(ar ? a.titleAr : a.title, ar ? a.bodyAr : a.body, { href: a.href });
+      if (notificationsAllowed(a.category)) {
+        showDesktopNotification(ar ? a.titleAr : a.title, ar ? a.bodyAr : a.body, { href: a.href });
+      }
     }
     fresh.forEach((a) => seen.current!.add(a.id));
   }, [alerts, enabled, ar]);

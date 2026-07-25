@@ -34,6 +34,7 @@ import { getDataset } from "@/core/data/seed";
 import { TeamManager } from "@/components/settings/team-manager";
 import { BillingSettings } from "@/components/settings/billing-settings";
 import { OrganisationSettings } from "@/components/settings/organisation-settings";
+import { NotificationPreferences } from "@/components/settings/notification-preferences";
 import { UpdateChecker } from "@/components/settings/update-checker";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/core/domain/types";
@@ -64,9 +65,6 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { data: farm } = useFarm();
 
-  const [offline, setOffline] = React.useState(true);
-  const [realtime, setRealtime] = React.useState(true);
-  const [channels, setChannels] = React.useState({ push: true, sms: true, email: false });
   const [tab, setTab] = React.useState("farm");
 
   // The trial banner / paywall link to /settings#billing — honour the hash.
@@ -317,57 +315,7 @@ export default function SettingsPage() {
         {/* ------------------------------ Notifications ----------------------------- */}
         <TabsContent value="notifications">
           <motion.div variants={cardIn} initial="hidden" animate="show">
-            <Card>
-              <div className="px-5 pb-2 pt-4">
-                <CardTitle>{t("settings.notificationPrefs")}</CardTitle>
-              </div>
-              <CardContent className="space-y-1">
-                {(
-                  [
-                    ["push", t("notifications.push")],
-                    ["sms", t("notifications.sms")],
-                    ["email", t("notifications.email")],
-                  ] as const
-                ).map(([key, label]) => (
-                  <div key={key} className="flex items-center justify-between py-3">
-                    <div>
-                      <p className="text-[13.5px] font-medium">{label}</p>
-                      <p className="text-[11.5px] text-muted-foreground">
-                        {key === "sms"
-                          ? locale === "ar"
-                            ? "التنبيهات الحرجة فقط — رصيد الرسائل محدود"
-                            : "Critical alerts only — SMS credits are finite"
-                          : locale === "ar"
-                            ? "كل التنبيهات"
-                            : "All alert categories"}
-                      </p>
-                    </div>
-                    <Switch
-                      checked={channels[key]}
-                      onCheckedChange={(v) => setChannels((c) => ({ ...c, [key]: v }))}
-                    />
-                  </div>
-                ))}
-
-                <Separator className="my-2" />
-
-                <div className="flex items-center justify-between py-3">
-                  <div>
-                    <p className="text-[13.5px] font-medium">{t("settings.offlineMode")}</p>
-                    <p className="text-[11.5px] text-muted-foreground">{t("settings.offlineModeHint")}</p>
-                  </div>
-                  <Switch checked={offline} onCheckedChange={setOffline} />
-                </div>
-
-                <div className="flex items-center justify-between py-3">
-                  <div>
-                    <p className="text-[13.5px] font-medium">{t("settings.realtimeSync")}</p>
-                    <p className="text-[11.5px] text-muted-foreground">{t("settings.realtimeSyncHint")}</p>
-                  </div>
-                  <Switch checked={realtime} onCheckedChange={setRealtime} />
-                </div>
-              </CardContent>
-            </Card>
+            <NotificationPreferences />
           </motion.div>
         </TabsContent>
 

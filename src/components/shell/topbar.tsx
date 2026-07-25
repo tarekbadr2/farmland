@@ -3,9 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTheme } from "next-themes";
 import { AnimatePresence, motion } from "framer-motion";
-import { Languages, Menu, Moon, QrCode, Search, Sun } from "lucide-react";
+import { Menu, QrCode, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogTitle, SheetContent } from "@/components/ui/dialog";
@@ -29,10 +28,11 @@ import { InstallButton } from "@/components/shell/install-button";
 import { ScanTagDialog } from "@/components/animals/scan-tag-dialog";
 import { useFullApp } from "@/lib/work-mode";
 import { WorkModeToggle } from "@/components/shell/work-mode-toggle";
+import { PreferencesMenu } from "@/components/shell/preferences-menu";
 
 export function Topbar() {
   const router = useRouter();
-  const { t, ln, locale, toggleLocale } = useI18n();
+  const { t, ln, locale } = useI18n();
   const { user, signOut } = useAuth();
   const webView = !useFullApp();
   const { data: farm } = useFarm();
@@ -42,13 +42,9 @@ export function Topbar() {
     .map((part) => part[0])
     .join("")
     .toUpperCase();
-  const { setTheme, resolvedTheme } = useTheme();
-  const [mounted, setMounted] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const { online, pending } = useSyncStatus();
-
-  React.useEffect(() => setMounted(true), []);
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -112,6 +108,7 @@ export function Topbar() {
 
             <InstallButton />
             <SyncStatus className="hidden sm:flex" />
+            <PreferencesMenu />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -133,21 +130,6 @@ export function Topbar() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                   <Link href="/settings">{t("nav.settings")}</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => toggleLocale()}>
-                  <Languages />
-                  {locale === "en" ? "العربية" : "English"}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(e) => {
-                    e.preventDefault(); // keep the menu open so the change is visible
-                    setTheme(resolvedTheme === "dark" ? "light" : "dark");
-                  }}
-                >
-                  {mounted && resolvedTheme === "dark" ? <Sun /> : <Moon />}
-                  {mounted && resolvedTheme === "dark"
-                    ? locale === "ar" ? "الوضع الفاتح" : "Light mode"
-                    : locale === "ar" ? "الوضع الداكن" : "Dark mode"}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
