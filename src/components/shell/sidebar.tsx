@@ -9,6 +9,7 @@ import { navGroups, webNavGroups, isNavActive } from "@/lib/nav";
 import { useFullApp } from "@/lib/work-mode";
 import { useI18n } from "@/lib/i18n/provider";
 import { useAuth } from "@/lib/auth/provider";
+import { usePermission } from "@/lib/auth/guard";
 import { useAlerts, useFarm } from "@/hooks/use-farm-data";
 import { cn } from "@/lib/utils";
 import { Logo } from "./logo";
@@ -27,10 +28,16 @@ export function SidebarNav({
   const pathname = usePathname();
   const { t, ln, locale } = useI18n();
   const { bypassed } = useAuth();
+  const { has } = usePermission();
   const fullApp = useFullApp();
   const { data: alerts } = useAlerts();
   const unread = alerts?.filter((a) => !a.read).length ?? 0;
   const { data: farm } = useFarm();
+
+  // Show only the sections this member can reach; drop groups left empty.
+  const groups = (fullApp ? navGroups : webNavGroups)
+    .map((g) => ({ ...g, items: g.items.filter((i) => !i.perm || has(i.perm)) }))
+    .filter((g) => g.items.length > 0);
 
   return (
     <div className="flex h-full flex-col">
@@ -54,7 +61,7 @@ export function SidebarNav({
       </div>
 
       <nav className="no-scrollbar flex-1 overflow-y-auto px-2 pb-4">
-        {(fullApp ? navGroups : webNavGroups).map((group) => (
+        {groups.map((group) => (
           <div key={group.labelKey} className="mb-4">
             {!collapsed && (
               <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">

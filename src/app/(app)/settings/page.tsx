@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import {
   Bell,
   Building2,
+  Check,
   CloudDownload,
   CreditCard,
   Database,
@@ -37,18 +38,13 @@ import { OrganisationSettings } from "@/components/settings/organisation-setting
 import { NotificationPreferences } from "@/components/settings/notification-preferences";
 import { UpdateChecker } from "@/components/settings/update-checker";
 import { cn } from "@/lib/utils";
-import type { Role } from "@/core/domain/types";
-
-const ROLE_MATRIX: { role: Role; permissions: string[] }[] = [
-  { role: "owner", permissions: ["*"] },
-  {
-    role: "manager",
-    permissions: ["herd:write", "milk:write", "health:write", "feed:write", "tasks:write", "finance:read", "reports:read"],
-  },
-  { role: "veterinarian", permissions: ["herd:read", "health:write", "breeding:write", "reports:read"] },
-  { role: "worker", permissions: ["herd:read", "milk:write", "tasks:write"] },
-  { role: "accountant", permissions: ["finance:write", "partners:write", "reports:read"] },
-];
+import {
+  ASSIGNABLE_ROLES,
+  ROLE_META,
+  ROLE_PERMISSIONS,
+  PERMISSION_LABELS,
+  expandPermissions,
+} from "@/core/auth/permissions";
 
 const INTEGRATIONS = [
   { name: "DeLaval milking parlor API", status: "connected", detail: "Polls tank + per-cow yield every 5 min" },
@@ -291,22 +287,38 @@ export default function SettingsPage() {
                 </CardDescription>
               </div>
               <CardContent className="space-y-2">
-                {ROLE_MATRIX.map((r) => (
-                  <div key={r.role} className="rounded-xl border border-border/70 p-3.5">
-                    <div className="flex items-center gap-2">
-                      <Users className="size-4 text-muted-foreground" />
-                      <p className="text-[13.5px] font-medium capitalize">{r.role}</p>
-                      {r.role === "owner" && <Badge variant="default">full access</Badge>}
+                {ASSIGNABLE_ROLES.map((role) => {
+                  const meta = ROLE_META[role];
+                  const isOwner = role === "owner";
+                  const perms = expandPermissions(ROLE_PERMISSIONS[role]);
+                  return (
+                    <div key={role} className="rounded-xl border border-border/70 p-3.5">
+                      <div className="flex items-center gap-2">
+                        <Users className="size-4 text-muted-foreground" />
+                        <p className="text-[13.5px] font-medium">{locale === "ar" ? meta.ar : meta.en}</p>
+                        {isOwner && (
+                          <Badge variant="default">{locale === "ar" ? "صلاحية كاملة" : "full access"}</Badge>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-[12px] text-muted-foreground">
+                        {locale === "ar" ? meta.descriptionAr : meta.description}
+                      </p>
+                      {!isOwner && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {perms.map((p) => (
+                            <span
+                              key={p}
+                              className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                            >
+                              <Check className="size-3 text-emerald-600" />
+                              {locale === "ar" ? PERMISSION_LABELS[p].ar : PERMISSION_LABELS[p].en}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {r.permissions.map((p) => (
-                        <Badge key={p} variant="outline" className="tabular font-mono">
-                          {p}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </CardContent>
             </Card>
           </motion.div>

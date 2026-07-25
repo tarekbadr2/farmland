@@ -23,6 +23,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { TKey } from "@/lib/i18n/provider";
+import type { PermissionKey } from "@/core/auth/permissions";
 
 export interface NavItem {
   href: string;
@@ -30,6 +31,9 @@ export interface NavItem {
   icon: LucideIcon;
   /** Shown in the mobile bottom bar. */
   primary?: boolean;
+  /** Permission required to see this item. Omit for items everyone can reach
+   *  (dashboard, notifications, settings). */
+  perm?: PermissionKey;
 }
 
 export interface NavGroup {
@@ -43,49 +47,49 @@ export const navGroups: NavGroup[] = [
     items: [
       { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, primary: true },
       { href: "/notifications", labelKey: "nav.notifications", icon: Bell },
-      { href: "/map", labelKey: "nav.map", icon: MapIcon },
+      { href: "/map", labelKey: "nav.map", icon: MapIcon, perm: "animals.read" },
     ],
   },
   {
     labelKey: "nav.herd",
     items: [
-      { href: "/animals", labelKey: "nav.animals", icon: Beef, primary: true },
-      { href: "/calves", labelKey: "nav.calves", icon: Baby },
-      { href: "/breeding", labelKey: "nav.breeding", icon: Dna },
-      { href: "/health", labelKey: "nav.health", icon: HeartPulse },
+      { href: "/animals", labelKey: "nav.animals", icon: Beef, primary: true, perm: "animals.read" },
+      { href: "/calves", labelKey: "nav.calves", icon: Baby, perm: "animals.read" },
+      { href: "/breeding", labelKey: "nav.breeding", icon: Dna, perm: "breeding.read" },
+      { href: "/health", labelKey: "nav.health", icon: HeartPulse, perm: "medical.read" },
     ],
   },
   {
     labelKey: "nav.production",
     items: [
-      { href: "/milk", labelKey: "nav.milk", icon: Milk, primary: true },
-      { href: "/feed", labelKey: "nav.feed", icon: Wheat },
-      { href: "/meat", labelKey: "nav.meat", icon: Beef },
-      { href: "/production", labelKey: "nav.production2", icon: Factory },
+      { href: "/milk", labelKey: "nav.milk", icon: Milk, primary: true, perm: "milk.read" },
+      { href: "/feed", labelKey: "nav.feed", icon: Wheat, perm: "feeding.read" },
+      { href: "/meat", labelKey: "nav.meat", icon: Beef, perm: "animals.read" },
+      { href: "/production", labelKey: "nav.production2", icon: Factory, perm: "milk.read" },
     ],
   },
   {
     labelKey: "nav.operations",
     items: [
-      { href: "/tasks", labelKey: "nav.tasks", icon: ListChecks, primary: true },
-      { href: "/inventory", labelKey: "nav.inventory", icon: Package },
-      { href: "/employees", labelKey: "nav.payroll", icon: Users },
+      { href: "/tasks", labelKey: "nav.tasks", icon: ListChecks, primary: true, perm: "tasks.read" },
+      { href: "/inventory", labelKey: "nav.inventory", icon: Package, perm: "inventory.read" },
+      { href: "/employees", labelKey: "nav.payroll", icon: Users, perm: "employees.read" },
     ],
   },
   {
     labelKey: "nav.business",
     items: [
-      { href: "/finance", labelKey: "nav.finance", icon: Wallet },
-      { href: "/accounting", labelKey: "nav.accounting", icon: BookOpen },
-      { href: "/assets", labelKey: "nav.assets", icon: Building2 },
-      { href: "/partners", labelKey: "nav.customers", icon: Handshake },
-      { href: "/reports", labelKey: "nav.reports", icon: FileBarChart },
+      { href: "/finance", labelKey: "nav.finance", icon: Wallet, perm: "expenses.read" },
+      { href: "/accounting", labelKey: "nav.accounting", icon: BookOpen, perm: "accounting.read" },
+      { href: "/assets", labelKey: "nav.assets", icon: Building2, perm: "accounting.read" },
+      { href: "/partners", labelKey: "nav.customers", icon: Handshake, perm: "accounting.read" },
+      { href: "/reports", labelKey: "nav.reports", icon: FileBarChart, perm: "reports.read" },
     ],
   },
   {
     labelKey: "nav.intelligence",
     items: [
-      { href: "/analytics", labelKey: "nav.analytics", icon: BarChart3 },
+      { href: "/analytics", labelKey: "nav.analytics", icon: BarChart3, perm: "reports.read" },
       { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles },
       { href: "/settings", labelKey: "nav.settings", icon: Settings },
     ],

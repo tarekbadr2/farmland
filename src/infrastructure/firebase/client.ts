@@ -83,6 +83,55 @@ export async function createFarm(name: string, nameAr?: string): Promise<string>
   return res.data.farmId;
 }
 
+// ------------------------------ Invitations --------------------------------
+
+export interface CreateInvitePayload {
+  email: string;
+  role: string;
+  farmIds: string[];
+  expiry: "24h" | "7d" | "30d";
+  welcomeMessage?: string;
+}
+
+/** Create an org invite (owner/admin). Returns the token for the accept URL. */
+export async function createInvite(payload: CreateInvitePayload): Promise<string> {
+  const call = httpsCallable<CreateInvitePayload, { token: string }>(
+    getFirebase().functions,
+    "createInvite",
+  );
+  const res = await call(payload);
+  return res.data.token;
+}
+
+export interface InviteView {
+  email: string;
+  orgName: string;
+  orgNameAr: string;
+  role: string;
+  permissions: string[];
+  farms: { id: string; name: string; nameAr: string }[];
+  welcomeMessage: string | null;
+  invitedByName: string | null;
+  expiresAt: string | null;
+}
+
+/** Public: read an invite's display data by token (for the accept page). */
+export async function getInvite(token: string): Promise<InviteView> {
+  const call = httpsCallable<{ token: string }, InviteView>(getFirebase().functions, "getInvite");
+  const res = await call({ token });
+  return res.data;
+}
+
+/** Accept an invite once signed in; joins every assigned farm. */
+export async function acceptInvite(token: string): Promise<{ orgId: string; farmIds: string[] }> {
+  const call = httpsCallable<{ token: string }, { orgId: string; farmIds: string[] }>(
+    getFirebase().functions,
+    "acceptInvite",
+  );
+  const res = await call({ token });
+  return res.data;
+}
+
 /**
  * Firestore layout (multi-tenant, one document tree per farm):
  *

@@ -5,21 +5,29 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
 import { primaryNavItems, webNavGroups, isNavActive } from "@/lib/nav";
+import type { PermissionKey } from "@/core/auth/permissions";
 import { useI18n } from "@/lib/i18n/provider";
 import { useFullApp } from "@/lib/work-mode";
+import { usePermission } from "@/lib/auth/guard";
 import { cn } from "@/lib/utils";
 
 /** Thumb-reachable bar. Five destinations max — anything more is a menu. */
 export function MobileTabBar() {
   const pathname = usePathname();
   const { t } = useI18n();
+  const { has } = usePermission();
   const fullApp = useFullApp();
-  const items = fullApp
-    ? [
-        ...primaryNavItems,
-        { href: "/assistant", labelKey: "nav.assistant" as const, icon: Sparkles },
-      ]
-    : webNavGroups.flatMap((g) => g.items);
+  const items = (
+    fullApp
+      ? [
+          ...primaryNavItems,
+          { href: "/assistant", labelKey: "nav.assistant" as const, icon: Sparkles },
+        ]
+      : webNavGroups.flatMap((g) => g.items)
+  ).filter((item) => {
+    const perm = (item as { perm?: PermissionKey }).perm;
+    return !perm || has(perm);
+  });
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 glass pb-[env(safe-area-inset-bottom)] lg:hidden">

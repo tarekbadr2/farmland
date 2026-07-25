@@ -8,9 +8,21 @@
 
 export type ID = string;
 
+/** An organization owns one or more farms. Lightweight grouping/identity layer
+ *  above the farm; farm data is not nested under it. */
+export interface Organization {
+  id: ID;
+  name: string;
+  nameAr: string;
+  ownerId: ID;
+  createdAt: string;
+}
+
 /** Multi-tenant root. Everything below hangs off a farm. */
 export interface Farm {
   id: ID;
+  /** The organization this farm belongs to (added with the org layer). */
+  orgId?: ID;
   name: string;
   nameAr: string;
   country: string;
@@ -49,7 +61,11 @@ export interface Subscription {
   providerRef?: string | null;
 }
 
-export type Role = "owner" | "manager" | "veterinarian" | "worker" | "accountant";
+// The access role. The full catalog (and its permission sets) lives in
+// src/core/auth/permissions.ts; Role is an alias so the domain layer stays
+// decoupled from the RBAC catalog while sharing one source of truth.
+import type { RoleKey } from "@/core/auth/permissions";
+export type Role = RoleKey;
 
 export interface Membership {
   userId: ID;
@@ -62,9 +78,12 @@ export interface Membership {
 export interface Member {
   id: ID; // the auth uid
   farmId: ID;
+  /** The org this membership belongs to (mirrors the farm's org). */
+  orgId?: ID;
   email: string;
   name?: string;
   role: Role;
+  /** Authoritative permission keys. Empty/absent → derived from the role. */
   permissions?: string[];
   /** Links this login to an employee record, for task assignment. */
   employeeId?: ID;

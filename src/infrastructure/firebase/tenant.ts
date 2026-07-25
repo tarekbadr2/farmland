@@ -41,3 +41,38 @@ export function getActiveFarm(): string {
 export function hasActiveFarm(): boolean {
   return active !== null;
 }
+
+// --------------------------- Preferred farm ---------------------------------
+// When a user belongs to several farms, their last-chosen one is remembered per
+// device so a reload keeps them where they were. resolveSession validates the
+// stored id against the user's actual farms before honouring it.
+
+const PREFERRED_KEY = "herdos.activeFarm";
+
+export function readPreferredFarm(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(PREFERRED_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function rememberPreferredFarm(farmId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PREFERRED_KEY, farmId);
+  } catch {
+    /* private mode / disabled storage — non-fatal */
+  }
+}
+
+/** Pick the farm to open from the user's set: their remembered choice if still
+ *  valid, else the default, else the first. Null when they belong to none. */
+export function pickActiveFarm(farmIds: string[], defaultFarmId?: string | null): string | null {
+  if (farmIds.length === 0) return null;
+  const preferred = readPreferredFarm();
+  if (preferred && farmIds.includes(preferred)) return preferred;
+  if (defaultFarmId && farmIds.includes(defaultFarmId)) return defaultFarmId;
+  return farmIds[0];
+}

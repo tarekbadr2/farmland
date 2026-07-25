@@ -10,31 +10,28 @@ import { toast } from "sonner";
 
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, Label } from "@/components/ui/primitives";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/menu";
 import { useI18n } from "@/lib/i18n/provider";
 import { useAuth } from "@/lib/auth/provider";
-import { useMembers, usePendingInvites, qk } from "@/hooks/use-farm-data";
-import { getRepository } from "@/core/repositories";
+import { useMembers, usePendingInvites, useFarm, qk } from "@/hooks/use-farm-data";
+import { getRepository, isFirebaseBackend } from "@/core/repositories";
+import { createInvite } from "@/infrastructure/firebase/client";
 import { formatDate } from "@/lib/date";
 import type { Member, Role } from "@/core/domain/types";
+import { ASSIGNABLE_ROLES, ROLE_META } from "@/core/auth/permissions";
+import { cn } from "@/lib/utils";
 
-// Access roles have no dictionary namespace of their own; the labels are inline
-// bilingual pairs rather than fragile cross-section key lookups.
-const ROLE_LABELS: Record<Role, { en: string; ar: string }> = {
-  owner: { en: "Owner", ar: "المالك" },
-  manager: { en: "Manager", ar: "مدير" },
-  veterinarian: { en: "Veterinarian", ar: "طبيب بيطري" },
-  accountant: { en: "Accountant", ar: "محاسب" },
-  worker: { en: "Worker", ar: "عامل" },
-};
-const ROLES = Object.keys(ROLE_LABELS) as Role[];
+// Roles offered in the pickers come from the RBAC catalog (owner + the 12
+// predefined roles); legacy roles are excluded but still render if a member
+// already holds one.
+const ROLES = ASSIGNABLE_ROLES;
 
 const inviteSchema = z.object({
   email: z.string().email("Enter a valid email"),
-  role: z.enum(["owner", "manager", "veterinarian", "accountant", "worker"]),
+  role: z.string().min(1),
 });
 type InviteForm = z.infer<typeof inviteSchema>;
 
@@ -51,7 +48,8 @@ export function TeamManager() {
   const { t, locale, formatNumber } = useI18n();
   const { user, bypassed } = useAuth();
   const queryClient = useQueryClient();
-  const roleName = (role: Role) => (locale === "ar" ? ROLE_LABELS[role].ar : ROLE_LABELS[role].en);
+  const roleName = (role: Role) =>
+    ROLE_META[role] ? (locale === "ar" ? ROLE_META[role].ar : ROLE_META[role].en) : role;
 
   const { data: members = [] } = useMembers();
   const { data: invites = [] } = usePendingInvites();
@@ -88,19 +86,51 @@ export function TeamManager() {
     onError: (e) => toast.error(e.message),
   });
 
+  // Assigned farms / expiry / welcome message live outside the RHF schema.
+  const { data: farm } = useFarm();
+  const farmOptions = React.useMemo(
+    () => (farm ? [{ id: farm.id, name: locale === "ar" ? farm.nameAr : farm.name }] : []),
+    [farm, locale],
+  );
+  const [selectedFarms, setSelectedFarms] = React.useState<string[]>([]);
+  const [expiry, setExpiry] = React.useState<"24h" | "7d" | "30d">("7d");
+  const [message, setMessage] = React.useState("");
+  React.useEffect(() => {
+    // Default to all of the org's farms selected.
+    setSelectedFarms(farmOptions.map((f) => f.id));
+  }, [farmOptions]);
+  const toggleFarm = (id: string) =>
+    setSelectedFarms((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
   const invite = useMutation({
-    mutationFn: (v: InviteForm) => getRepository().inviteMember(v.email, v.role),
+    mutationFn: async (v: InviteForm) => {
+      const farmIds = selectedFarms.length ? selectedFarms : farmOptions.map((f) => f.id);
+      if (isFirebaseBackend()) {
+        await createInvite({
+          email: v.email,
+          role: v.role,
+          farmIds,
+          expiry,
+          welcomeMessage: message || undefined,
+        });
+      } else {
+        // Demo build: no callable backend — record a pending invite so the UI
+        // flow is explorable.
+        await getRepository().inviteMember(v.email, v.role as Role);
+      }
+    },
     onSuccess: () => {
       refresh();
-      toast.success(locale === "ar" ? "تم إرسال الدعوة" : "Invite sent");
-      form.reset({ email: "", role: "worker" });
+      toast.success(locale === "ar" ? "تم إرسال الدعوة" : "Invitation sent");
+      form.reset({ email: "", role: "farm_worker" });
+      setMessage("");
     },
     onError: (e) => toast.error(e.message),
   });
 
   const form = useForm<InviteForm>({
     resolver: zodResolver(inviteSchema),
-    defaultValues: { email: "", role: "worker" },
+    defaultValues: { email: "", role: "farm_worker" },
   });
 
   const initials = (m: Member) =>
@@ -248,40 +278,101 @@ export function TeamManager() {
           <CardContent>
             <form
               onSubmit={form.handleSubmit((v) => invite.mutate(v))}
-              className="flex flex-col gap-2.5 sm:flex-row sm:items-end"
+              className="space-y-3"
             >
-              <div className="flex-1 space-y-1.5">
-                <Label htmlFor="invite-email">{t("settings.inviteEmail")}</Label>
-                <div className="relative">
-                  <Mail className="pointer-events-none absolute start-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    id="invite-email"
-                    type="email"
-                    dir="ltr"
-                    placeholder="name@example.com"
-                    className="ps-9"
-                    {...form.register("email")}
-                  />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="invite-email">{t("settings.inviteEmail")}</Label>
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute start-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="invite-email"
+                      type="email"
+                      dir="ltr"
+                      placeholder="name@example.com"
+                      className="ps-9"
+                      {...form.register("email")}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>{t("settings.inviteRole")}</Label>
+                  <Select
+                    value={form.watch("role")}
+                    onValueChange={(v) => form.setValue("role", v as Role)}
+                  >
+                    <SelectTrigger size="sm" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ROLES.map((r) => (
+                        <SelectItem key={r} value={r}>
+                          {roleName(r)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
+
+              {/* Assigned farms — the invitee only sees these. */}
               <div className="space-y-1.5">
-                <Label>{t("settings.inviteRole")}</Label>
-                <Select
-                  value={form.watch("role")}
-                  onValueChange={(v) => form.setValue("role", v as Role)}
-                >
-                  <SelectTrigger size="sm" className="w-full capitalize sm:w-[150px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ROLES.map((r) => (
-                      <SelectItem key={r} value={r} className="capitalize">
-                        {roleName(r)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>{locale === "ar" ? "المزارع المخصصة" : "Assigned farms"}</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {farmOptions.map((f) => {
+                    const on = selectedFarms.includes(f.id);
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => toggleFarm(f.id)}
+                        className={cn(
+                          "rounded-full border px-2.5 py-1 text-[12px] font-medium transition",
+                          on
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border text-muted-foreground hover:border-ring/40",
+                        )}
+                      >
+                        {f.name}
+                      </button>
+                    );
+                  })}
+                  {farmOptions.length === 0 && (
+                    <span className="text-[12px] text-muted-foreground">
+                      {locale === "ar" ? "لا توجد مزارع" : "No farms yet"}
+                    </span>
+                  )}
+                </div>
               </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>{locale === "ar" ? "انتهاء الصلاحية" : "Invitation expires"}</Label>
+                  <Select value={expiry} onValueChange={(v) => setExpiry(v as typeof expiry)}>
+                    <SelectTrigger size="sm" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="24h">{locale === "ar" ? "24 ساعة" : "24 hours"}</SelectItem>
+                      <SelectItem value="7d">{locale === "ar" ? "7 أيام" : "7 days"}</SelectItem>
+                      <SelectItem value="30d">{locale === "ar" ? "30 يومًا" : "30 days"}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>{locale === "ar" ? "رسالة ترحيب (اختياري)" : "Welcome message (optional)"}</Label>
+                <Textarea
+                  rows={2}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder={
+                    locale === "ar" ? "مرحبًا بك في الفريق…" : "Welcome to the team…"
+                  }
+                />
+              </div>
+
               <Button type="submit" disabled={invite.isPending}>
                 {invite.isPending ? <Loader2 className="animate-spin" /> : <Mail />}
                 {t("settings.sendInvite")}

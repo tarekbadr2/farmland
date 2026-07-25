@@ -78,15 +78,27 @@ export const createFarm = onCall({ region: REGION }, async (req) => {
   const nameAr = String(req.data?.nameAr ?? "").trim().slice(0, 120) || name;
 
   const farmId = `farm_${uid.slice(0, 10).toLowerCase()}`;
+  // The organization groups this owner's farms. One org per owner; the farm
+  // hangs off it via `orgId`. No farm data is nested under the org — it's a
+  // lightweight grouping/identity layer.
+  const orgId = `org_${uid.slice(0, 10).toLowerCase()}`;
   const now = new Date();
   const nowIso = now.toISOString();
   // 7-day free trial from creation; the paywall takes over when it lapses.
   const trialEndsAt = new Date(now.getTime() + 7 * 86_400_000).toISOString();
 
   const batch = db.batch();
+  batch.set(db.doc(`orgs/${orgId}`), {
+    id: orgId,
+    name,
+    nameAr,
+    ownerId: uid,
+    createdAt: nowIso,
+  });
   batch.set(db.doc(`farms/${farmId}`), {
     name,
     nameAr,
+    orgId,
     country: "Egypt",
     city: "",
     timezone: "Africa/Cairo",
@@ -110,11 +122,17 @@ export const createFarm = onCall({ region: REGION }, async (req) => {
   batch.set(db.doc(`farms/${farmId}/members/${uid}`), {
     email,
     role: "owner",
+    orgId,
     name: req.auth?.token?.name ?? email.split("@")[0] ?? "Owner",
     permissions: ["*"],
     grantedAt: nowIso,
   });
-  batch.set(db.doc(`users/${uid}`), { farmId, role: "owner" });
+  batch.set(db.doc(`users/${uid}`), {
+    orgId,
+    farmIds: [farmId],
+    defaultFarmId: farmId,
+    role: "owner",
+  });
 
   const pens = [
     { id: "pen_a1", name: "Pen A1", nameAr: "حظيرة أ1", kind: "pen", x: 8, y: 10, w: 26, h: 30 },

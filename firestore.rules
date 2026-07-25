@@ -4,9 +4,15 @@ rules_version = '2';
 // Herd OS security rules
 //
 // Model: every document lives under farms/{farmId}/…, so authorisation is a
-// single membership lookup rather than a predicate on each document. Roles are
-// read from farms/{farmId}/members/{uid} — the same document the UI reads, so
-// the interface and the database can never disagree about who can do what.
+// single membership lookup rather than a predicate on each document. Access is
+// PERMISSION-first: each gate checks a `module.action` key held on the member
+// document (farms/{farmId}/members/{uid}.permissions) — the same set the UI
+// reads, so interface and database can never disagree. Roles are just named
+// bundles of these keys (see src/core/auth/permissions.ts).
+//
+// Legacy member docs (written before this system) carry a role and an empty
+// permissions array; legacyPerms() maps those five old roles to keys so they
+// keep working without a migration. New members always carry explicit keys.
 //
 // The UI is not the enforcement point. Everything below must hold even if
 // someone drives the SDK directly from a console.
@@ -40,49 +46,85 @@ service cloud.firestore {
       return hasRole(farmId, ['owner']);
     }
 
-    function canManage(farmId) {
-      return hasRole(farmId, ['owner', 'manager']);
+    // ------------------------- Permission model ---------------------------
+    // Map the five legacy roles to permission keys (module wildcards keep it
+    // compact). Only these old roles ever have an empty permissions array; every
+    // role introduced with the RBAC system writes explicit keys.
+    function legacyPerms(r) {
+      return r == 'owner' ? ['*']
+        : (r == 'manager' ? ['animals.*','medical.*','vaccinations.*','breeding.*','milk.*','feeding.*','inventory.*','maintenance.*','tasks.*','expenses.*','accounting.*','payroll.read','employees.read','employees.manage','reports.read','org.members','org.settings']
+        : (r == 'veterinarian' ? ['animals.read','medical.*','vaccinations.*','breeding.*','tasks.read','reports.read']
+        : (r == 'accountant' ? ['expenses.*','accounting.*','payroll.read','employees.read','reports.read']
+        : (r == 'worker' ? ['animals.read','milk.read','feeding.*','tasks.*']
+        : []))));
+    }
+
+    // The effective permission set: explicit keys if present, else derived from
+    // the (legacy) role.
+    function permsOf(farmId) {
+      return member(farmId).data.get('permissions', []).size() > 0
+        ? member(farmId).data.permissions
+        : legacyPerms(member(farmId).data.get('role', ''));
+    }
+
+    // Does the member hold this permission? `key` is the exact key, `wild` its
+    // module wildcard (e.g. 'animals.write' + 'animals.*'). `*` always wins.
+    function hasPerm(farmId, key, wild) {
+      return isMember(farmId) && permsOf(farmId).hasAny(['*', key, wild]);
+    }
+
+    // The org a user belongs to (top-level mapping written server-side).
+    function myOrg() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('orgId', '');
+    }
+
+    // ------------------------- Organizations ------------------------------
+    // Lightweight grouping over farms. A user can read their own org; only the
+    // org owner edits it. Invites are managed exclusively by admin Cloud
+    // Functions (secure tokens), so they're closed to direct client access.
+    match /orgs/{orgId} {
+      allow read: if signedIn() && myOrg() == orgId;
+      allow write: if false; // provisioned/edited server-side (createFarm, admin)
+
+      match /invites/{token} {
+        allow read, write: if false; // createInvite / getInvite / acceptInvite (admin)
+      }
     }
 
     // ----------------------------- Farm root ------------------------------
     match /farms/{farmId} {
       allow read: if isMember(farmId);
-      // Managers may edit farm settings, but billing state is server-only:
-      // `subscription` and `aiUsage` can never be changed by a client (that
-      // would let an owner self-grant a paid plan or reset their AI usage).
-      // The Cloud Functions / API routes write those with admin credentials,
-      // which bypass these rules.
-      allow update: if canManage(farmId)
+      // Farm settings are an admin action (org.settings). Billing state is
+      // server-only: `subscription` and `aiUsage` can never be changed by a
+      // client — the Cloud Functions / API routes write those with admin
+      // credentials, which bypass these rules.
+      allow update: if hasPerm(farmId, 'org.settings', 'org.*')
         && request.resource.data.subscription == resource.data.subscription
         && request.resource.data.aiUsage == resource.data.aiUsage;
       allow create, delete: if false;   // provisioned server-side only
 
       // ------------------------- Membership --------------------------
-      // Only the owner grants access. A member may read the roster so the UI
-      // can show who is on shift, but nobody can promote themselves.
+      // A member may read the roster (the UI shows who's on shift), or confirm
+      // their own record so a non-member's login resolves to "no access". Only
+      // holders of org.members (owner/admin) change membership — nobody
+      // self-promotes; the members function does invite promotion with admin
+      // rights.
       match /members/{uid} {
-        // A member may read the whole roster (the UI shows who is on shift).
-        // Anyone signed in may read their OWN membership record — or confirm
-        // they have none — so a non-member's login resolves to "no access"
-        // instead of throwing a permission error and crashing the sign-in.
         allow read: if isMember(farmId) || request.auth.uid == uid;
-        allow write: if isOwner(farmId);
+        allow write: if hasPerm(farmId, 'org.members', 'org.*');
       }
 
-      // Pending invites, keyed by email. The owner manages them; the promotion
-      // to a real member is done by the claimMembership function with admin
-      // rights, because the invitee isn't a member yet and the rules give them
-      // nothing until they are.
+      // Legacy per-farm invites (email-keyed). New invites live at org level and
+      // are function-managed; this stays for backward compatibility.
       match /pendingMembers/{email} {
-        allow read, write: if isOwner(farmId);
+        allow read, write: if hasPerm(farmId, 'org.members', 'org.*');
       }
 
       // --------------------------- Herd ------------------------------
       match /animals/{animalId} {
         allow read: if isMember(farmId);
-        allow create, update: if canManage(farmId)
-                              || hasRole(farmId, ['veterinarian']);
-        allow delete: if isOwner(farmId);
+        allow create, update: if hasPerm(farmId, 'animals.write', 'animals.*');
+        allow delete: if hasPerm(farmId, 'animals.delete', 'animals.*');
 
         match /weights/{weightId} {
           allow read: if isMember(farmId);
@@ -92,127 +134,128 @@ service cloud.firestore {
 
       match /zones/{zoneId} {
         allow read: if isMember(farmId);
-        allow write: if canManage(farmId);
+        allow write: if hasPerm(farmId, 'animals.write', 'animals.*');
       }
 
       // --------------------------- Milk ------------------------------
-      // Milkers write; nobody edits history. Correcting a session overwrites
-      // the deterministic {date}_{animal}_{session} id, which is an update by
-      // the same rule — but a record older than 2 days is frozen so yesterday's
-      // numbers can't drift after the tanker has been paid.
+      // Milkers write; nobody edits history. A record older than 2 days is
+      // frozen so yesterday's numbers can't drift after the tanker's been paid.
       match /milkRecords/{recordId} {
         allow read: if isMember(farmId);
-        allow create: if isMember(farmId)
+        allow create: if hasPerm(farmId, 'milk.write', 'milk.*')
                       && request.resource.data.volumeL is number
                       && request.resource.data.volumeL >= 0
                       && request.resource.data.volumeL < 80;
-        allow update: if canManage(farmId)
-                      || (isMember(farmId)
+        allow update: if hasPerm(farmId, 'org.settings', 'org.*')
+                      || (hasPerm(farmId, 'milk.write', 'milk.*')
                           && resource.data.recordedAt is timestamp
                           && request.time < resource.data.recordedAt + duration.value(2, 'd'));
-        allow delete: if canManage(farmId);
+        allow delete: if hasPerm(farmId, 'org.settings', 'org.*');
       }
 
       match /milkDaily/{date} {
         allow read: if isMember(farmId);
-        allow write: if isMember(farmId);   // rolled forward with each session
+        allow write: if hasPerm(farmId, 'milk.write', 'milk.*');
       }
 
       // ------------------------ Clinical -----------------------------
       match /health/{eventId} {
         allow read: if isMember(farmId);
-        allow create, update: if hasRole(farmId, ['owner', 'manager', 'veterinarian']);
+        allow create, update: if hasPerm(farmId, 'medical.write', 'medical.*');
         allow delete: if isOwner(farmId);
       }
 
       match /breeding/{eventId} {
         allow read: if isMember(farmId);
-        allow create, update: if hasRole(farmId, ['owner', 'manager', 'veterinarian']);
+        allow create, update: if hasPerm(farmId, 'breeding.write', 'breeding.*');
         allow delete: if isOwner(farmId);
       }
 
       match /semen/{strawId} {
         allow read: if isMember(farmId);
-        allow write: if hasRole(farmId, ['owner', 'manager', 'veterinarian']);
+        allow write: if hasPerm(farmId, 'breeding.write', 'breeding.*');
       }
 
       // --------------------- Feed & inventory ------------------------
       match /feedItems/{itemId} {
         allow read: if isMember(farmId);
-        allow write: if canManage(farmId);
+        allow write: if hasPerm(farmId, 'feeding.write', 'feeding.*');
       }
       match /rations/{rationId} {
         allow read: if isMember(farmId);
-        allow write: if canManage(farmId);
+        allow write: if hasPerm(farmId, 'feeding.write', 'feeding.*');
       }
       match /feedConsumption/{recordId} {
         allow read: if isMember(farmId);
-        allow create: if isMember(farmId);
-        allow update, delete: if canManage(farmId);
+        allow write: if hasPerm(farmId, 'feeding.write', 'feeding.*');
       }
       match /inventory/{itemId} {
         allow read: if isMember(farmId);
-        allow write: if canManage(farmId);
+        allow write: if hasPerm(farmId, 'inventory.write', 'inventory.*');
       }
-      // Branches and rates shape every report, so only the people who own the
-      // numbers may change them.
       // Document-number sequences. Anyone who can create a numbered document may
       // advance its counter; the transaction that does it is the integrity point.
       match /docCounters/{series} {
         allow read: if isMember(farmId);
-        allow write: if hasRole(farmId, ['owner', 'manager', 'accountant']);
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*')
+                      || hasPerm(farmId, 'expenses.write', 'expenses.*')
+                      || hasPerm(farmId, 'inventory.write', 'inventory.*');
       }
+      // Branches and rates shape every report, so only the people who own the
+      // numbers may change them.
       match /branches/{branchId} {
         allow read: if isMember(farmId);
-        allow write: if hasRole(farmId, ['owner', 'accountant']);
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
       }
       match /currencies/{currencyId} {
         allow read: if isMember(farmId);
-        allow write: if hasRole(farmId, ['owner', 'accountant']);
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
       }
       match /workOrders/{orderId} {
         allow read: if isMember(farmId);
-        allow create, update: if canManage(farmId);
+        allow create, update: if hasPerm(farmId, 'maintenance.write', 'maintenance.*');
         allow delete: if false;
       }
       // A pen move is a record of what happened, so it isn't edited away.
       match /livestockTransfers/{transferId} {
         allow read: if isMember(farmId);
-        allow create: if isMember(farmId);
+        allow create: if hasPerm(farmId, 'animals.write', 'animals.*');
         allow update, delete: if false;
       }
       match /warehouses/{warehouseId} {
         allow read: if isMember(farmId);
-        allow write: if canManage(farmId);
+        allow write: if hasPerm(farmId, 'inventory.write', 'inventory.*');
       }
       match /stockMovements/{movementId} {
         allow read: if isMember(farmId);
-        allow create: if isMember(farmId);
-        allow update, delete: if canManage(farmId);
+        allow write: if hasPerm(farmId, 'inventory.write', 'inventory.*');
       }
 
       // ---------------------------- People ---------------------------
-      // Salaries are in here. Workers must not read the roster's pay fields,
-      // so the whole collection is management-and-accountant only; the task
-      // board shows assignee names from a separate public projection.
+      // Salaries are in here. Reading needs an HR/payroll/accounting grant;
+      // managing (write) needs employees.manage.
       match /employees/{employeeId} {
-        allow read: if hasRole(farmId, ['owner', 'manager', 'accountant']);
-        allow write: if hasRole(farmId, ['owner', 'manager']);
+        allow read: if hasPerm(farmId, 'employees.read', 'employees.*')
+                    || hasPerm(farmId, 'payroll.read', 'payroll.*')
+                    || hasPerm(farmId, 'accounting.read', 'accounting.*');
+        allow write: if hasPerm(farmId, 'employees.manage', 'employees.*');
       }
 
       match /attendance/{recordId} {
-        allow read: if hasRole(farmId, ['owner', 'manager', 'accountant']);
+        allow read: if hasPerm(farmId, 'employees.read', 'employees.*')
+                    || hasPerm(farmId, 'payroll.read', 'payroll.*')
+                    || hasPerm(farmId, 'accounting.read', 'accounting.*');
         allow create: if isMember(farmId);
-        allow update, delete: if canManage(farmId);
+        allow update, delete: if hasPerm(farmId, 'employees.manage', 'employees.*');
       }
 
       match /tasks/{taskId} {
         allow read: if isMember(farmId);
-        allow create, delete: if canManage(farmId);
+        allow create, delete: if hasPerm(farmId, 'tasks.write', 'tasks.*');
         // A worker may only move a task assigned to them, and only its status.
-        allow update: if canManage(farmId)
+        allow update: if hasPerm(farmId, 'tasks.write', 'tasks.*')
                       || (isMember(farmId)
-                          && resource.data.assigneeId == member(farmId).data.employeeId
+                          && resource.data.assigneeId == member(farmId).data.get('employeeId', '')
                           && request.resource.data.diff(resource.data)
                                .affectedKeys()
                                .hasOnly(['status', 'completedAt', 'notes']));
@@ -220,44 +263,47 @@ service cloud.firestore {
 
       // --------------------------- Money -----------------------------
       match /transactions/{txnId} {
-        allow read: if hasRole(farmId, ['owner', 'manager', 'accountant']);
-        allow write: if hasRole(farmId, ['owner', 'accountant']);
+        allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*')
+                    || hasPerm(farmId, 'expenses.read', 'expenses.*')
+                    || hasPerm(farmId, 'payroll.read', 'payroll.*');
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*')
+                    || hasPerm(farmId, 'expenses.write', 'expenses.*');
       }
       match /invoices/{invoiceId} {
-        allow read: if hasRole(farmId, ['owner', 'manager', 'accountant']);
-        allow write: if hasRole(farmId, ['owner', 'accountant']);
+        allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*')
+                    || hasPerm(farmId, 'expenses.read', 'expenses.*');
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
       }
       match /partners/{partnerId} {
         allow read: if isMember(farmId);
-        allow write: if hasRole(farmId, ['owner', 'manager', 'accountant']);
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
       }
 
       match /assets/{assetId} {
         allow read: if isMember(farmId);
-        allow write: if hasRole(farmId, ['owner', 'manager', 'accountant']);
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
       }
 
       // The books. Any member may read them; only the people who own the
       // numbers may write. Deleting a posted entry is never allowed — the
       // ledger is corrected with a reversing entry, so the audit trail stands.
-      // Cheques carry money, so they follow the same trust as the books.
       match /cheques/{chequeId} {
         allow read: if isMember(farmId);
-        allow write: if hasRole(farmId, ['owner', 'manager', 'accountant']);
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
         allow delete: if false;
       }
       match /accounts/{accountId} {
         allow read: if isMember(farmId);
-        allow write: if hasRole(farmId, ['owner', 'accountant']);
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
       }
       match /journalEntries/{entryId} {
         allow read: if isMember(farmId);
-        allow create, update: if hasRole(farmId, ['owner', 'manager', 'accountant']);
+        allow create, update: if hasPerm(farmId, 'accounting.write', 'accounting.*');
         allow delete: if false;
       }
       match /fiscalYears/{yearId} {
         allow read: if isMember(farmId);
-        allow write: if hasRole(farmId, ['owner', 'accountant']);
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
         allow delete: if false;
       }
 
@@ -267,29 +313,29 @@ service cloud.firestore {
         allow update: if isMember(farmId)
                       && request.resource.data.diff(resource.data)
                            .affectedKeys().hasOnly(['read']);
-        allow create, delete: if canManage(farmId);
+        allow create, delete: if hasPerm(farmId, 'org.settings', 'org.*');
       }
       match /telemetry/{docId} {
         allow read: if isMember(farmId);
-        allow write: if canManage(farmId);
+        allow write: if hasPerm(farmId, 'org.settings', 'org.*');
       }
       match /utilities/{readingId} {
         allow read: if isMember(farmId);
-        allow write: if canManage(farmId);
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*')
+                    || hasPerm(farmId, 'org.settings', 'org.*');
       }
     }
 
-    // Which farm a user belongs to. The app reads its own mapping at login to
-    // resolve the active farm; it's written server-side only (createFarm, invite
-    // claim, admin), so a user can't reassign themselves to another farm.
+    // Which org/farms a user belongs to. The app reads its own mapping at login
+    // to resolve the active farm; it's written server-side only (createFarm,
+    // invite acceptance, admin), so a user can't reassign themselves.
     match /users/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
       allow write: if false;
     }
 
     // Public demo-request leads from the marketing site. Anyone may submit one
-    // (validated), but nobody can read or change them from the client — the
-    // owner reads leads from the console / admin. Create-only, field-checked.
+    // (validated), but nobody can read or change them from the client.
     match /leads/{leadId} {
       allow create: if request.resource.data.name is string
                     && request.resource.data.name.size() > 0

@@ -29,6 +29,7 @@ import { ScanTagDialog } from "@/components/animals/scan-tag-dialog";
 import { useFullApp } from "@/lib/work-mode";
 import { WorkModeToggle } from "@/components/shell/work-mode-toggle";
 import { PreferencesMenu } from "@/components/shell/preferences-menu";
+import { FarmSwitcher } from "@/components/shell/farm-switcher";
 
 export function Topbar() {
   const router = useRouter();
@@ -73,6 +74,7 @@ export function Topbar() {
           </Button>
 
           <WorkModeToggle />
+          <FarmSwitcher />
 
           <button
             onClick={() => setPaletteOpen(true)}

@@ -70,6 +70,30 @@ export function welcomeEmail(farmName: string): { subject: string; html: string 
   };
 }
 
+export function inviteEmail(
+  orgName: string,
+  roleLabel: string,
+  url: string,
+  message?: string,
+): { subject: string; html: string } {
+  const org = esc(orgName);
+  const role = esc(roleLabel);
+  const note = message
+    ? `<p style="font-size:14px;color:#4b5563;border-inline-start:3px solid #16654a;padding-inline-start:12px;margin:16px 0">${esc(message)}</p>`
+    : "";
+  const button = `<a href="${esc(url)}" style="display:inline-block;background:#16654a;color:#fff;text-decoration:none;padding:11px 22px;border-radius:8px;font-weight:600;font-size:14px">Accept invitation · قبول الدعوة</a>`;
+  return {
+    subject: `You've been invited to join ${orgName} on Herd OS`,
+    html: layout(
+      `<p style="font-size:15px"><b>${org}</b> has invited you to join their farm on Herd OS as <b>${role}</b>.</p>
+       ${note}
+       <p style="margin:20px 0">${button}</p>
+       <p style="font-size:13px;color:#6b7280">Or paste this link into your browser:<br><span style="word-break:break-all">${esc(url)}</span></p>
+       <p style="font-size:15px" dir="rtl"><b>${org}</b> دعتك للانضمام إلى مزرعتها على Herd OS بصفة <b>${role}</b>. اضغط الزر أعلاه لقبول الدعوة وإنشاء حسابك أو تسجيل الدخول.</p>`,
+    ),
+  };
+}
+
 export function trialEndingEmail(farmName: string, daysLeft: number): { subject: string; html: string } {
   const name = esc(farmName);
   return {

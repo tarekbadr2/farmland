@@ -5,6 +5,7 @@ import {
   GoogleAuthProvider,
   browserLocalPersistence,
   browserSessionPersistence,
+  createUserWithEmailAndPassword,
   onAuthStateChanged,
   setPersistence,
   signInWithCredential,
@@ -16,9 +17,19 @@ import {
 import { doc, getDoc } from "firebase/firestore";
 import { claimMembership, getFirebase } from "@/infrastructure/firebase/client";
 import { paths } from "@/infrastructure/firebase/paths";
-import { setActiveFarm } from "@/infrastructure/firebase/tenant";
+import {
+  getActiveFarm,
+  pickActiveFarm,
+  rememberPreferredFarm,
+  setActiveFarm,
+} from "@/infrastructure/firebase/tenant";
 import { isFirebaseBackend } from "@/core/repositories";
 import type { Role } from "@/core/domain/types";
+import {
+  effectivePermissions,
+  hasPermission,
+  type PermissionKey,
+} from "@/core/auth/permissions";
 
 export interface SessionUser {
   uid: string;
@@ -26,7 +37,15 @@ export interface SessionUser {
   email: string;
   photoURL?: string;
   role: Role;
+  /** Effective permission keys for the ACTIVE farm (authoritative — derived from
+   *  the role when a member doc has none). */
   permissions: string[];
+  /** Organization the user belongs to (once orgs are provisioned). */
+  orgId?: string;
+  /** Every farm the user can access. Drives the farm switcher. */
+  farmIds: string[];
+  /** The farm currently in context (one of farmIds). */
+  activeFarmId?: string;
 }
 
 interface AuthValue {
@@ -36,9 +55,15 @@ interface AuthValue {
   needsOnboarding: boolean;
   /** Re-resolve the session (call after creating/joining a farm). */
   refreshSession: () => Promise<void>;
+  /** Switch which farm is in context (multi-farm members). Re-resolves the
+   *  member's role/permissions for the new farm. Callers should invalidate any
+   *  farm-scoped query cache afterwards. */
+  switchFarm: (farmId: string) => Promise<void>;
   /** True when auth is switched off — the demo build runs wide open. */
   bypassed: boolean;
   signInWithEmail: (email: string, password: string) => Promise<void>;
+  /** Create a new email/password account (invite accept flow). */
+  signUpWithEmail: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   can: (permission: string) => boolean;
@@ -50,6 +75,7 @@ const DEMO_USER: SessionUser = {
   email: "owner@niledelta.farm",
   role: "owner",
   permissions: ["*"],
+  farmIds: [],
 };
 
 const AuthContext = React.createContext<AuthValue | null>(null);
@@ -98,13 +124,18 @@ async function loadMembership(user: User): Promise<SessionUser | null> {
   if (!snap.exists()) return null;
 
   const data = snap.data()!;
+  const role = (data.role as Role) ?? "farm_worker";
   return {
     uid: user.uid,
     name: data.name ?? user.displayName ?? user.email?.split("@")[0] ?? "User",
     email: user.email ?? "",
     photoURL: user.photoURL ?? undefined,
-    role: (data.role as Role) ?? "worker",
-    permissions: (data.permissions as string[]) ?? [],
+    role,
+    // Authoritative: the explicit set if the doc has one, else derived from the
+    // role so legacy member docs (role set, permissions empty) keep working.
+    permissions: [...effectivePermissions(role, data.permissions as string[] | undefined)],
+    orgId: (data.orgId as string) ?? undefined,
+    farmIds: [],
   };
 }
 
@@ -115,13 +146,29 @@ async function loadMembership(user: User): Promise<SessionUser | null> {
  * onboarding). Returns null on absence or a denied read; the tenant layer then
  * falls back to the default farm, so existing single-farm users keep working.
  */
-async function resolveUserFarm(uid: string): Promise<string | null> {
+interface UserFarms {
+  orgId?: string;
+  farmIds: string[];
+  defaultFarmId: string | null;
+}
+
+async function resolveUserFarms(uid: string): Promise<UserFarms> {
   const { db } = getFirebase();
   try {
     const snap = await getDoc(doc(db, "users", uid));
-    return snap.exists() ? ((snap.data().farmId as string) ?? null) : null;
+    if (!snap.exists()) return { farmIds: [], defaultFarmId: null };
+    const d = snap.data();
+    // New shape: { orgId, farmIds[], defaultFarmId }. Legacy: { farmId }.
+    const farmIds: string[] = Array.isArray(d.farmIds)
+      ? (d.farmIds as string[])
+      : d.farmId
+        ? [d.farmId as string]
+        : [];
+    const defaultFarmId =
+      (d.defaultFarmId as string) ?? (d.farmId as string) ?? farmIds[0] ?? null;
+    return { orgId: d.orgId as string | undefined, farmIds, defaultFarmId };
   } catch {
-    return null;
+    return { farmIds: [], defaultFarmId: null };
   }
 }
 
@@ -135,22 +182,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Resolve the signed-in user's farm and membership. Reusable so it can be
   // re-run after the onboarding wizard creates a farm.
   const resolveSession = React.useCallback(async (fbUser: User) => {
-    // Resolve which farm this user belongs to before reading membership, so
-    // every path below is scoped to their farm.
-    const farmId = await resolveUserFarm(fbUser.uid);
-    setActiveFarm(farmId);
+    // Resolve which farms this user belongs to, pick the active one (remembered
+    // choice, else default), and scope every path below to it before reading
+    // membership.
+    let { orgId, farmIds, defaultFarmId } = await resolveUserFarms(fbUser.uid);
+    setActiveFarm(pickActiveFarm(farmIds, defaultFarmId));
     let member = await loadMembership(fbUser);
     // Not a member yet? First sign-in after an invite lands here — ask the
     // function to promote any pending invite, then look again.
     if (!member) {
       try {
         if ((await claimMembership()) > 0) {
-          setActiveFarm(await resolveUserFarm(fbUser.uid));
+          ({ orgId, farmIds, defaultFarmId } = await resolveUserFarms(fbUser.uid));
+          setActiveFarm(pickActiveFarm(farmIds, defaultFarmId));
           member = await loadMembership(fbUser);
         }
       } catch {
         /* function unavailable, or nothing to claim */
       }
+    }
+    if (member) {
+      member.farmIds = farmIds;
+      member.activeFarmId = getActiveFarm();
+      member.orgId = member.orgId ?? orgId;
     }
     setUser(member);
     // Signed in but part of no farm → onboarding (create your farm), which in a
@@ -183,11 +237,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { auth } = getFirebase();
         if (auth.currentUser) await resolveSession(auth.currentUser);
       },
+      switchFarm: async (farmId) => {
+        rememberPreferredFarm(farmId);
+        setActiveFarm(farmId);
+        const { auth } = getFirebase();
+        if (auth.currentUser) await resolveSession(auth.currentUser);
+      },
       bypassed: !enabled,
       signInWithEmail: async (email, password) => {
         const { auth } = getFirebase();
         await applyRememberPersistence();
         await signInWithEmailAndPassword(auth, email, password);
+      },
+      signUpWithEmail: async (email, password) => {
+        const { auth } = getFirebase();
+        await applyRememberPersistence();
+        await createUserWithEmailAndPassword(auth, email, password);
       },
       signInWithGoogle: async () => {
         const { auth } = getFirebase();
@@ -207,11 +272,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!enabled) return;
         await fbSignOut(getFirebase().auth);
       },
+      // Permission-first: delegates to the shared catalog check (supports `*`
+      // and `module.*`). Auth-off demo builds and the owner are always allowed.
       can: (permission) =>
         !enabled ||
-        user?.permissions.includes("*") ||
-        user?.permissions.includes(permission) ||
-        user?.role === "owner",
+        user?.role === "owner" ||
+        hasPermission(user?.permissions, permission as PermissionKey),
     }),
     [user, loading, needsOnboarding, enabled, resolveSession],
   );
