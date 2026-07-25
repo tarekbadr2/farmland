@@ -39,8 +39,12 @@ import {
 import { getFirebase } from "./client";
 import { PREFIX_END, animalSearchFields, paths } from "./paths";
 import { getActiveFarm } from "./tenant";
+import { getAuditActor, currentDevice } from "@/lib/audit-actor";
+import { permissionsForRole } from "@/core/auth/permissions";
 import type {
   Account,
+  AuditEntry,
+  AuditInput,
   Branch,
   Cheque,
   Currency,
@@ -252,6 +256,38 @@ export class FirebaseFarmRepository implements FarmRepository {
     return rows<T>(snap);
   }
 
+  /* --------------------------------- Audit -------------------------------- */
+
+  async logActivity(input: AuditInput): Promise<void> {
+    const actor = getAuditActor();
+    const id = doc(this.col(paths.auditLog(this.farmId))).id;
+    const entry: Record<string, unknown> = {
+      farmId: this.farmId,
+      at: new Date().toISOString(),
+      actorUid: actor.uid,
+      actorName: actor.name,
+      actorRole: actor.role,
+      category: input.category,
+      action: input.action,
+      summary: input.summary,
+    };
+    if (input.summaryAr) entry.summaryAr = input.summaryAr;
+    if (input.target) entry.target = input.target;
+    const device = currentDevice();
+    if (device) entry.device = device;
+    if (input.before) entry.before = input.before;
+    if (input.after) entry.after = input.after;
+    await setDoc(doc(this.db, paths.auditLog(this.farmId), id), entry);
+  }
+
+  /** Fire-and-forget log — a failed audit write must never fail the action. */
+  private audit(input: AuditInput): void {
+    void this.logActivity(input).catch(() => {});
+  }
+
+  listActivity = (max = 200) =>
+    this.all<AuditEntry>(paths.auditLog(this.farmId), orderBy("at", "desc"), fsLimit(max));
+
   /* ---------------------------------- Farm -------------------------------- */
 
   async getFarm(): Promise<Farm> {
@@ -278,16 +314,31 @@ export class FirebaseFarmRepository implements FarmRepository {
   }
 
   async setMemberRole(uid: ID, role: Role): Promise<void> {
-    // Owners keep the wildcard; a demotion strips it so the rules stop treating
-    // them as owner the instant the role changes.
+    // Write the role's permission set so the change takes effect immediately;
+    // owners get the wildcard. A demotion strips the old grants at once.
     await updateDoc(doc(this.db, paths.members(this.farmId), uid), {
       role,
-      permissions: role === "owner" ? ["*"] : [],
+      permissions: role === "owner" ? ["*"] : [...permissionsForRole(role)],
+    });
+    this.audit({
+      category: "members",
+      action: "member.role",
+      summary: `Changed a member's role to ${role.replace(/_/g, " ")}`,
+      summaryAr: `تغيير دور عضو إلى ${role.replace(/_/g, " ")}`,
+      target: uid,
+      after: { role },
     });
   }
 
   async removeMember(uid: ID): Promise<void> {
     await deleteDoc(doc(this.db, paths.members(this.farmId), uid));
+    this.audit({
+      category: "members",
+      action: "member.remove",
+      summary: "Removed a member's access",
+      summaryAr: "إزالة وصول عضو",
+      target: uid,
+    });
   }
 
   async revokeInvite(email: string): Promise<void> {
@@ -555,6 +606,13 @@ export class FirebaseFarmRepository implements FarmRepository {
         { merge: true },
       );
     }
+    this.audit({
+      category: "animals",
+      action: patch.id ? "animal.update" : "animal.create",
+      summary: `${patch.id ? "Updated" : "Added"} animal ${saved.tag}`,
+      summaryAr: `${patch.id ? "تحديث" : "إضافة"} الحيوان ${saved.tag}`,
+      target: saved.tag,
+    });
     return saved;
   }
 
@@ -767,7 +825,15 @@ export class FirebaseFarmRepository implements FarmRepository {
           : {}),
       }),
     );
-    return saved as HealthEvent;
+    const h = saved as HealthEvent;
+    this.audit({
+      category: "medical",
+      action: "health.record",
+      summary: `Recorded ${h.type ?? "a health event"}${h.animalId ? ` for ${h.animalId}` : ""}`,
+      summaryAr: `تسجيل حدث صحي${h.animalId ? ` للحيوان ${h.animalId}` : ""}`,
+      target: h.animalId,
+    });
+    return h;
   }
 
   async saveBreedingEvent(
@@ -993,7 +1059,17 @@ export class FirebaseFarmRepository implements FarmRepository {
   async updateTask(id: ID, patch: Partial<FarmTask>): Promise<FarmTask> {
     await updateDoc(doc(this.db, paths.tasks(this.farmId), id), patch as DocumentData);
     const snap = await getDoc(doc(this.db, paths.tasks(this.farmId), id));
-    return { id: snap.id, ...snap.data() } as FarmTask;
+    const task = { id: snap.id, ...snap.data() } as FarmTask;
+    if (patch.status === "done") {
+      this.audit({
+        category: "tasks",
+        action: "task.complete",
+        summary: `Completed task: ${task.title ?? id}`,
+        summaryAr: `إنهاء مهمة: ${task.title ?? id}`,
+        target: task.title ?? id,
+      });
+    }
+    return task;
   }
 
   async saveTask(task: EventWrite<Omit<FarmTask, "id" | "farmId">>): Promise<FarmTask> {

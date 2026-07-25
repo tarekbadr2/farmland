@@ -14,6 +14,8 @@ import type {
   Currency,
   Alert,
   Animal,
+  AuditEntry,
+  AuditInput,
   AnimalDisposal,
   Asset,
   Attendance,
@@ -342,4 +344,10 @@ export interface FarmRepository {
 
   getWeather(): Promise<WeatherNow>;
   getUtilities(): Promise<UtilityReading[]>;
+
+  /* -------------------------------- Audit -------------------------------- */
+  /** Append one entry to the activity log. Best-effort — never throws into the
+   *  caller (a failed audit write must not fail the action it records). */
+  logActivity(input: AuditInput): Promise<void>;
+  listActivity(limit?: number): Promise<AuditEntry[]>;
 }

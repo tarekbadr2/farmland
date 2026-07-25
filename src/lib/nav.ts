@@ -19,6 +19,7 @@ import {
   Sparkles,
   BarChart3,
   Bell,
+  ScrollText,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -90,6 +91,7 @@ export const navGroups: NavGroup[] = [
     labelKey: "nav.intelligence",
     items: [
       { href: "/analytics", labelKey: "nav.analytics", icon: BarChart3, perm: "reports.read" },
+      { href: "/activity", labelKey: "nav.activity", icon: ScrollText, perm: "audit.read" },
       { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles },
       { href: "/settings", labelKey: "nav.settings", icon: Settings },
     ],

@@ -30,6 +30,7 @@ import {
   hasPermission,
   type PermissionKey,
 } from "@/core/auth/permissions";
+import { setAuditActor } from "@/lib/audit-actor";
 
 export interface SessionUser {
   uid: string;
@@ -212,6 +213,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setNeedsOnboarding(!member);
     setLoading(false);
   }, []);
+
+  // Keep the audit actor in step with the session, so the repository stamps
+  // each logged action with who did it (covers the demo user too).
+  React.useEffect(() => {
+    setAuditActor(user ? { uid: user.uid, name: user.name, role: user.role } : null);
+  }, [user]);
 
   React.useEffect(() => {
     if (!enabled) return;

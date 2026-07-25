@@ -324,6 +324,15 @@ service cloud.firestore {
         allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*')
                     || hasPerm(farmId, 'org.settings', 'org.*');
       }
+
+      // Activity log — append-only. Any member may write an entry for an action
+      // they performed; reading the trail needs audit.read; nobody edits or
+      // deletes history.
+      match /auditLog/{entryId} {
+        allow read: if hasPerm(farmId, 'audit.read', 'audit.*');
+        allow create: if isMember(farmId);
+        allow update, delete: if false;
+      }
     }
 
     // Which org/farms a user belongs to. The app reads its own mapping at login

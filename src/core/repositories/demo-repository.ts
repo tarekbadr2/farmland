@@ -7,6 +7,7 @@
 
 import { getDataset, TODAY, woodsCurve, woodsShape, seasonalFactor } from "@/core/data/seed";
 import { addDays, diffDays, rangeDays } from "@/lib/date";
+import { getAuditActor, currentDevice } from "@/lib/audit-actor";
 import { mulberry32, round, clamp, sum } from "@/lib/utils";
 import { isBalanced } from "@/core/services/accounting";
 import {
@@ -50,6 +51,8 @@ import {
 } from "@/core/domain/rules";
 import type {
   Account,
+  AuditEntry,
+  AuditInput,
   Branch,
   Cheque,
   Currency,
@@ -225,13 +228,57 @@ export class DemoFarmRepository implements FarmRepository {
       m.role = role;
       m.permissions = role === "owner" ? ["*"] : [];
     }
+    this.audit({
+      category: "members",
+      action: "member.role",
+      summary: `Changed ${m?.name ?? "a member"}'s role to ${role.replace(/_/g, " ")}`,
+      target: m?.name ?? uid,
+    });
     return tick(undefined);
   }
 
   async removeMember(uid: ID) {
-    this.members = this.members.filter((m) => m.id !== uid);
+    const m = this.members.find((x) => x.id === uid);
+    this.members = this.members.filter((x) => x.id !== uid);
+    this.audit({
+      category: "members",
+      action: "member.remove",
+      summary: `Removed ${m?.name ?? "a member"}'s access`,
+      target: m?.name ?? uid,
+    });
     return tick(undefined);
   }
+
+  /* --------------------------------- Audit -------------------------------- */
+  // In-memory, seeded so the activity screen is populated in the sandbox.
+  private activity: AuditEntry[] = [
+    { id: "a1", farmId: "farm_nile_delta", at: addDays(TODAY, 0) + "T08:12:00Z", actorUid: "m_3", actorName: "Dr. Omar Fathy", actorRole: "veterinarian", category: "medical", action: "health.record", summary: "Vaccinated EG-1204 (FMD)", target: "EG-1204" },
+    { id: "a2", farmId: "farm_nile_delta", at: addDays(TODAY, 0) + "T07:40:00Z", actorUid: "m_2", actorName: "Hana Saleh", actorRole: "manager", category: "tasks", action: "task.complete", summary: "Completed task: Morning parlor wash-down", target: "Morning parlor wash-down" },
+    { id: "a3", farmId: "farm_nile_delta", at: addDays(TODAY, -1) + "T16:05:00Z", actorUid: "m_4", actorName: "Nour Adel", actorRole: "accountant", category: "finance", action: "payroll.run", summary: "Approved monthly payroll", target: "Payroll" },
+    { id: "a4", farmId: "farm_nile_delta", at: addDays(TODAY, -1) + "T09:20:00Z", actorUid: "demo", actorName: "Tarek Badr", actorRole: "owner", category: "members", action: "member.role", summary: "Invited a veterinarian to Main Farm", target: "vet@example.com" },
+    { id: "a5", farmId: "farm_nile_delta", at: addDays(TODAY, -2) + "T11:30:00Z", actorUid: "m_2", actorName: "Hana Saleh", actorRole: "manager", category: "animals", action: "animal.create", summary: "Added animal EG-1352", target: "EG-1352" },
+  ];
+
+  async logActivity(input: AuditInput): Promise<void> {
+    const actor = getAuditActor();
+    this.activity.unshift({
+      id: `a_${Date.now()}_${Math.floor(this.activity.length)}`,
+      farmId: this.db.farm.id,
+      at: new Date().toISOString(),
+      actorUid: actor.uid,
+      actorName: actor.name,
+      actorRole: actor.role,
+      device: currentDevice(),
+      ...input,
+    });
+  }
+
+  private audit(input: AuditInput): void {
+    void this.logActivity(input);
+  }
+
+  listActivity = (max = 200) =>
+    tick([...this.activity].sort((a, b) => b.at.localeCompare(a.at)).slice(0, max));
 
   async revokeInvite(email: string) {
     const key = email.trim().toLowerCase();
@@ -382,6 +429,12 @@ export class DemoFarmRepository implements FarmRepository {
     if (idx >= 0) {
       this.db.animals[idx] = { ...this.db.animals[idx], ...patch };
       this.syncLivestockAsset(this.db.animals[idx]);
+      this.audit({
+        category: "animals",
+        action: "animal.update",
+        summary: `Updated animal ${this.db.animals[idx].tag}`,
+        target: this.db.animals[idx].tag,
+      });
       return tick(this.db.animals[idx]);
     }
     const created = {
@@ -390,6 +443,12 @@ export class DemoFarmRepository implements FarmRepository {
     };
     this.db.animals.unshift(created);
     this.syncLivestockAsset(created);
+    this.audit({
+      category: "animals",
+      action: "animal.create",
+      summary: `Added animal ${created.tag}`,
+      target: created.tag,
+    });
     return tick(created);
   }
 

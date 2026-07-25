@@ -103,6 +103,58 @@ export interface PendingInvite {
   invitedAt?: string;
 }
 
+/* --------------------------------- Audit ---------------------------------- */
+
+export type AuditCategory =
+  | "animals"
+  | "medical"
+  | "breeding"
+  | "milk"
+  | "feeding"
+  | "inventory"
+  | "tasks"
+  | "finance"
+  | "employees"
+  | "members"
+  | "system";
+
+/**
+ * One recorded action in the activity log. Append-only — an audit trail you can
+ * edit isn't one. `summary`/`summaryAr` are the human line ("Dr. Ahmed
+ * vaccinated EG-204"); `before`/`after` capture the change where it matters.
+ */
+export interface AuditEntry {
+  id: ID;
+  farmId: ID;
+  /** ISO timestamp of the action. */
+  at: string;
+  actorUid: ID;
+  actorName: string;
+  actorRole: Role;
+  category: AuditCategory;
+  /** Machine key, e.g. "animal.create", "member.role". */
+  action: string;
+  summary: string;
+  summaryAr?: string;
+  /** What was acted on (a tag, a name, an id) for quick scanning. */
+  target?: string;
+  /** Best-effort client hint (user agent). IP is captured server-side only. */
+  device?: string;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+}
+
+/** What a caller supplies to log an action; the rest is stamped by the adapter. */
+export interface AuditInput {
+  category: AuditCategory;
+  action: string;
+  summary: string;
+  summaryAr?: string;
+  target?: string;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+}
+
 export interface AppUser {
   id: ID;
   name: string;
