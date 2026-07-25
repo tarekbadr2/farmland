@@ -124,7 +124,9 @@ export default function AnimalsPage() {
           </span>
           <div className="min-w-0">
             <p className="tabular truncate text-[13px] font-medium">{a.tag}</p>
-            <p className="truncate text-[11px] text-muted-foreground">{ln(a)}</p>
+            <p className="truncate text-[11px] text-muted-foreground">
+              {t(`breeds.${a.breed}`)} · {t(`status.${a.sex}`)}
+            </p>
           </div>
         </div>
       ),
@@ -292,7 +294,7 @@ export default function AnimalsPage() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={`${t("animals.tag")} / ${t("animals.rfid")} / ${t("common.name")}`}
+              placeholder={t("animals.tag")}
               className="ps-9"
             />
             {search && (
@@ -412,7 +414,7 @@ export default function AnimalsPage() {
                   <MilkStatusPill value={a.milkStatus} />
                 </div>
                 <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
-                  {ln(a)} · {t(`breeds.${a.breed}`)} · {zoneName(a.penId)}
+                  {t(`breeds.${a.breed}`)} · {zoneName(a.penId)}
                 </p>
               </div>
               <div className="shrink-0 text-end">

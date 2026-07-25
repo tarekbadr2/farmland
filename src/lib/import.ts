@@ -25,7 +25,6 @@ export interface AnimalDraft {
   dateOfBirth: string;
   penId: string;
   weightKg: number;
-  bodyConditionScore: number;
   rfid: string;
   valuation: number;
   notes: string;
@@ -50,7 +49,6 @@ export const TEMPLATE_HEADERS = [
   "date_of_birth",
   "pen",
   "weight_kg",
-  "bcs",
   "valuation",
   "rfid",
   "notes",
@@ -66,7 +64,6 @@ export const TEMPLATE_SAMPLE: Record<string, string> = {
   date_of_birth: "2021-03-14",
   pen: "Pen A1",
   weight_kg: "540",
-  bcs: "3.25",
   valuation: "42000",
   rfid: "",
   notes: "",
@@ -83,7 +80,6 @@ const HEADER_ALIASES: Record<string, string> = {
   date_of_birth: "date_of_birth", dob: "date_of_birth", birth_date: "date_of_birth", dateofbirth: "date_of_birth",
   pen: "pen", pen_name: "pen", location: "pen", penid: "pen",
   weight_kg: "weight_kg", weight: "weight_kg", weightkg: "weight_kg",
-  bcs: "bcs", body_condition: "bcs", bodyconditionscore: "bcs",
   valuation: "valuation", value: "valuation",
   rfid: "rfid",
   notes: "notes", note: "notes", comment: "notes",
@@ -175,7 +171,6 @@ export function validateRow(
 
   const ageDays = dob ? diffDays(new Date().toISOString().slice(0, 10), dob) : 9999;
   const weightKg = num("weight_kg", ageDays < 365 ? 45 : 450, 0, 1500);
-  const bodyConditionScore = num("bcs", 3, 1, 5);
   const valuation = num("valuation", 0, 0, 100_000_000);
 
   const draft: AnimalDraft | undefined =
@@ -189,7 +184,6 @@ export function validateRow(
           dateOfBirth: dob,
           penId,
           weightKg,
-          bodyConditionScore,
           rfid: get("rfid"),
           valuation,
           notes: get("notes"),
@@ -215,10 +209,6 @@ export function draftToPatch(d: AnimalDraft, today: string): Partial<Animal> & {
     breed: d.breed,
     dateOfBirth: d.dateOfBirth,
     weightKg: d.weightKg,
-    bodyConditionScore: d.bodyConditionScore,
-    hornStatus: "horned",
-    color: "",
-    temperament: "calm",
     penId: d.penId,
     acquiredFrom: "purchased",
     acquiredAt: today,

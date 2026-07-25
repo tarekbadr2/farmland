@@ -119,15 +119,13 @@ export default function ReportsPage() {
       case "herdInventory":
         return {
           ...base("herd-inventory", t("reports.herdInventory")),
-          columns: ["tag", "rfid", "name", "breed", "sex", "dob", "status", "milk_status", "repro_status", "pen", "weight_kg", "bcs", "valuation"],
+          columns: ["tag", "breed", "sex", "dob", "status", "milk_status", "repro_status", "pen", "weight_kg", "source", "entry_date", "valuation"],
           headers: H(
-            ["Tag", "RFID", "Name", "Breed", "Sex", "DOB", "Status", "Milk", "Repro", "Pen", "Weight (kg)", "BCS", "Value"],
-            ["الرقم", "RFID", "الاسم", "السلالة", "الجنس", "الميلاد", "الحالة", "الحليب", "التكاثر", "الحظيرة", "الوزن (كجم)", "الحالة الجسمية", "القيمة"],
+            ["Tag", "Breed", "Sex", "DOB", "Status", "Milk", "Repro", "Pen", "Weight (kg)", "Source", "Farm entry", "Value"],
+            ["الرقم", "السلالة", "الجنس", "الميلاد", "الحالة", "الحليب", "التكاثر", "الحظيرة", "الوزن (كجم)", "المصدر", "تاريخ الدخول", "القيمة"],
           ),
           rows: (animalPage?.items ?? []).map((a) => ({
             tag: a.tag,
-            rfid: a.rfid,
-            name: ar ? a.nameAr : a.name,
             breed: E("breeds", a.breed),
             sex: E("status", a.sex),
             dob: a.dateOfBirth,
@@ -136,7 +134,8 @@ export default function ReportsPage() {
             repro_status: E("status", a.reproStatus),
             pen: a.penId,
             weight_kg: a.weightKg,
-            bcs: a.bodyConditionScore,
+            source: a.acquiredFrom === "purchased" ? (ar ? "مشتراة" : "Purchased") : ar ? "مولودة بالمزرعة" : "Born on farm",
+            entry_date: a.acquiredFrom === "purchased" ? a.acquiredAt : "—",
             valuation: a.valuation,
           })),
         };

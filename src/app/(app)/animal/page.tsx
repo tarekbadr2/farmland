@@ -151,7 +151,6 @@ function AnimalProfileInner() {
   const ar = locale === "ar";
 
   const facts: { label: string; value: React.ReactNode; icon?: typeof Beef }[] = [
-    { label: t("animals.rfid"), value: <span className="tabular">{animal.rfid}</span> },
     { label: t("animals.breed"), value: t(`breeds.${animal.breed}`) },
     { label: t("animals.bloodline"), value: animal.bloodline ?? "—" },
     { label: t("animals.sex"), value: t(`status.${animal.sex}`) },
@@ -160,13 +159,23 @@ function AnimalProfileInner() {
       value: formatDate(animal.dateOfBirth, locale),
       icon: CalendarDays,
     },
-    { label: t("animals.color"), value: animal.color.replace(/_/g, " ") },
-    { label: t("animals.hornStatus"), value: animal.hornStatus },
-    { label: t("animals.temperament"), value: animal.temperament },
-    { label: t("animals.microchip"), value: animal.microchip ?? "—" },
     { label: t("animals.pen"), value: pen ? ln(pen) : "—", icon: MapPin },
     { label: t("animals.mother"), value: <ParentLink parent={dam} /> },
     { label: t("animals.father"), value: <ParentLink parent={sire} /> },
+    {
+      label: t("animals.acquiredFrom"),
+      value:
+        animal.acquiredFrom === "purchased" ? t("animals.purchased") : t("animals.bornOnFarm"),
+    },
+    ...(animal.acquiredFrom === "purchased"
+      ? [
+          {
+            label: t("animals.entryDate"),
+            value: formatDate(animal.acquiredAt, locale),
+            icon: CalendarDays,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -181,7 +190,7 @@ function AnimalProfileInner() {
       </Button>
 
       <PageHeader
-        title={`${animal.tag} · ${ln(animal)}`}
+        title={animal.tag}
         subtitle={`${t(`breeds.${animal.breed}`)} · ${age.years}y ${age.months}m · ${pen ? ln(pen) : ""}`}
         actions={
           <>
@@ -245,7 +254,6 @@ function AnimalProfileInner() {
               <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
                 <Metric label={t("animals.dailyMilk")} value={`${formatNumber(animal.avgDailyMilkL)} ${t("common.liters")}`} />
                 <Metric label={t("animals.weight")} value={`${formatNumber(animal.weightKg)} ${t("common.kg")}`} />
-                <Metric label={t("animals.bcs")} value={formatNumber(animal.bodyConditionScore)} />
                 <Metric label={t("animals.lactation")} value={formatNumber(animal.lactationNumber)} />
               </div>
             </div>

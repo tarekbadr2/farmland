@@ -326,16 +326,16 @@ export function answerQuery(query: string, ctx: AdvisorContext): QueryAnswer {
     };
   }
 
-  /* Weight loss ----------------------------------------------------------- */
-  if (has(q, "lost weight", "losing weight", "thin", "body condition", "فقد وزن", "نحيف", "الوزن")) {
+  /* Condition / at-risk --------------------------------------------------- */
+  if (has(q, "lost weight", "losing weight", "thin", "body condition", "at risk", "فقد وزن", "نحيف", "الوزن", "معرض للخطر")) {
     const list = animals
-      .filter((a) => a.bodyConditionScore <= 2.8 && !a.isCalf)
-      .sort((a, b) => a.bodyConditionScore - b.bodyConditionScore);
+      .filter((a) => a.healthScore < 70 && !a.isCalf)
+      .sort((a, b) => a.healthScore - b.healthScore);
     return {
       matched: true,
       animals: list,
-      summary: `${list.length} animals are at or below body condition score 2.8 — thin enough to hurt fertility and yield.`,
-      summaryAr: `${list.length} حيوان بحالة جسم ٢.٨ أو أقل — نحافة تؤثر على الخصوبة والإنتاج.`,
+      summary: `${list.length} animals have a health score below 70 — condition low enough to hurt fertility and yield.`,
+      summaryAr: `${list.length} حيوان بمؤشر صحة أقل من ٧٠ — حالة متدنية تؤثر على الخصوبة والإنتاج.`,
     };
   }
 
@@ -472,7 +472,7 @@ export function buildAdvisorBrief(ctx: AdvisorContext): string {
     "",
     "HERD:",
     `  Live head ${herd.total}: ${herd.lactating} lactating, ${herd.dry} dry, ${herd.heifers} heifers, ${herd.pregnant} pregnant, ${herd.calves} calves, ${herd.bulls} bulls.`,
-    `  Health: avg score ${herd.avgHealthScore}/100, ${herd.healthyPct}% healthy, avg body condition ${herd.avgBcs}/5, ${herd.quarantine} in quarantine.`,
+    `  Health: avg score ${herd.avgHealthScore}/100, ${herd.healthyPct}% healthy, ${herd.quarantine} in quarantine.`,
     `  Herd valuation ${money(herd.herdValue)}.`,
     "",
     "MILK (per day unless noted):",

@@ -139,9 +139,6 @@ export type Breed =
   | "jafarabadi"
   | "crossbreed";
 
-export type Temperament = "calm" | "nervous" | "aggressive" | "docile";
-export type HornStatus = "horned" | "polled" | "dehorned";
-
 export interface Animal {
   id: ID;
   farmId: ID;
@@ -161,10 +158,6 @@ export interface Animal {
   reproStatus: ReproStatus;
   penId: ID;
   weightKg: number;
-  bodyConditionScore: number; // 1..5
-  hornStatus: HornStatus;
-  color: string;
-  temperament: Temperament;
   healthScore: number; // 0..100
   lactationNumber: number;
   lastCalvingDate?: string;

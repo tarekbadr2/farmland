@@ -36,37 +36,17 @@ const BREEDS = [
   "crossbreed",
 ] as const;
 
-// Horn status and temperament have no dictionary namespace of their own; the
-// labels are bilingual pairs kept inline rather than inventing an i18n section
-// for two five-item enums.
-const HORNS: { value: string; en: string; ar: string }[] = [
-  { value: "horned", en: "Horned", ar: "بقرون" },
-  { value: "polled", en: "Polled", ar: "بلا قرون" },
-  { value: "dehorned", en: "Dehorned", ar: "منزوعة القرون" },
-];
-const TEMPERAMENTS: { value: string; en: string; ar: string }[] = [
-  { value: "calm", en: "Calm", ar: "هادئ" },
-  { value: "docile", en: "Docile", ar: "وديع" },
-  { value: "nervous", en: "Nervous", ar: "متوتر" },
-  { value: "aggressive", en: "Aggressive", ar: "عدواني" },
-];
-
 const schema = z.object({
   tag: z.string().min(1, "Required").regex(/^[A-Za-z0-9-]+$/, "Letters, numbers and dashes only"),
-  rfid: z.string().optional(),
-  name: z.string().min(1, "Required"),
-  nameAr: z.string().optional(),
   sex: z.enum(["female", "male"]),
   breed: z.enum(BREEDS),
   dateOfBirth: z.string().min(10),
   weightKg: z.coerce.number().min(0).max(1500),
-  bodyConditionScore: z.coerce.number().min(1).max(5),
-  hornStatus: z.enum(["horned", "polled", "dehorned"]),
-  color: z.string().optional(),
-  temperament: z.enum(["calm", "docile", "nervous", "aggressive"]),
   penId: z.string().min(1, "Required"),
   microchip: z.string().optional(),
   acquiredFrom: z.enum(["born_on_farm", "purchased"]),
+  /** Date the animal entered the farm — only meaningful when purchased. */
+  acquiredAt: z.string().optional(),
   valuation: z.coerce.number().min(0),
   purpose: z.enum(["dairy", "meat", "breeding"]).optional(),
   acquisitionCost: z.coerce.number().min(0).optional(),
@@ -105,20 +85,13 @@ export function AnimalFormDialog({
     defaultValues: animal
       ? {
           tag: animal.tag,
-          rfid: animal.rfid,
-          name: animal.name,
-          nameAr: animal.nameAr,
           sex: animal.sex,
           breed: animal.breed,
           dateOfBirth: animal.dateOfBirth,
           weightKg: animal.weightKg,
-          bodyConditionScore: animal.bodyConditionScore,
-          hornStatus: animal.hornStatus,
-          color: animal.color,
-          temperament: animal.temperament,
           penId: animal.penId,
-          microchip: animal.microchip,
           acquiredFrom: animal.acquiredFrom ?? "born_on_farm",
+          acquiredAt: animal.acquiredAt,
           valuation: animal.valuation,
           purpose: animal.purpose,
           acquisitionCost: animal.acquisitionCost,
@@ -130,9 +103,6 @@ export function AnimalFormDialog({
           breed: "murrah",
           dateOfBirth: TODAY,
           weightKg: 40,
-          bodyConditionScore: 3,
-          hornStatus: "horned",
-          temperament: "calm",
           acquiredFrom: "born_on_farm",
           valuation: 0,
         },
@@ -147,21 +117,25 @@ export function AnimalFormDialog({
         ...animal, // preserve state we don't edit here (health, milk, repro)
         id: animal?.id,
         tag: values.tag.trim(),
-        rfid: values.rfid?.trim() ?? "",
-        name: values.name.trim(),
-        nameAr: values.nameAr?.trim() || values.name.trim(),
+        // The tag IS the animal's identity now — name mirrors it so every list,
+        // report and detail view that shows a name shows the tag. rfid/microchip
+        // are no longer collected; preserve anything already on the record.
+        name: values.tag.trim(),
+        nameAr: values.tag.trim(),
+        rfid: animal?.rfid ?? "",
+        microchip: animal?.microchip,
         sex: values.sex,
         breed: values.breed,
         dateOfBirth: values.dateOfBirth,
         weightKg: values.weightKg,
-        bodyConditionScore: values.bodyConditionScore,
-        hornStatus: values.hornStatus,
-        color: values.color ?? "",
-        temperament: values.temperament,
         penId: values.penId,
-        microchip: values.microchip,
         acquiredFrom: values.acquiredFrom,
-        acquiredAt: animal?.acquiredAt ?? TODAY,
+        // Farm-entry date: the chosen date for a purchase, else the birth date
+        // (a born-on-farm animal "entered" the herd when it was born).
+        acquiredAt:
+          values.acquiredFrom === "purchased"
+            ? values.acquiredAt || animal?.acquiredAt || TODAY
+            : values.dateOfBirth,
         valuation: values.valuation,
         purpose: values.purpose,
         acquisitionCost: values.acquisitionCost || undefined,
@@ -230,18 +204,6 @@ export function AnimalFormDialog({
             <Field label={t("animals.tag")} error={form.formState.errors.tag?.message}>
               <Input placeholder="EG-1234" {...form.register("tag")} />
             </Field>
-            <Field label={t("animals.rfid")}>
-              <Input {...form.register("rfid")} />
-            </Field>
-            <Field label={t("animals.microchip")}>
-              <Input {...form.register("microchip")} />
-            </Field>
-            <Field label={`${t("animals.title")} (EN)`} error={form.formState.errors.name?.message}>
-              <Input {...form.register("name")} />
-            </Field>
-            <Field label={`${t("animals.title")} (ع)`}>
-              <Input dir="rtl" {...form.register("nameAr")} />
-            </Field>
             <Field label={t("animals.sex")}>
               <SelectField
                 value={form.watch("sex")}
@@ -269,29 +231,6 @@ export function AnimalFormDialog({
             <Field label={`${t("animals.weight")} (kg)`}>
               <Input type="number" step="1" {...form.register("weightKg")} />
             </Field>
-            <Field label={t("animals.bcs")}>
-              <Input type="number" step="0.25" {...form.register("bodyConditionScore")} />
-            </Field>
-            <Field label={t("animals.hornStatus")}>
-              <SelectField
-                value={form.watch("hornStatus")}
-                onChange={(v) => form.setValue("hornStatus", v as FormValues["hornStatus"])}
-                options={HORNS.map((h) => ({ value: h.value, label: locale === "ar" ? h.ar : h.en }))}
-              />
-            </Field>
-            <Field label={t("animals.temperament")}>
-              <SelectField
-                value={form.watch("temperament")}
-                onChange={(v) => form.setValue("temperament", v as FormValues["temperament"])}
-                options={TEMPERAMENTS.map((tm) => ({
-                  value: tm.value,
-                  label: locale === "ar" ? tm.ar : tm.en,
-                }))}
-              />
-            </Field>
-            <Field label={t("animals.color")}>
-              <Input {...form.register("color")} />
-            </Field>
           </Section>
 
           {/* Placement */}
@@ -314,6 +253,11 @@ export function AnimalFormDialog({
                 ]}
               />
             </Field>
+            {form.watch("acquiredFrom") === "purchased" && (
+              <Field label={t("animals.entryDate")}>
+                <Input type="date" {...form.register("acquiredAt")} />
+              </Field>
+            )}
             <Field label={t("animals.valuation")}>
               <Input type="number" step="100" {...form.register("valuation")} />
             </Field>

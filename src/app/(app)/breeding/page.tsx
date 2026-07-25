@@ -135,13 +135,6 @@ export default function BreedingPage() {
       align: "end",
       cell: (a) => <span className="tabular text-[12.5px]">{formatNumber(a.lactationNumber)}</span>,
     },
-    {
-      key: "bcs",
-      header: t("animals.bcs"),
-      secondary: true,
-      align: "end",
-      cell: (a) => <span className="tabular text-[12.5px]">{formatNumber(a.bodyConditionScore)}</span>,
-    },
   ];
 
   const semenColumns: Column<SemenStraw>[] = [

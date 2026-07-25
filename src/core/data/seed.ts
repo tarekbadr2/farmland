@@ -82,7 +82,6 @@ const BREEDS: Breed[] = [
   "crossbreed",
 ];
 
-const COLORS = ["black", "dark_grey", "slate", "brown_black", "ash"];
 const BLOODLINES = ["Delta-A", "Delta-B", "Murrah-Elite", "Ravi-Line", "Nile-Crest", "Fayoum-7"];
 
 export interface FarmDataset {
@@ -356,10 +355,6 @@ function build(): FarmDataset {
       reproStatus,
       penId,
       weightKg,
-      bodyConditionScore: round(clamp(between(r, 2.4, 4.3), 1, 5), 1),
-      hornStatus: pick(r, ["horned", "horned", "dehorned", "polled"] as const),
-      color: pick(r, COLORS),
-      temperament: pick(r, ["calm", "calm", "docile", "nervous", "aggressive"] as const),
       healthScore,
       lactationNumber,
       lastCalvingDate,

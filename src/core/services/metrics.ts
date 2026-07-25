@@ -48,7 +48,6 @@ export function herdComposition(animals: Animal[]) {
     quarantine: live.filter((a) => a.status === "quarantine").length,
     healthyPct: round(pct(healthy.length, live.length), 1),
     avgHealthScore: round(average(live.map((a) => a.healthScore)), 1),
-    avgBcs: round(average(live.map((a) => a.bodyConditionScore)), 2),
     herdValue: sum(live.map((a) => a.valuation)),
   };
 }
