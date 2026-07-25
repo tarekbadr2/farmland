@@ -20,6 +20,14 @@ let mainWin = null;
 let backgroundEnabled = false;
 let isQuitting = false;
 
+// Start-hidden: when the app is launched at login with "start in tray" on, it
+// registers a "--hidden" arg (Windows) / openAsHidden flag (macOS). Detect it
+// at startup so the first window opens straight into the tray.
+function launchedHidden() {
+  const s = app.getLoginItemSettings();
+  return Boolean(s.wasOpenedAsHidden) || process.argv.includes("--hidden");
+}
+
 // The hosted site that carries the Google sign-in bridge page (real browser).
 const WEB_ORIGIN = process.env.HERDOS_WEB || "https://farmland-tarekbadr2s-projects.vercel.app";
 
@@ -136,7 +144,7 @@ function startServer() {
   });
 }
 
-function createWindow() {
+function createWindow(hidden = false) {
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -146,6 +154,7 @@ function createWindow() {
     icon: path.join(__dirname, "app-icon.png"),
     title: "Herd OS",
     autoHideMenuBar: true,
+    show: !hidden,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -155,6 +164,14 @@ function createWindow() {
 
   mainWin = win;
   win.loadURL(appUrl, { userAgent: CHROME_UA });
+
+  // Launched straight into the tray: there must be a tray to get back from, and
+  // the process must survive having no visible window, so force background mode
+  // on. The renderer pushes the user's real preference once it loads.
+  if (hidden) {
+    backgroundEnabled = true;
+    ensureTray();
+  }
 
   // In background mode, the close button hides to tray instead of quitting.
   win.on("close", (event) => {
@@ -288,9 +305,14 @@ function setupBackgroundMode() {
   ipcMain.handle("background:set", (_e, on) => {
     backgroundEnabled = !!on;
     if (backgroundEnabled) ensureTray();
-    else if (tray) {
-      tray.destroy();
-      tray = null;
+    else {
+      if (tray) {
+        tray.destroy();
+        tray = null;
+      }
+      // Don't strand the app: if it was started hidden and the user turns
+      // background mode off, bring the window back so there's still a way in.
+      if (mainWin && !mainWin.isVisible()) showWindow();
     }
     return { ok: true };
   });
@@ -298,6 +320,35 @@ function setupBackgroundMode() {
   // A real quit (tray menu, Cmd/Ctrl+Q, updater restart) must bypass hide-to-tray.
   app.on("before-quit", () => {
     isQuitting = true;
+  });
+}
+
+// ---------------------------- Launch settings -----------------------------
+// Start-with-Windows and start-hidden, backed by the OS login-item registry so
+// the setting survives reinstalls and is the single source of truth.
+function setupLaunchSettings() {
+  ipcMain.handle("launch:get", () => {
+    const s = app.getLoginItemSettings();
+    // openAsHidden isn't reported back on Windows, so mirror it from the arg we
+    // registered ourselves.
+    const hiddenArg = (s.launchItems || []).some((i) =>
+      (i.args || []).includes("--hidden"),
+    );
+    return {
+      openAtLogin: Boolean(s.openAtLogin),
+      openAsHidden: Boolean(s.openAsHidden) || hiddenArg,
+    };
+  });
+
+  ipcMain.handle("launch:set", (_e, settings) => {
+    const openAtLogin = Boolean(settings && settings.openAtLogin);
+    const openAsHidden = openAtLogin && Boolean(settings && settings.openAsHidden);
+    app.setLoginItemSettings({
+      openAtLogin,
+      openAsHidden, // macOS
+      args: openAsHidden ? ["--hidden"] : [], // Windows: read by launchedHidden()
+    });
+    return { ok: true };
   });
 }
 
@@ -310,7 +361,8 @@ app.whenReady().then(async () => {
     appUrl = "https://farmland-tarekbadr2s-projects.vercel.app"; // last-resort fallback
   }
   setupBackgroundMode();
-  createWindow();
+  setupLaunchSettings();
+  createWindow(launchedHidden());
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

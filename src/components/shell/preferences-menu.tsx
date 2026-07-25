@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { BellOff, HardHat, Languages, Monitor, Moon, Settings2, Sun } from "lucide-react";
+import { BellOff, HardHat, Languages, Monitor, Moon, Settings2, Sun, Volume2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/primitives";
@@ -16,7 +16,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/menu";
 import { useI18n } from "@/lib/i18n/provider";
-import { setNotificationsMuted, useNotificationPrefs } from "@/lib/notification-prefs";
+import {
+  setNotificationsMuted,
+  setNotificationSound,
+  useNotificationPrefs,
+} from "@/lib/notification-prefs";
 import {
   isBackgroundSupported,
   setBackgroundMode,
@@ -102,6 +106,19 @@ export function PreferencesMenu() {
             {ar ? "كتم كل الإشعارات" : "Mute all"}
           </span>
           <Switch checked={prefs.muted} onCheckedChange={setNotificationsMuted} />
+        </label>
+
+        <label
+          className={cn(
+            "flex cursor-pointer items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-[13px] hover:bg-accent",
+            prefs.muted && "pointer-events-none opacity-45",
+          )}
+        >
+          <span className="flex items-center gap-2">
+            <Volume2 className="size-4 text-muted-foreground" />
+            {ar ? "الصوت" : "Sound"}
+          </span>
+          <Switch checked={prefs.sound} disabled={prefs.muted} onCheckedChange={setNotificationSound} />
         </label>
 
         {bgSupported && (

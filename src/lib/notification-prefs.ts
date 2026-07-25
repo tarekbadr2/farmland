@@ -26,11 +26,24 @@ export const NOTIFICATION_CATEGORIES: NotificationCategory[] = [
   "system",
 ];
 
+export interface QuietHours {
+  /** When on, pop-ups are held during the window below (they stay in the list). */
+  enabled: boolean;
+  /** "HH:MM" 24-hour local start. */
+  start: string;
+  /** "HH:MM" 24-hour local end. A window that ends before it starts wraps midnight. */
+  end: string;
+}
+
 export interface NotificationPrefs {
   /** Master switch — off silences every pop-up regardless of the per-category flags. */
   muted: boolean;
+  /** Play the OS notification sound. Off = silent pop-ups. */
+  sound: boolean;
   /** Per-category opt-out. Absent = on, so a new category defaults to showing. */
   categories: Record<NotificationCategory, boolean>;
+  /** Nightly (or any) window during which pop-ups are suppressed. */
+  quietHours: QuietHours;
 }
 
 const KEY = "herdos.notif-prefs";
@@ -42,13 +55,20 @@ const allOn = (): Record<NotificationCategory, boolean> =>
     boolean
   >;
 
+const defaults = (): NotificationPrefs => ({
+  muted: false,
+  sound: true,
+  categories: allOn(),
+  quietHours: { enabled: false, start: "22:00", end: "06:00" },
+});
+
 // useSyncExternalStore compares snapshots by reference, so the hook must return
 // a STABLE object until the value actually changes. readPrefs() builds a fresh
 // object each call (correct for the non-reactive read path), so the hook reads
 // through this cache instead, which is only rebuilt when a write or a
 // cross-tab storage event invalidates it.
 let cached: NotificationPrefs | null = null;
-const SERVER_SNAPSHOT: NotificationPrefs = { muted: false, categories: allOn() };
+const SERVER_SNAPSHOT: NotificationPrefs = defaults();
 
 function getSnapshot(): NotificationPrefs {
   if (cached === null) cached = readPrefs();
@@ -61,18 +81,22 @@ function emit(): void {
 }
 
 export function readPrefs(): NotificationPrefs {
-  if (typeof window === "undefined") return { muted: false, categories: allOn() };
+  const base = defaults();
+  if (typeof window === "undefined") return base;
   try {
     const raw = window.localStorage.getItem(KEY);
-    if (!raw) return { muted: false, categories: allOn() };
+    if (!raw) return base;
     const parsed = JSON.parse(raw) as Partial<NotificationPrefs>;
     return {
       muted: Boolean(parsed.muted),
+      // Absent in older saved prefs → keep the sensible default (sound on).
+      sound: parsed.sound === undefined ? base.sound : Boolean(parsed.sound),
       // Merge over the defaults so a category added later is on until turned off.
-      categories: { ...allOn(), ...(parsed.categories ?? {}) },
+      categories: { ...base.categories, ...(parsed.categories ?? {}) },
+      quietHours: { ...base.quietHours, ...(parsed.quietHours ?? {}) },
     };
   } catch {
-    return { muted: false, categories: allOn() };
+    return base;
   }
 }
 
@@ -86,9 +110,43 @@ export function setNotificationsMuted(muted: boolean): void {
   write({ ...readPrefs(), muted });
 }
 
+export function setNotificationSound(sound: boolean): void {
+  write({ ...readPrefs(), sound });
+}
+
 export function setCategoryEnabled(category: NotificationCategory, enabled: boolean): void {
   const prefs = readPrefs();
   write({ ...prefs, categories: { ...prefs.categories, [category]: enabled } });
+}
+
+export function setQuietHours(patch: Partial<QuietHours>): void {
+  const prefs = readPrefs();
+  write({ ...prefs, quietHours: { ...prefs.quietHours, ...patch } });
+}
+
+/** Minutes-since-midnight for an "HH:MM" string, or null if it can't be parsed. */
+function toMinutes(hhmm: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+/**
+ * Are we inside the quiet-hours window right now? Handles windows that wrap
+ * past midnight (e.g. 22:00 → 06:00). A zero-length window is treated as off.
+ * `nowMinutes` is injectable so the logic is unit-testable without a clock.
+ */
+export function inQuietHours(q: QuietHours, nowMinutes: number): boolean {
+  if (!q.enabled) return false;
+  const start = toMinutes(q.start);
+  const end = toMinutes(q.end);
+  if (start === null || end === null || start === end) return false;
+  return start < end
+    ? nowMinutes >= start && nowMinutes < end // same-day window
+    : nowMinutes >= start || nowMinutes < end; // wraps midnight
 }
 
 /**
@@ -98,7 +156,14 @@ export function setCategoryEnabled(category: NotificationCategory, enabled: bool
  */
 export function notificationsAllowed(category: NotificationCategory): boolean {
   const prefs = readPrefs();
-  return !prefs.muted && prefs.categories[category] !== false;
+  if (prefs.muted || prefs.categories[category] === false) return false;
+  const now = new Date();
+  return !inQuietHours(prefs.quietHours, now.getHours() * 60 + now.getMinutes());
+}
+
+/** Whether pop-ups should make a sound. Non-reactive; read at fire time. */
+export function notificationSoundEnabled(): boolean {
+  return readPrefs().sound;
 }
 
 /** Reactive snapshot for the settings UI and the menu. */

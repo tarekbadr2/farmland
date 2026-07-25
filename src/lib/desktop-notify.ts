@@ -26,10 +26,14 @@ export function canNotify(): boolean {
   return notificationsAvailable() && Notification.permission === "granted";
 }
 
-export function showDesktopNotification(title: string, body: string, opts?: { href?: string }): void {
+export function showDesktopNotification(
+  title: string,
+  body: string,
+  opts?: { href?: string; silent?: boolean },
+): void {
   if (!canNotify()) return;
   try {
-    const n = new Notification(title, { body });
+    const n = new Notification(title, { body, silent: opts?.silent });
     n.onclick = () => {
       window.focus();
       if (opts?.href) window.location.href = opts.href;

@@ -15,6 +15,14 @@ contextBridge.exposeInMainWorld("desktopBackground", {
   setEnabled: (on) => ipcRenderer.invoke("background:set", on),
 });
 
+// Launch behaviour: start with Windows, and optionally start hidden in the
+// tray. The OS login-item registration is the source of truth, so the Settings
+// screen reads current state via get() and writes through set().
+contextBridge.exposeInMainWorld("desktopLaunch", {
+  get: () => ipcRenderer.invoke("launch:get"),
+  set: (settings) => ipcRenderer.invoke("launch:set", settings),
+});
+
 // Self-update controls for the Settings screen. check() triggers a manual
 // look at GitHub Releases; onStatus() streams progress ("checking" → "none" |
 // "available" → "downloading" → "ready"); version() returns the running build.
