@@ -10,6 +10,7 @@ import { WebGate } from "@/components/shell/web-gate";
 import { WebDownloadBanner } from "@/components/shell/web-download-banner";
 import { TrialBanner } from "@/components/billing/trial-banner";
 import { DesktopAlerts } from "@/components/shell/desktop-alerts";
+import { RouteGuard } from "@/lib/auth/guard";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -25,7 +26,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <SampleFarmBanner />
               <main className="flex-1 px-3 pb-24 pt-4 sm:px-5 sm:pb-8 lg:px-7">
                 <div className="mx-auto w-full max-w-[1500px]">
-                  <WebGate>{children}</WebGate>
+                  <WebGate>
+                    <RouteGuard>{children}</RouteGuard>
+                  </WebGate>
                 </div>
               </main>
             </div>

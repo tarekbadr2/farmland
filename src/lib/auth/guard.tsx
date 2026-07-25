@@ -1,10 +1,12 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 import { Lock } from "lucide-react";
 
 import { useAuth } from "@/lib/auth/provider";
 import { useI18n } from "@/lib/i18n/provider";
+import { allNavItems, isNavActive } from "@/lib/nav";
 import { hasPermission, type PermissionKey } from "@/core/auth/permissions";
 
 /**
@@ -71,6 +73,21 @@ export function RequirePermission({
   const allowed = permission ? has(permission) : anyOf ? hasAny(anyOf) : true;
   if (allowed) return <>{children}</>;
   return <NoAccess />;
+}
+
+/**
+ * Route-level guard for the whole app shell. Looks up the current route in the
+ * nav map and, if that destination declares a permission the member lacks,
+ * shows the no-access panel instead of the page — so a direct URL can't reach a
+ * screen the sidebar hid. Routes with no nav permission (dashboard, settings,
+ * the animal detail sub-routes handled by isNavActive) render normally.
+ */
+export function RouteGuard({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const { has } = usePermission();
+  const item = allNavItems.find((i) => isNavActive(pathname, i.href));
+  if (item?.perm && !has(item.perm)) return <NoAccess />;
+  return <>{children}</>;
 }
 
 function NoAccess() {
