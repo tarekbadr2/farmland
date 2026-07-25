@@ -47,6 +47,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress, Skeleton } from "@/components/ui/primitives";
 import { useI18n } from "@/lib/i18n/provider";
+import { useAuth } from "@/lib/auth/provider";
 import { TODAY } from "@/core/data/seed";
 import { formatDate, formatMonth, diffDays, monthKey } from "@/lib/date";
 import { pct, round } from "@/lib/utils";
@@ -85,6 +86,9 @@ import { RecordSessionDialog } from "@/components/milk/record-session-dialog";
 
 export default function DashboardPage() {
   const { t, ln, locale, formatNumber, formatCompact, formatCurrency } = useI18n();
+  const { user } = useAuth();
+  // First name only — falls back to the full name, then a neutral greeting.
+  const firstName = user?.name?.trim().split(/\s+/)[0] ?? "";
 
   const animals = useAnimals({ pageSize: 100000 });
   const milk = useMilkDaily();
@@ -194,7 +198,7 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader
-        title={`${t(greeting)}${locale === "ar" ? "، " : ", "}Tarek`}
+        title={firstName ? `${t(greeting)}${locale === "ar" ? "، " : ", "}${firstName}` : t(greeting)}
         subtitle={t("dashboard.subtitle")}
         actions={
           <>
