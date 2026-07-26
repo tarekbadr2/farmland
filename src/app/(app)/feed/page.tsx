@@ -192,17 +192,23 @@ export default function FeedPage() {
         title={t("feed.title")}
         subtitle={t("feed.subtitle")}
         actions={
-          <Can permission="feeding.write">
-            <PurchaseDialog
-              kind="feed"
-              trigger={
-                <Button variant="outline" size="sm">
-                  <ShoppingCart /> {t("feed.buyFeed")}
-                </Button>
-              }
-            />
-            <LogFeedingDialog />
-          </Can>
+          <>
+            {/* Buying raises stock + books the spend — a stock/finance action. */}
+            <Can permission="inventory.write">
+              <PurchaseDialog
+                kind="feed"
+                trigger={
+                  <Button variant="outline" size="sm">
+                    <ShoppingCart /> {t("feed.buyFeed")}
+                  </Button>
+                }
+              />
+            </Can>
+            {/* Logging a feeding is a daily-ops action. */}
+            <Can permission="feeding.write">
+              <LogFeedingDialog />
+            </Can>
+          </>
         }
       />
 

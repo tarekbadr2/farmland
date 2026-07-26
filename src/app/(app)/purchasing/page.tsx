@@ -168,7 +168,7 @@ export default function PurchasingPage() {
             >
               <Download /> {t("common.export")}
             </Button>
-            <Can permission="feeding.write">
+            <Can permission="inventory.write">
               <PurchaseDialog
                 kind="feed"
                 trigger={
