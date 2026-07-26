@@ -76,6 +76,7 @@ import type {
   MilkRecord,
   Partner,
   PendingInvite,
+  Purchase,
   Role,
   SemenStraw,
   StockMovement,
@@ -1330,6 +1331,7 @@ export class FirebaseFarmRepository implements FarmRepository {
       // category enums don't overlap), so read the common shape structurally.
       const item = snap.data() as {
         name: string;
+        nameAr?: string;
         unit: string;
         stock?: number;
         costPerUnit?: number;
@@ -1347,6 +1349,7 @@ export class FirebaseFarmRepository implements FarmRepository {
       );
       return {
         name: item.name,
+        nameAr: item.nameAr,
         unit: item.unit,
         category:
           input.kind === "feed"
@@ -1372,6 +1375,41 @@ export class FirebaseFarmRepository implements FarmRepository {
       }),
     );
 
+    // The itemised purchase log — what was bought, from whom, and what it cost.
+    // Drives the Purchases screen's spend analytics and per-supplier prices.
+    const actor = getAuditActor();
+    const purchaseId = doc(this.col(paths.purchases(this.farmId))).id;
+    await setDoc(
+      doc(this.db, paths.purchases(this.farmId), purchaseId),
+      omitUndefined({
+        id: purchaseId,
+        farmId: this.farmId,
+        date: input.date,
+        kind: input.kind,
+        itemId: input.itemId,
+        itemName: meta.name,
+        itemNameAr: meta.nameAr,
+        supplierId: input.supplierId,
+        quantity: input.quantity,
+        unit: meta.unit,
+        unitCost: input.unitCost,
+        total,
+        warehouseId: input.warehouseId,
+        paymentMethod: input.paymentMethod,
+        note: input.note,
+        createdBy: actor.uid,
+        createdByName: actor.name,
+      }),
+    );
+    this.audit({
+      category: "inventory",
+      action: "purchase.record",
+      summary: `Bought ${input.quantity} ${meta.unit} of ${meta.name}`,
+      summaryAr: `شراء ${input.quantity} ${meta.unit} من ${meta.name}`,
+      target: meta.name,
+      after: { total, unitCost: input.unitCost },
+    });
+
     return this.saveTransaction({
       date: input.date,
       kind: "expense",
@@ -1382,6 +1420,9 @@ export class FirebaseFarmRepository implements FarmRepository {
       paymentMethod: input.paymentMethod,
     });
   }
+
+  getPurchases = () =>
+    this.all<Purchase>(paths.purchases(this.farmId), orderBy("date", "desc"), fsLimit(1000));
 
   async recordCost(input: CostInput): Promise<Transaction> {
     return this.saveTransaction({

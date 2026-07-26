@@ -35,6 +35,7 @@ import type {
   JournalEntry,
   LivestockTransfer,
   TransferRequest,
+  Purchase,
   Member,
   MilkRecord,
   Partner,
@@ -260,6 +261,8 @@ export interface FarmRepository {
    * store, the expense list and the books all agree.
    */
   recordPurchase(input: PurchaseInput): Promise<Transaction>;
+  /** The itemised purchase log (feed/inventory buys) for the Purchases screen. */
+  getPurchases(): Promise<Purchase[]>;
   /** Books a non-stock cost (maintenance, transport, wages) the same way. */
   recordCost(input: CostInput): Promise<Transaction>;
 

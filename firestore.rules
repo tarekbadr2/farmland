@@ -239,6 +239,13 @@ service cloud.firestore {
         allow read: if isMember(farmId);
         allow write: if hasPerm(farmId, 'inventory.write', 'inventory.*');
       }
+      // Itemised purchase log — an immutable record of what was bought and for
+      // how much; drives the Purchases screen's spend analytics.
+      match /purchases/{purchaseId} {
+        allow read: if hasPerm(farmId, 'inventory.read', 'inventory.*');
+        allow create: if hasPerm(farmId, 'inventory.write', 'inventory.*');
+        allow update, delete: if false;
+      }
 
       // ---------------------------- People ---------------------------
       // Salaries are in here. Reading needs an HR/payroll/accounting grant;

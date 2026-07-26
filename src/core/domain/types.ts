@@ -523,6 +523,34 @@ export interface StockMovement {
   countedQty?: number;
 }
 
+/**
+ * A recorded purchase of feed/inventory — what was actually bought and what it
+ * actually cost. Written alongside the stock-in movement and the expense, it's
+ * the itemised log the Purchases screen reports on (spend by supplier/item/month
+ * and per-supplier price history). Not a purchase *order* — there's no ordering
+ * step; the farm records what it bought.
+ */
+export interface Purchase {
+  id: ID;
+  farmId: ID;
+  date: string;
+  kind: "feed" | "inventory";
+  itemId: ID;
+  /** Snapshotted so the log reads right even if the item is renamed later. */
+  itemName: string;
+  itemNameAr?: string;
+  supplierId?: ID;
+  quantity: number;
+  unit: string;
+  unitCost: number;
+  total: number;
+  warehouseId?: ID;
+  paymentMethod: Transaction["paymentMethod"];
+  note?: string;
+  createdBy?: ID;
+  createdByName?: string;
+}
+
 /* -------------------------------- Employees -------------------------------- */
 
 export type EmployeeRole =

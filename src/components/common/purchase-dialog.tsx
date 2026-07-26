@@ -22,11 +22,13 @@ import {
   useFeedItems,
   useInventory,
   usePartners,
+  usePurchases,
   useRecordPurchase,
   useWarehouses,
 } from "@/hooks/use-farm-data";
 import { purchaseTotal } from "@/core/services/automation";
 import { defaultWarehouse } from "@/core/services/warehouse";
+import { lastSupplierPrice } from "@/core/services/purchasing";
 import { TODAY } from "@/core/data/seed";
 import type { Transaction } from "@/core/domain/types";
 
@@ -51,6 +53,7 @@ export function PurchaseDialog({
   const { data: inventory = [] } = useInventory();
   const { data: partners = [] } = usePartners();
   const { data: warehouses = [] } = useWarehouses();
+  const { data: purchases = [] } = usePurchases();
   const record = useRecordPurchase();
 
   const items = kind === "feed" ? feedItems : inventory;
@@ -82,6 +85,14 @@ export function PurchaseDialog({
       "costPerUnit" in selected ? selected.costPerUnit : (selected as { unitCost: number }).unitCost;
     if (last && !unitCost) setUnitCost(String(last));
   }, [selected, unitCost]);
+
+  // Picking a supplier fills in what THEY last charged for this item, so a
+  // repeat order from a known supplier pre-fills their price.
+  React.useEffect(() => {
+    if (!itemId || !supplierId) return;
+    const sp = lastSupplierPrice(purchases, supplierId, itemId);
+    if (sp) setUnitCost(String(sp));
+  }, [itemId, supplierId, purchases]);
 
   const submit = async () => {
     if (!itemId || qty <= 0 || cost <= 0) return;

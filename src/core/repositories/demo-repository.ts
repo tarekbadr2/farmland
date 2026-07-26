@@ -58,6 +58,7 @@ import type {
   Currency,
   LivestockTransfer,
   TransferRequest,
+  Purchase,
   Warehouse,
   WorkOrder,
   WorkOrderLine,
@@ -193,8 +194,42 @@ export function animalWeightSeries(a: Animal) {
 export class DemoFarmRepository implements FarmRepository {
   readonly source = "demo" as const;
   private db = getDataset();
+  private purchases: Purchase[] = [];
 
   constructor() {
+    // Seed a few months of purchases across real items + suppliers so the
+    // Purchases screen's log and spend analytics are populated in the sandbox.
+    const suppliers = this.db.partners.filter((p) => p.kind === "supplier");
+    const feed = this.db.feedItems.slice(0, 4);
+    const inv = this.db.inventory.slice(0, 3);
+    let seq = 0;
+    for (let m = 5; m >= 0; m--) {
+      const monthStart = addDays(TODAY, -m * 30);
+      const picks = m % 2 === 0 ? feed : inv;
+      picks.forEach((item, i) => {
+        const sup = suppliers[(m + i) % Math.max(1, suppliers.length)];
+        const base = ("costPerUnit" in item ? item.costPerUnit : (item as { unitCost: number }).unitCost) || 20;
+        const unitCost = round(base * (0.9 + ((m + i) % 5) * 0.05), 2);
+        const quantity = 20 + ((m + i) % 4) * 15;
+        this.purchases.push({
+          id: `pu_seed_${seq++}`,
+          farmId: this.db.farm.id,
+          date: addDays(monthStart, i * 2),
+          kind: m % 2 === 0 ? "feed" : "inventory",
+          itemId: item.id,
+          itemName: item.name,
+          itemNameAr: item.nameAr,
+          supplierId: sup?.id,
+          quantity,
+          unit: item.unit,
+          unitCost,
+          total: round(quantity * unitCost, 2),
+          paymentMethod: i % 3 === 0 ? "credit" : "cash",
+        });
+      });
+    }
+    this.purchases.sort((a, b) => b.date.localeCompare(a.date));
+
     // Point the seeded transfer request at a real destination pen and two real
     // movable animals that aren't already in it, so approving it in the sandbox
     // executes cleanly (zone ids in the generated dataset aren't fixed strings).
@@ -936,6 +971,7 @@ export class DemoFarmRepository implements FarmRepository {
   async recordPurchase(input: PurchaseInput): Promise<Transaction> {
     const total = purchaseTotal(input);
     let name = "";
+    let nameAr = "";
     let unit = "";
     let category: Transaction["category"];
 
@@ -945,6 +981,7 @@ export class DemoFarmRepository implements FarmRepository {
       item.costPerUnit = blendedUnitCost(item.stock, item.costPerUnit, input.quantity, input.unitCost);
       item.stock = round(item.stock + input.quantity, 2);
       name = item.name;
+      nameAr = item.nameAr;
       unit = item.unit;
       category = FEED_EXPENSE_CATEGORY;
     } else {
@@ -953,9 +990,28 @@ export class DemoFarmRepository implements FarmRepository {
       item.unitCost = blendedUnitCost(item.stock, item.unitCost, input.quantity, input.unitCost);
       item.stock = round(item.stock + input.quantity, 2);
       name = item.name;
+      nameAr = item.nameAr;
       unit = item.unit;
       category = INVENTORY_EXPENSE_CATEGORY[item.category];
     }
+
+    this.purchases.unshift({
+      id: `pu_${Date.now()}`,
+      farmId: this.db.farm.id,
+      date: input.date,
+      kind: input.kind,
+      itemId: input.itemId,
+      itemName: name,
+      itemNameAr: nameAr,
+      supplierId: input.supplierId,
+      quantity: input.quantity,
+      unit,
+      unitCost: input.unitCost,
+      total,
+      warehouseId: input.warehouseId,
+      paymentMethod: input.paymentMethod,
+      note: input.note,
+    });
 
     // The goods-in movement, so the stock ledger shows where the quantity came from.
     this.db.movements.unshift({
@@ -980,6 +1036,8 @@ export class DemoFarmRepository implements FarmRepository {
       paymentMethod: input.paymentMethod,
     });
   }
+
+  getPurchases = () => tick([...this.purchases].sort((a, b) => b.date.localeCompare(a.date)));
 
   async recordCost(input: CostInput): Promise<Transaction> {
     return this.saveTransaction({

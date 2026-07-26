@@ -20,6 +20,7 @@ import {
   BarChart3,
   Bell,
   ScrollText,
+  ShoppingCart,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -81,6 +82,7 @@ export const navGroups: NavGroup[] = [
     labelKey: "nav.business",
     items: [
       { href: "/finance", labelKey: "nav.finance", icon: Wallet, perm: "expenses.read" },
+      { href: "/purchasing", labelKey: "nav.purchasing", icon: ShoppingCart, perm: "inventory.read" },
       { href: "/accounting", labelKey: "nav.accounting", icon: BookOpen, perm: "accounting.read" },
       { href: "/assets", labelKey: "nav.assets", icon: Building2, perm: "accounting.read" },
       { href: "/partners", labelKey: "nav.customers", icon: Handshake, perm: "accounting.read" },

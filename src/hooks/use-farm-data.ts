@@ -65,6 +65,7 @@ export const qk = {
   pendingInvites: ["pending-invites"] as const,
   activity: ["activity"] as const,
   transferRequests: ["transfer-requests"] as const,
+  purchases: ["purchases"] as const,
 };
 
 export const useFarm = () => useQuery({ queryKey: qk.farm, queryFn: () => repo.getFarm() });
@@ -117,6 +118,8 @@ export const useActivity = (max = 200) =>
   useQuery({ queryKey: [...qk.activity, max], queryFn: () => repo.listActivity(max) });
 export const useTransferRequests = () =>
   useQuery({ queryKey: qk.transferRequests, queryFn: () => repo.getTransferRequests() });
+export const usePurchases = () =>
+  useQuery({ queryKey: qk.purchases, queryFn: () => repo.getPurchases() });
 export const useWeather = () => useQuery({ queryKey: qk.weather, queryFn: () => repo.getWeather() });
 export const useUtilities = () => useQuery({ queryKey: qk.utilities, queryFn: () => repo.getUtilities() });
 
