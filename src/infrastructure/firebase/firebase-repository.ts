@@ -1364,6 +1364,9 @@ export class FirebaseFarmRepository implements FarmRepository {
         date: input.date,
         kind: "in",
         quantity: input.quantity,
+        // Land the goods in the chosen store so the per-warehouse balances stay
+        // right; undefined falls to the default store (matches legacy behaviour).
+        warehouseId: input.warehouseId,
         reference: input.note ?? `Purchase @ ${input.unitCost}/${meta.unit}`,
       }),
     );

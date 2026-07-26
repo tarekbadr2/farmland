@@ -23,8 +23,10 @@ import {
   useInventory,
   usePartners,
   useRecordPurchase,
+  useWarehouses,
 } from "@/hooks/use-farm-data";
 import { purchaseTotal } from "@/core/services/automation";
+import { defaultWarehouse } from "@/core/services/warehouse";
 import { TODAY } from "@/core/data/seed";
 import type { Transaction } from "@/core/domain/types";
 
@@ -48,6 +50,7 @@ export function PurchaseDialog({
   const { data: feedItems = [] } = useFeedItems();
   const { data: inventory = [] } = useInventory();
   const { data: partners = [] } = usePartners();
+  const { data: warehouses = [] } = useWarehouses();
   const record = useRecordPurchase();
 
   const items = kind === "feed" ? feedItems : inventory;
@@ -58,7 +61,13 @@ export function PurchaseDialog({
   const [unitCost, setUnitCost] = React.useState("");
   const [date, setDate] = React.useState(TODAY);
   const [supplierId, setSupplierId] = React.useState("");
+  const [warehouseId, setWarehouseId] = React.useState("");
   const [paymentMethod, setPaymentMethod] = React.useState<Transaction["paymentMethod"]>("cash");
+
+  // Default the destination store once warehouses load.
+  React.useEffect(() => {
+    if (!warehouseId && warehouses.length) setWarehouseId(defaultWarehouse(warehouses)?.id ?? "");
+  }, [warehouses, warehouseId]);
 
   const selected = items.find((i) => i.id === itemId);
   const unit = selected?.unit ?? "";
@@ -84,6 +93,7 @@ export function PurchaseDialog({
         unitCost: cost,
         date,
         supplierId: supplierId || undefined,
+        warehouseId: warehouseId || undefined,
         paymentMethod,
       });
       toast.success(
@@ -180,20 +190,40 @@ export function PurchaseDialog({
             </div>
           </div>
 
-          <div>
-            <Label>{ar ? "المورّد (اختياري)" : "Supplier (optional)"}</Label>
-            <Select value={supplierId} onValueChange={setSupplierId}>
-              <SelectTrigger>
-                <SelectValue placeholder={ar ? "اختر مورّدًا" : "Pick a supplier"} />
-              </SelectTrigger>
-              <SelectContent>
-                {suppliers.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {ar ? s.nameAr : s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label>{ar ? "المورّد (اختياري)" : "Supplier (optional)"}</Label>
+              <Select value={supplierId} onValueChange={setSupplierId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={ar ? "اختر مورّدًا" : "Pick a supplier"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {suppliers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {ar ? s.nameAr : s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Which store the goods land in — only worth asking with >1 store. */}
+            {warehouses.length > 1 && (
+              <div>
+                <Label>{ar ? "المخزن" : "Store"}</Label>
+                <Select value={warehouseId} onValueChange={setWarehouseId}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {warehouses.map((w) => (
+                      <SelectItem key={w.id} value={w.id}>
+                        {ar ? w.nameAr : w.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between rounded-lg border border-primary/25 bg-primary/[0.05] px-3 py-2.5">

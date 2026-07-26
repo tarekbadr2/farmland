@@ -944,6 +944,7 @@ export class DemoFarmRepository implements FarmRepository {
       date: input.date,
       kind: "in",
       quantity: input.quantity,
+      warehouseId: input.warehouseId,
       reference: input.note ?? `Purchase @ ${input.unitCost}/${unit}`,
     });
 

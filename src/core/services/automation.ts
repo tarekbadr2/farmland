@@ -44,6 +44,8 @@ export interface PurchaseInput {
   unitCost: number;
   date: string;
   supplierId?: ID;
+  /** Store the purchased stock lands in. Defaults to the main store when unset. */
+  warehouseId?: ID;
   paymentMethod: Transaction["paymentMethod"];
   note?: string;
 }
