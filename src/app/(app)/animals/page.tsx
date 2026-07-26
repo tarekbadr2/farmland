@@ -33,6 +33,7 @@ import { ageFromDOB } from "@/lib/date";
 import { TODAY } from "@/core/data/seed";
 import { herdComposition, herdStructure, classifyAnimal, type HerdSub } from "@/core/services/metrics";
 import type { Animal } from "@/core/domain/types";
+import { Can } from "@/lib/auth/guard";
 import { cn } from "@/lib/utils";
 import { downloadTableXlsx } from "@/lib/export";
 import { ScanTagDialog } from "@/components/animals/scan-tag-dialog";
@@ -292,21 +293,23 @@ export default function AnimalsPage() {
                 </Button>
               }
             />
-            <TransferAnimalsDialog
-              trigger={
-                <Button variant="outline" size="sm">
-                  <ArrowRightLeft /> {locale === "ar" ? "تحويل رؤوس" : "Transfer"}
-                </Button>
-              }
-            />
-            <ImportAnimalsDialog />
-            <AnimalFormDialog
-              trigger={
-                <Button size="sm">
-                  <Plus /> {t("animals.newAnimal")}
-                </Button>
-              }
-            />
+            <Can permission="animals.write">
+              <TransferAnimalsDialog
+                trigger={
+                  <Button variant="outline" size="sm">
+                    <ArrowRightLeft /> {locale === "ar" ? "تحويل رؤوس" : "Transfer"}
+                  </Button>
+                }
+              />
+              <ImportAnimalsDialog />
+              <AnimalFormDialog
+                trigger={
+                  <Button size="sm">
+                    <Plus /> {t("animals.newAnimal")}
+                  </Button>
+                }
+              />
+            </Can>
           </>
         }
       />

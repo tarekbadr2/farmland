@@ -647,7 +647,16 @@ export class FirebaseFarmRepository implements FarmRepository {
       );
     }
     await trackWrite(batch.commit());
-    return (await this.getAnimal(id))!;
+    const disposed = (await this.getAnimal(id))!;
+    this.audit({
+      category: "animals",
+      action: `animal.${disposal.type}`,
+      summary: `${disposal.type === "sold" ? "Sold" : disposal.type === "culled" ? "Culled" : "Recorded death of"} ${disposed.tag}`,
+      summaryAr: `${disposal.type === "sold" ? "بيع" : disposal.type === "culled" ? "استبعاد" : "نفوق"} ${disposed.tag}`,
+      target: disposed.tag,
+      after: { status: disposed.status, proceeds: disposal.proceeds },
+    });
+    return disposed;
   }
 
   /* ----------------------------------- Milk -------------------------------- */
@@ -732,6 +741,14 @@ export class FirebaseFarmRepository implements FarmRepository {
       },
       { merge: true },
     );
+
+    this.audit({
+      category: "milk",
+      action: "milk.session",
+      summary: `Recorded ${session} milking — ${round(sessionTotal, 1)} L from ${entries.length} head`,
+      summaryAr: `تسجيل حلابة ${session === "morning" ? "الصباح" : "المساء"} — ${round(sessionTotal, 1)} لتر من ${entries.length} رأس`,
+      target: date,
+    });
 
     // Fire the write and let the UI move on. Firestore has already applied it to
     // the local cache and persisted the mutation, so it survives a reload and
@@ -844,7 +861,15 @@ export class FirebaseFarmRepository implements FarmRepository {
       event,
       (animal) => applyBreedingEvent(animal, event),
     );
-    return saved as BreedingEvent;
+    const b = saved as BreedingEvent;
+    this.audit({
+      category: "breeding",
+      action: "breeding.record",
+      summary: `Recorded ${b.type ?? "a breeding event"}${b.animalId ? ` for ${b.animalId}` : ""}`,
+      summaryAr: `تسجيل حدث تكاثر${b.animalId ? ` للحيوان ${b.animalId}` : ""}`,
+      target: b.animalId,
+    });
+    return b;
   }
 
   async saveStockMovement(
@@ -878,6 +903,13 @@ export class FirebaseFarmRepository implements FarmRepository {
       missing: `Inventory item ${move.itemId} not found`,
     });
 
+    this.audit({
+      category: "inventory",
+      action: `stock.${move.kind}`,
+      summary: `Stock ${move.kind}: ${Math.abs(move.quantity)} × item ${move.itemId}`,
+      summaryAr: `حركة مخزون (${move.kind}): ${Math.abs(move.quantity)} × الصنف ${move.itemId}`,
+      target: move.itemId,
+    });
     return { ...move, id, farmId: this.farmId } as StockMovement;
   }
 
@@ -888,6 +920,14 @@ export class FirebaseFarmRepository implements FarmRepository {
     const record = { ...txn, id, farmId: this.farmId } as Transaction;
     await setDoc(doc(this.db, paths.transactions(this.farmId), id), omitUndefined(record));
     await this.autoPost(record);
+    this.audit({
+      category: "finance",
+      action: `txn.${record.kind}`,
+      summary: `${record.kind === "income" ? "Income" : "Expense"}: ${record.description ?? record.category} (${record.amount})`,
+      summaryAr: `${record.kind === "income" ? "إيراد" : "مصروف"}: ${record.description ?? record.category} (${record.amount})`,
+      target: record.category,
+      after: { amount: record.amount, kind: record.kind },
+    });
     return record;
   }
 
