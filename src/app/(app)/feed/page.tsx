@@ -25,6 +25,7 @@ import { StatCard } from "@/components/common/stat-card";
 import { ChartCard, ChartTooltip, CHART_COLORS, axisProps, gridProps } from "@/components/common/chart";
 import { DataTable, type Column } from "@/components/common/data-table";
 import { LogFeedingDialog } from "@/components/feed/log-feeding-dialog";
+import { Can } from "@/lib/auth/guard";
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/primitives";
@@ -191,7 +192,7 @@ export default function FeedPage() {
         title={t("feed.title")}
         subtitle={t("feed.subtitle")}
         actions={
-          <>
+          <Can permission="feeding.write">
             <PurchaseDialog
               kind="feed"
               trigger={
@@ -201,7 +202,7 @@ export default function FeedPage() {
               }
             />
             <LogFeedingDialog />
-          </>
+          </Can>
         }
       />
 

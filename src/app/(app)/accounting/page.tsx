@@ -34,6 +34,7 @@ import {
   LEDGER_READ_LIMIT,
 } from "@/core/services/accounting";
 import { JournalEntryDialog } from "@/components/accounting/journal-entry-dialog";
+import { Can } from "@/lib/auth/guard";
 import { AccountFormDialog } from "@/components/accounting/account-form-dialog";
 import { VoucherDialog } from "@/components/accounting/voucher-dialog";
 import { PartnerStatementDialog } from "@/components/accounting/partner-statement-dialog";
@@ -157,29 +158,31 @@ export default function AccountingPage() {
                 </SelectContent>
               </Select>
             )}
-            <VoucherDialog
-              kind="receipt"
-              trigger={
-                <Button variant="outline" size="sm">
-                  <ArrowDownLeft /> {ar ? "سند قبض" : "Receipt"}
-                </Button>
-              }
-            />
-            <VoucherDialog
-              kind="payment"
-              trigger={
-                <Button variant="outline" size="sm">
-                  <ArrowUpRight /> {ar ? "سند صرف" : "Payment"}
-                </Button>
-              }
-            />
-            <JournalEntryDialog
-              trigger={
-                <Button size="sm">
-                  <Plus /> {ar ? "قيد جديد" : "New entry"}
-                </Button>
-              }
-            />
+            <Can permission="accounting.write">
+              <VoucherDialog
+                kind="receipt"
+                trigger={
+                  <Button variant="outline" size="sm">
+                    <ArrowDownLeft /> {ar ? "سند قبض" : "Receipt"}
+                  </Button>
+                }
+              />
+              <VoucherDialog
+                kind="payment"
+                trigger={
+                  <Button variant="outline" size="sm">
+                    <ArrowUpRight /> {ar ? "سند صرف" : "Payment"}
+                  </Button>
+                }
+              />
+              <JournalEntryDialog
+                trigger={
+                  <Button size="sm">
+                    <Plus /> {ar ? "قيد جديد" : "New entry"}
+                  </Button>
+                }
+              />
+            </Can>
           </>
         }
       />

@@ -34,6 +34,7 @@ import { StatCard } from "@/components/common/stat-card";
 import { ChartCard, ChartTooltip, CHART_COLORS, axisProps, gridProps } from "@/components/common/chart";
 import { DataTable, type Column } from "@/components/common/data-table";
 import { StockMovementDialog } from "@/components/inventory/stock-movement-dialog";
+import { Can } from "@/lib/auth/guard";
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -208,28 +209,30 @@ export default function InventoryPage() {
         subtitle={t("inventory.subtitle")}
         actions={
           <>
-            <TransferStockDialog
-              trigger={
-                <Button variant="outline" size="sm">
-                  <ArrowLeftRight /> {locale === "ar" ? "تحويل" : "Transfer"}
-                </Button>
-              }
-            />
-            <StocktakeDialog
-              trigger={
-                <Button variant="outline" size="sm">
-                  <ClipboardCheck /> {locale === "ar" ? "جرد" : "Stocktake"}
-                </Button>
-              }
-            />
-            <PurchaseDialog
-              kind="inventory"
-              trigger={
-                <Button variant="outline" size="sm">
-                  <ShoppingCart /> {t("inventory.recordPurchase")}
-                </Button>
-              }
-            />
+            <Can permission="inventory.write">
+              <TransferStockDialog
+                trigger={
+                  <Button variant="outline" size="sm">
+                    <ArrowLeftRight /> {locale === "ar" ? "تحويل" : "Transfer"}
+                  </Button>
+                }
+              />
+              <StocktakeDialog
+                trigger={
+                  <Button variant="outline" size="sm">
+                    <ClipboardCheck /> {locale === "ar" ? "جرد" : "Stocktake"}
+                  </Button>
+                }
+              />
+              <PurchaseDialog
+                kind="inventory"
+                trigger={
+                  <Button variant="outline" size="sm">
+                    <ShoppingCart /> {t("inventory.recordPurchase")}
+                  </Button>
+                }
+              />
+            </Can>
             <Button
               variant="outline"
               size="sm"
@@ -254,7 +257,9 @@ export default function InventoryPage() {
             >
               {t("common.export")}
             </Button>
-            <StockMovementDialog />
+            <Can permission="inventory.write">
+              <StockMovementDialog />
+            </Can>
           </>
         }
       />

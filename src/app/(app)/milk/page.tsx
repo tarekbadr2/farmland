@@ -33,6 +33,7 @@ import { formatDate, formatMonth } from "@/lib/date";
 import { forecastMilk, milkSummary, monthlyMilk } from "@/core/services/metrics";
 import { downloadTableXlsx } from "@/lib/export";
 import { RecordSessionDialog } from "@/components/milk/record-session-dialog";
+import { Can } from "@/lib/auth/guard";
 import { average, round } from "@/lib/utils";
 
 export default function MilkPage() {
@@ -120,13 +121,15 @@ export default function MilkPage() {
             >
               <Download /> {t("common.export")}
             </Button>
-            <RecordSessionDialog
-              trigger={
-                <Button size="sm">
-                  <Plus /> {t("milk.recordSession")}
-                </Button>
-              }
-            />
+            <Can permission="milk.write">
+              <RecordSessionDialog
+                trigger={
+                  <Button size="sm">
+                    <Plus /> {t("milk.recordSession")}
+                  </Button>
+                }
+              />
+            </Can>
           </>
         }
       />

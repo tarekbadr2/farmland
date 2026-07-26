@@ -34,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/primit
 import { useI18n } from "@/lib/i18n/provider";
 import { useAnimals, useBreeding, useSemen } from "@/hooks/use-farm-data";
 import { LogBreedingDialog } from "@/components/breeding/log-breeding-dialog";
+import { Can } from "@/lib/auth/guard";
 import { TODAY } from "@/core/data/seed";
 import { diffDays, formatDate, monthKey, relativeDays } from "@/lib/date";
 import { breedingMetrics } from "@/core/services/metrics";
@@ -181,7 +182,7 @@ export default function BreedingPage() {
       <PageHeader
         title={t("breeding.title")}
         subtitle={t("breeding.subtitle")}
-        actions={<LogBreedingDialog />}
+        actions={<Can permission="breeding.write"><LogBreedingDialog /></Can>}
       />
 
       <motion.div

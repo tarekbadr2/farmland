@@ -41,6 +41,7 @@ import { diseaseTrend, healthMetrics } from "@/core/services/metrics";
 import { downloadTableXlsx } from "@/lib/export";
 import type { HealthEvent } from "@/core/domain/types";
 import { LogHealthDialog } from "@/components/health/log-health-dialog";
+import { Can } from "@/lib/auth/guard";
 
 export default function HealthPage() {
   const router = useRouter();
@@ -182,13 +183,15 @@ export default function HealthPage() {
             >
               {t("common.export")}
             </Button>
-            <LogHealthDialog
-              trigger={
-                <Button size="sm">
-                  <Plus /> {t("health.logEvent")}
-                </Button>
-              }
-            />
+            <Can permission="medical.write">
+              <LogHealthDialog
+                trigger={
+                  <Button size="sm">
+                    <Plus /> {t("health.logEvent")}
+                  </Button>
+                }
+              />
+            </Can>
           </>
         }
       />

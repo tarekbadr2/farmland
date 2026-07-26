@@ -21,6 +21,7 @@ import { Progress } from "@/components/ui/primitives";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/menu";
 import { PriorityPill } from "@/components/common/status-pill";
 import { NewTaskDialog } from "@/components/tasks/new-task-dialog";
+import { Can } from "@/lib/auth/guard";
 import { useI18n } from "@/lib/i18n/provider";
 import { useTasks, useUpdateTask, useZones } from "@/hooks/use-farm-data";
 import { TODAY } from "@/core/data/seed";
@@ -82,7 +83,7 @@ export default function TasksPage() {
       <PageHeader
         title={t("tasks.title")}
         subtitle={t("tasks.subtitle")}
-        actions={<NewTaskDialog />}
+        actions={<Can permission="tasks.write"><NewTaskDialog /></Can>}
       />
 
       <motion.div

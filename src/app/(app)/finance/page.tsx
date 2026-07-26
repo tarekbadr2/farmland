@@ -24,6 +24,7 @@ import { StatCard } from "@/components/common/stat-card";
 import { ChartCard, ChartTooltip, CHART_COLORS, axisProps, gridProps } from "@/components/common/chart";
 import { DataTable, type Column } from "@/components/common/data-table";
 import { RecordTransactionDialog } from "@/components/finance/record-transaction-dialog";
+import { Can } from "@/lib/auth/guard";
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -208,7 +209,9 @@ export default function FinancePage() {
             >
               {t("common.export")}
             </Button>
-            <RecordTransactionDialog />
+            <Can permission="expenses.write">
+              <RecordTransactionDialog />
+            </Can>
           </>
         }
       />
