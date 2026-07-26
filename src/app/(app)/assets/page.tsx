@@ -16,6 +16,7 @@ import { useAssets, useAnimals } from "@/hooks/use-farm-data";
 import { assetBookValue, assetsSummary } from "@/core/services/metrics";
 import { AssetFormDialog, ASSET_CATEGORIES } from "@/components/assets/asset-form-dialog";
 import { RecordCostDialog } from "@/components/common/record-cost-dialog";
+import { Can } from "@/lib/auth/guard";
 import { TODAY } from "@/core/data/seed";
 import { sum } from "@/lib/utils";
 import type { AssetCategory } from "@/core/domain/types";
@@ -51,13 +52,15 @@ export default function AssetsPage() {
         title={ar ? "الأصول" : "Assets"}
         subtitle={ar ? "رأس مال المزرعة: الأرض والمباني والآلات والقطيع." : "The farm's capital — land, buildings, machinery and the herd."}
         actions={
-          <AssetFormDialog
-            trigger={
-              <Button size="sm">
-                <Plus /> {ar ? "أصل جديد" : "New asset"}
-              </Button>
-            }
-          />
+          <Can permission="accounting.write">
+            <AssetFormDialog
+              trigger={
+                <Button size="sm">
+                  <Plus /> {ar ? "أصل جديد" : "New asset"}
+                </Button>
+              }
+            />
+          </Can>
         }
       />
 

@@ -8,6 +8,7 @@ import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header
 import { StatCard } from "@/components/common/stat-card";
 import { DataTable, type Column } from "@/components/common/data-table";
 import { NewInvoiceDialog } from "@/components/partners/new-invoice-dialog";
+import { Can } from "@/lib/auth/guard";
 import { InvoicesCard } from "@/components/partners/invoices-card";
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -110,7 +111,7 @@ export default function PartnersPage() {
         title={t("partners.title")}
         subtitle={t("partners.subtitle")}
         actions={
-          <>
+          <Can permission="accounting.write">
             {/* Sales bill a customer; purchases record a supplier's bill.
                 Returns undo either, and post the mirror entry. */}
             <NewInvoiceDialog
@@ -138,7 +139,7 @@ export default function PartnersPage() {
               }
             />
             <NewInvoiceDialog />
-          </>
+          </Can>
         }
       />
 

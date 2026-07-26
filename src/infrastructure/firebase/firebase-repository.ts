@@ -1053,6 +1053,13 @@ export class FirebaseFarmRepository implements FarmRepository {
     };
     batch.set(doc(this.db, paths.feedConsumption(this.farmId), id), consumption);
     await trackWrite(batch.commit());
+    this.audit({
+      category: "feeding",
+      action: "feed.log",
+      summary: `Fed ${input.heads} head — ${round(totalKg, 1)} kg`,
+      summaryAr: `تغذية ${input.heads} رأس — ${round(totalKg, 1)} كجم`,
+      target: input.zoneId,
+    });
     return consumption;
   }
 
@@ -1074,6 +1081,13 @@ export class FirebaseFarmRepository implements FarmRepository {
     const id = employee.id ?? doc(this.col(paths.employees(this.farmId))).id;
     const record = { ...employee, id, farmId: this.farmId } as Employee;
     await setDoc(doc(this.db, paths.employees(this.farmId), id), omitUndefined(record));
+    this.audit({
+      category: "employees",
+      action: employee.id ? "employee.update" : "employee.create",
+      summary: `${employee.id ? "Updated" : "Added"} employee ${record.name}`,
+      summaryAr: `${employee.id ? "تحديث" : "إضافة"} الموظف ${record.name}`,
+      target: record.name,
+    });
     return record;
   }
 

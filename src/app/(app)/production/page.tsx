@@ -18,6 +18,7 @@ import {
   useWorkOrders,
 } from "@/hooks/use-farm-data";
 import { WorkOrderDialog } from "@/components/production/work-order-dialog";
+import { Can } from "@/lib/auth/guard";
 import { checkWorkOrder, itemName, workOrderCost, type StockLookup } from "@/core/services/production";
 import { formatDate } from "@/lib/date";
 import { sum } from "@/lib/utils";
@@ -64,6 +65,7 @@ export default function ProductionPage() {
             : "Work orders — turn inputs into product and cost the result."
         }
         actions={
+          <Can permission="maintenance.write">
           <WorkOrderDialog
             trigger={
               <Button size="sm">
@@ -71,6 +73,7 @@ export default function ProductionPage() {
               </Button>
             }
           />
+          </Can>
         }
       />
 
