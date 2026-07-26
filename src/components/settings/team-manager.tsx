@@ -251,7 +251,7 @@ export function TeamManager() {
           <CardContent className="space-y-2">
             {invites.map((inv) => (
               <div
-                key={inv.email}
+                key={inv.token ?? inv.email}
                 className="flex items-center gap-3 rounded-xl border border-dashed border-border p-2.5"
               >
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
@@ -261,7 +261,11 @@ export function TeamManager() {
                   <p className="truncate text-[13px] font-medium">{inv.email}</p>
                   <p className="text-[11px] text-muted-foreground">
                     {t("settings.awaitingSignIn")}
-                    {inv.invitedAt ? ` · ${formatDate(inv.invitedAt, locale)}` : ""}
+                    {inv.expiresAt
+                      ? ` · ${locale === "ar" ? "تنتهي" : "expires"} ${formatDate(inv.expiresAt, locale)}`
+                      : inv.invitedAt
+                        ? ` · ${formatDate(inv.invitedAt, locale)}`
+                        : ""}
                   </p>
                 </div>
                 <Badge variant="outline" className="capitalize">
@@ -272,7 +276,7 @@ export function TeamManager() {
                     variant="ghost"
                     size="sm"
                     disabled={revoke.isPending}
-                    onClick={() => revoke.mutate(inv.email)}
+                    onClick={() => revoke.mutate(inv.token ?? inv.email)}
                   >
                     {t("settings.revoke")}
                   </Button>

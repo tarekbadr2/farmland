@@ -15,7 +15,7 @@ export { dailyAlerts } from "./alerts";
 export { onAlertCreated } from "./notify";
 export { runAlertsNow, rebuildMilkDaily } from "./admin";
 export { claimMembership, createFarm } from "./members";
-export { createInvite, getInvite, acceptInvite } from "./invites";
+export { createInvite, getInvite, acceptInvite, listOrgInvites, revokeOrgInvite } from "./invites";
 export { nightlyFirestoreBackup } from "./backup";
 export { trialEndingReminders } from "./reminders";
 export { onJournalEntryWritten } from "./ledger";

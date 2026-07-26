@@ -42,6 +42,39 @@ async function callerOrgAccess(uid: string): Promise<{ orgId: string; canInvite:
   return { orgId, canInvite: false };
 }
 
+/** List the org's still-pending invites (for the Team screen). */
+export const listOrgInvites = onCall({ region: REGION }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in first.");
+  const { orgId, canInvite } = await callerOrgAccess(uid);
+  if (!orgId || !canInvite) return { invites: [] };
+
+  const snap = await db.collection(`orgs/${orgId}/invites`).where("status", "==", "pending").get();
+  const invites = snap.docs
+    .map((d) => d.data())
+    .map((i) => ({
+      token: i.token,
+      email: i.email,
+      role: i.role,
+      farmIds: i.farmIds ?? [],
+      invitedAt: i.invitedAt ?? null,
+      expiresAt: i.expiresAt ?? null,
+    }));
+  return { invites };
+});
+
+/** Revoke a pending invite by token (owner/admin). */
+export const revokeOrgInvite = onCall({ region: REGION }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in first.");
+  const { orgId, canInvite } = await callerOrgAccess(uid);
+  if (!orgId || !canInvite) throw new HttpsError("permission-denied", "You can't manage invites.");
+  const token = String(req.data?.token ?? "");
+  if (!token) throw new HttpsError("invalid-argument", "Missing token.");
+  await db.doc(`orgs/${orgId}/invites/${token}`).delete();
+  return { ok: true };
+});
+
 /**
  * Create an invitation: a secure token parked at orgs/{orgId}/invites/{token},
  * plus an email with the accept link. The invitee isn't a member yet — the token

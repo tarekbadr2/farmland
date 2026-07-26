@@ -101,6 +101,11 @@ export interface PendingInvite {
   email: ID;
   role: Role;
   invitedAt?: string;
+  /** Set for org-level invites (the token-based flow); absent for legacy ones.
+   *  When present it's the revoke key + the accept-link token. */
+  token?: string;
+  farmIds?: ID[];
+  expiresAt?: string;
 }
 
 /* --------------------------------- Audit ---------------------------------- */

@@ -132,6 +132,34 @@ export async function acceptInvite(token: string): Promise<{ orgId: string; farm
   return res.data;
 }
 
+export interface OrgInvite {
+  token: string;
+  email: string;
+  role: string;
+  farmIds: string[];
+  invitedAt: string | null;
+  expiresAt: string | null;
+}
+
+/** List the org's still-pending invites (Team screen). */
+export async function listOrgInvites(): Promise<OrgInvite[]> {
+  const call = httpsCallable<unknown, { invites: OrgInvite[] }>(
+    getFirebase().functions,
+    "listOrgInvites",
+  );
+  const res = await call();
+  return res.data.invites ?? [];
+}
+
+/** Revoke a pending invite by token. */
+export async function revokeOrgInvite(token: string): Promise<void> {
+  const call = httpsCallable<{ token: string }, { ok: boolean }>(
+    getFirebase().functions,
+    "revokeOrgInvite",
+  );
+  await call({ token });
+}
+
 /**
  * Firestore layout (multi-tenant, one document tree per farm):
  *

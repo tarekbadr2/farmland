@@ -36,7 +36,7 @@ import {
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 
-import { getFirebase } from "./client";
+import { getFirebase, listOrgInvites, revokeOrgInvite } from "./client";
 import { PREFIX_END, animalSearchFields, paths } from "./paths";
 import { getActiveFarm } from "./tenant";
 import { getAuditActor, currentDevice } from "@/lib/audit-actor";
@@ -304,8 +304,19 @@ export class FirebaseFarmRepository implements FarmRepository {
 
   getMembers = () => this.all<Member>(paths.members(this.farmId), orderBy("email"));
 
-  getPendingInvites = () =>
-    this.all<PendingInvite>(paths.pendingMembers(this.farmId), orderBy("email"));
+  // Invites now live at the org level (token-based); list them via the callable.
+  // Falls back to an empty list if the org/functions aren't reachable.
+  async getPendingInvites(): Promise<PendingInvite[]> {
+    const invites = await listOrgInvites().catch(() => []);
+    return invites.map((i) => ({
+      email: i.email,
+      role: i.role as Role,
+      invitedAt: i.invitedAt ?? undefined,
+      token: i.token,
+      farmIds: i.farmIds,
+      expiresAt: i.expiresAt ?? undefined,
+    }));
+  }
 
   async inviteMember(email: string, role: Role): Promise<PendingInvite> {
     const key = email.trim().toLowerCase();
@@ -343,8 +354,14 @@ export class FirebaseFarmRepository implements FarmRepository {
     });
   }
 
-  async revokeInvite(email: string): Promise<void> {
-    await deleteDoc(doc(this.db, paths.pendingMembers(this.farmId), email.trim().toLowerCase()));
+  // `key` is the invite token for org invites (what the UI passes); revoke via
+  // the callable. Falls back to deleting a legacy email-keyed pendingMember.
+  async revokeInvite(key: string): Promise<void> {
+    try {
+      await revokeOrgInvite(key);
+    } catch {
+      await deleteDoc(doc(this.db, paths.pendingMembers(this.farmId), key.trim().toLowerCase()));
+    }
   }
 
   /* --------------------------------- Animals ------------------------------- */
