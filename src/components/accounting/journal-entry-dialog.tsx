@@ -96,12 +96,13 @@ export function JournalEntryDialog({ trigger }: { trigger: React.ReactNode }) {
       setOpen(false);
     } catch (e) {
       const code = e instanceof Error ? e.message : "";
+      const detail = (e as { code?: string })?.code || code || "";
       toast.error(
         code === "year-closed"
           ? ar ? "السنة المالية مغلقة." : "That fiscal year is closed."
           : code === "unbalanced"
             ? ar ? "القيد غير متوازن." : "The entry doesn't balance."
-            : ar ? "تعذّر الحفظ." : "Couldn't save that.",
+            : ar ? `تعذّر الحفظ: ${detail}` : `Couldn't save that: ${detail}`,
       );
     }
   };

@@ -106,8 +106,9 @@ export function AccountFormDialog({
       });
       toast.success(ar ? "تم حفظ الحساب." : "Account saved.");
       setOpen(false);
-    } catch {
-      toast.error(ar ? "تعذّر حفظ الحساب." : "Couldn't save the account.");
+    } catch (e) {
+      const detail = (e as { code?: string })?.code || (e as Error)?.message || "";
+      toast.error(ar ? `تعذّر حفظ الحساب: ${detail}` : `Couldn't save the account: ${detail}`);
     }
   };
 

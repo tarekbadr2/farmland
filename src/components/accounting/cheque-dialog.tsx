@@ -67,8 +67,9 @@ export function ChequeDialog({ kind, trigger }: { kind: ChequeKind; trigger: Rea
       setChequeNo("");
       setAmount("");
       setOpen(false);
-    } catch {
-      toast.error(ar ? "تعذّر تسجيل الشيك." : "Couldn't record that cheque.");
+    } catch (e) {
+      const detail = (e as { code?: string })?.code || (e as Error)?.message || "";
+      toast.error(ar ? `تعذّر تسجيل الشيك: ${detail}` : `Couldn't record that cheque: ${detail}`);
     }
   };
 

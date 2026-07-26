@@ -122,10 +122,11 @@ export function VoucherDialog({ kind, trigger }: { kind: VoucherKind; trigger: R
       setOpen(false);
     } catch (e) {
       const code = e instanceof Error ? e.message : "";
+      const detail = (e as { code?: string })?.code || code || "";
       toast.error(
         code === "year-closed"
           ? ar ? "السنة المالية مغلقة." : "That fiscal year is closed."
-          : ar ? "تعذّر حفظ السند." : "Couldn't save the voucher.",
+          : ar ? `تعذّر حفظ السند: ${detail}` : `Couldn't save the voucher: ${detail}`,
       );
     }
   };
