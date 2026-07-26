@@ -156,7 +156,29 @@ import { round } from "@/lib/utils";
  * On a create there is nothing to clear, so undefined fields are dropped.
  */
 function omitUndefined<T extends object>(value: T): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined));
+  return stripUndefinedDeep(value) as Record<string, unknown>;
+}
+
+/**
+ * Firestore rejects `undefined` anywhere in a document — including inside
+ * arrays and nested objects, where a shallow key filter can't reach. A manual
+ * journal line, for instance, carries `partnerId`/`animalId`/`description` that
+ * are usually undefined; left in place they throw `invalid-argument` on write.
+ * Recurse so every optional field disappears, whatever depth it sits at.
+ *
+ * Only plain objects and arrays are traversed; Timestamps, FieldValues, and
+ * other class instances are passed through untouched.
+ */
+function stripUndefinedDeep(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripUndefinedDeep);
+  if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, stripUndefinedDeep(v)]),
+    );
+  }
+  return value;
 }
 
 /**
