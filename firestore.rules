@@ -222,6 +222,15 @@ service cloud.firestore {
         allow create: if hasPerm(farmId, 'animals.write', 'animals.*');
         allow update, delete: if false;
       }
+      // Transfer requests (طلب تحويل): any member may raise one; approving or
+      // rejecting (an update) needs animals.write — approval also writes the
+      // real, immutable livestockTransfer, which the same permission guards.
+      match /transferRequests/{requestId} {
+        allow read: if isMember(farmId);
+        allow create: if isMember(farmId);
+        allow update: if hasPerm(farmId, 'animals.write', 'animals.*');
+        allow delete: if false;
+      }
       match /warehouses/{warehouseId} {
         allow read: if isMember(farmId);
         allow write: if hasPerm(farmId, 'inventory.write', 'inventory.*');

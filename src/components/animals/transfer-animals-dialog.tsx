@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowRightLeft, Loader2, Search, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
@@ -18,7 +19,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/primitives";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/menu";
 import { useI18n } from "@/lib/i18n/provider";
-import { useAnimals, useRecordLivestockTransfer, useZones } from "@/hooks/use-farm-data";
+import { useAnimals, useRecordLivestockTransfer, useZones, qk } from "@/hooks/use-farm-data";
+import { getRepository } from "@/core/repositories";
 import { checkTransfer, isMovable, transferableZones } from "@/core/services/livestock";
 import { TODAY } from "@/core/data/seed";
 import { cn } from "@/lib/utils";
@@ -40,12 +42,28 @@ const REASONS: { value: TransferReason; en: string; ar: string }[] = [
  * a real thing farms do, and refusing it would just push someone to edit the
  * records by hand — the untracked change this document exists to replace.
  */
-export function TransferAnimalsDialog({ trigger }: { trigger: React.ReactNode }) {
+export function TransferAnimalsDialog({
+  trigger,
+  mode = "transfer",
+}: {
+  trigger: React.ReactNode;
+  /** "transfer" moves head now (needs animals.write); "request" raises an
+   *  approval request (any member). */
+  mode?: "transfer" | "request";
+}) {
   const { locale, formatNumber } = useI18n();
   const ar = locale === "ar";
+  const isRequest = mode === "request";
   const [open, setOpen] = React.useState(false);
   const { data: zones = [] } = useZones();
+  const queryClient = useQueryClient();
   const record = useRecordLivestockTransfer();
+  const requestMut = useMutation({
+    mutationFn: (input: { toZoneId: string; animalIds: string[]; date: string; reason: TransferReason; notes?: string }) =>
+      getRepository().createTransferRequest(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.transferRequests }),
+  });
+  const pending = record.isPending || requestMut.isPending;
   const destinations = React.useMemo(() => transferableZones(zones), [zones]);
 
   const [toZoneId, setToZone] = React.useState("");
@@ -99,13 +117,21 @@ export function TransferAnimalsDialog({ trigger }: { trigger: React.ReactNode })
 
   const submit = async () => {
     if (!check.ok) return;
+    const input = { toZoneId, animalIds, date, reason, notes: notes.trim() || undefined };
     try {
-      await record.mutateAsync({ toZoneId, animalIds, date, reason, notes: notes.trim() || undefined });
-      toast.success(
-        ar
-          ? `تم تحويل ${formatNumber(animalIds.length)} رأس إلى ${zoneName(toZoneId)}.`
-          : `${animalIds.length} head moved to ${zoneName(toZoneId)}.`,
-      );
+      if (isRequest) {
+        await requestMut.mutateAsync(input);
+        toast.success(
+          ar ? "تم إرسال طلب التحويل للموافقة." : "Transfer request sent for approval.",
+        );
+      } else {
+        await record.mutateAsync(input);
+        toast.success(
+          ar
+            ? `تم تحويل ${formatNumber(animalIds.length)} رأس إلى ${zoneName(toZoneId)}.`
+            : `${animalIds.length} head moved to ${zoneName(toZoneId)}.`,
+        );
+      }
       setPicked(new Set());
       setChosen([]);
       setNotes("");
@@ -121,15 +147,23 @@ export function TransferAnimalsDialog({ trigger }: { trigger: React.ReactNode })
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !record.isPending && setOpen(o)}>
+    <Dialog open={open} onOpenChange={(o) => !pending && setOpen(o)}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{ar ? "إذن تحويل رؤوس" : "Transfer head"}</DialogTitle>
+          <DialogTitle>
+            {isRequest
+              ? ar ? "طلب تحويل رؤوس" : "Request a transfer"
+              : ar ? "إذن تحويل رؤوس" : "Transfer head"}
+          </DialogTitle>
           <DialogDescription>
-            {ar
-              ? "نقل الرؤوس بين الحظائر كمستند مسجّل."
-              : "Move animals between pens as a recorded document."}
+            {isRequest
+              ? ar
+                ? "اقترح نقل الرؤوس — يُنفَّذ بعد موافقة المسؤول."
+                : "Propose a move — it happens once a manager approves it."
+              : ar
+                ? "نقل الرؤوس بين الحظائر كمستند مسجّل."
+                : "Move animals between pens as a recorded document."}
           </DialogDescription>
         </DialogHeader>
 
@@ -248,12 +282,12 @@ export function TransferAnimalsDialog({ trigger }: { trigger: React.ReactNode })
               ? `${formatNumber(animalIds.length)} رأس محدّد`
               : `${animalIds.length} selected`}
           </span>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={record.isPending}>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
             {ar ? "إلغاء" : "Cancel"}
           </Button>
-          <Button onClick={submit} disabled={!check.ok || record.isPending}>
-            {record.isPending ? <Loader2 className="animate-spin" /> : <ArrowRightLeft />}
-            {ar ? "تحويل" : "Transfer"}
+          <Button onClick={submit} disabled={!check.ok || pending}>
+            {pending ? <Loader2 className="animate-spin" /> : <ArrowRightLeft />}
+            {isRequest ? (ar ? "إرسال الطلب" : "Send request") : ar ? "تحويل" : "Transfer"}
           </Button>
         </DialogFooter>
       </DialogContent>

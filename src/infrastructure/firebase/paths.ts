@@ -48,6 +48,7 @@ export const paths = {
   alerts: (farmId = getActiveFarm()) => `farms/${farmId}/alerts`,
   utilities: (farmId = getActiveFarm()) => `farms/${farmId}/utilities`,
   auditLog: (farmId = getActiveFarm()) => `farms/${farmId}/auditLog`,
+  transferRequests: (farmId = getActiveFarm()) => `farms/${farmId}/transferRequests`,
   telemetry: (farmId = getActiveFarm()) => `farms/${farmId}/telemetry`,
 } as const;
 

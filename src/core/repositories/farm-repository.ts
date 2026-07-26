@@ -34,6 +34,7 @@ import type {
   Invoice,
   JournalEntry,
   LivestockTransfer,
+  TransferRequest,
   Member,
   MilkRecord,
   Partner,
@@ -287,6 +288,15 @@ export interface FarmRepository {
    * validator refuses (empty, wrong kind of zone, animals that have left).
    */
   recordLivestockTransfer(input: LivestockTransferInput): Promise<LivestockTransfer>;
+
+  /* --------------------- Transfer requests (approval) -------------------- */
+  getTransferRequests(): Promise<TransferRequest[]>;
+  /** Raise a pending move for approval. Any member may request. */
+  createTransferRequest(input: LivestockTransferInput): Promise<TransferRequest>;
+  /** Approve a request: executes the real transfer + pen moves. Needs animals.write. */
+  approveTransferRequest(id: ID): Promise<LivestockTransfer>;
+  /** Reject a request with an optional note. Needs animals.write. */
+  rejectTransferRequest(id: ID, note?: string): Promise<void>;
 
   /* -------------------------------- Stores --------------------------------- */
   getWarehouses(): Promise<Warehouse[]>;

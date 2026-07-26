@@ -948,6 +948,35 @@ export interface LivestockTransfer {
   createdAt?: string;
 }
 
+export type TransferRequestStatus = "pending" | "approved" | "rejected";
+
+/**
+ * A proposed pen move awaiting approval (طلب تحويل). Any member may raise one;
+ * approving it executes the real, immutable LivestockTransfer (and the pen
+ * moves), which is why approval needs animals.write. Rejecting closes it with a
+ * note. The request is the mutable workflow object; the transfer it produces is
+ * the permanent record.
+ */
+export interface TransferRequest {
+  id: ID;
+  farmId: ID;
+  status: TransferRequestStatus;
+  toZoneId: ID;
+  animalIds: ID[];
+  date: string;
+  reason?: TransferReason;
+  notes?: string;
+  requestedBy?: ID;
+  requestedByName?: string;
+  requestedAt: string;
+  decidedBy?: ID;
+  decidedByName?: string;
+  decidedAt?: string;
+  decisionNote?: string;
+  /** The LivestockTransfer created when the request is approved. */
+  transferId?: ID;
+}
+
 /* ------------------------------- Production -------------------------------- */
 /* أمر شغل — turning inputs into outputs: milk into cheese, ingredients into a
  * mixed ration. The point isn't the paperwork, it's the cost: what the farm

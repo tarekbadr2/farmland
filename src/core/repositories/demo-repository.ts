@@ -57,6 +57,7 @@ import type {
   Cheque,
   Currency,
   LivestockTransfer,
+  TransferRequest,
   Warehouse,
   WorkOrder,
   WorkOrderLine,
@@ -192,6 +193,26 @@ export function animalWeightSeries(a: Animal) {
 export class DemoFarmRepository implements FarmRepository {
   readonly source = "demo" as const;
   private db = getDataset();
+
+  constructor() {
+    // Point the seeded transfer request at a real destination pen and two real
+    // movable animals that aren't already in it, so approving it in the sandbox
+    // executes cleanly (zone ids in the generated dataset aren't fixed strings).
+    const dest =
+      this.db.zones.find((z) => z.kind === "quarantine") ??
+      this.db.zones.find((z) => z.kind === "pen" || z.kind === "barn");
+    const req = this.transferRequests[0];
+    if (dest && req) {
+      const movable = this.db.animals
+        .filter((a) => a.status === "active" && a.penId !== dest.id)
+        .slice(0, 2)
+        .map((a) => a.id);
+      if (movable.length === 2) {
+        req.toZoneId = dest.id;
+        req.animalIds = movable;
+      }
+    }
+  }
 
   getFarm = () => tick(this.db.farm);
   getZones = () => tick(this.db.zones);
@@ -1150,6 +1171,76 @@ export class DemoFarmRepository implements FarmRepository {
     }
     this.db.livestockTransfers.unshift(transfer);
     return tick(transfer);
+  }
+
+  /* --------------------- Transfer requests (approval) -------------------- */
+  private transferRequests: TransferRequest[] = [
+    {
+      id: "tr_demo1",
+      farmId: "farm_nile_delta",
+      status: "pending",
+      toZoneId: "quarantine",
+      animalIds: ["an_00007", "an_00012"],
+      date: TODAY,
+      reason: "medical",
+      notes: "Coughing — move to quarantine for the vet to check.",
+      requestedBy: "m_3",
+      requestedByName: "Dr. Omar Fathy",
+      requestedAt: TODAY + "T07:15:00Z",
+    },
+  ];
+
+  getTransferRequests = () => tick(this.transferRequests);
+
+  async createTransferRequest(input: LivestockTransferInput) {
+    const actor = getAuditActor();
+    const req: TransferRequest = {
+      id: `tr_${Date.now()}`,
+      farmId: this.db.farm.id,
+      status: "pending",
+      toZoneId: input.toZoneId,
+      animalIds: [...input.animalIds],
+      date: input.date,
+      reason: input.reason,
+      notes: input.notes,
+      requestedBy: actor.uid,
+      requestedByName: actor.name,
+      requestedAt: new Date().toISOString(),
+    };
+    this.transferRequests.unshift(req);
+    return tick(req);
+  }
+
+  async approveTransferRequest(id: ID) {
+    const req = this.transferRequests.find((r) => r.id === id);
+    if (!req) throw new Error("Transfer request not found.");
+    if (req.status !== "pending") throw new Error("This request has already been decided.");
+    const transfer = await this.recordLivestockTransfer({
+      toZoneId: req.toZoneId,
+      animalIds: req.animalIds,
+      date: req.date,
+      reason: req.reason,
+      notes: req.notes,
+    });
+    const actor = getAuditActor();
+    req.status = "approved";
+    req.decidedBy = actor.uid;
+    req.decidedByName = actor.name;
+    req.decidedAt = new Date().toISOString();
+    req.transferId = transfer.id;
+    return transfer;
+  }
+
+  async rejectTransferRequest(id: ID, note?: string) {
+    const req = this.transferRequests.find((r) => r.id === id);
+    if (!req) return tick(undefined);
+    const actor = getAuditActor();
+    req.status = "rejected";
+    req.decidedBy = actor.uid;
+    req.decidedByName = actor.name;
+    req.decidedAt = new Date().toISOString();
+    req.decisionNote = note;
+    return tick(undefined);
   }
 
   /* --------------------------------- Stores --------------------------------- */

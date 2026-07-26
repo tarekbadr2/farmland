@@ -49,6 +49,7 @@ import type {
   Cheque,
   Currency,
   LivestockTransfer,
+  TransferRequest,
   Warehouse,
   WorkOrder,
   ChequeStatus,
@@ -1660,6 +1661,93 @@ export class FirebaseFarmRepository implements FarmRepository {
     }
     await trackWrite(batch.commit());
     return transfer;
+  }
+
+  /* --------------------- Transfer requests (approval) -------------------- */
+
+  getTransferRequests = () =>
+    this.all<TransferRequest>(
+      paths.transferRequests(this.farmId),
+      orderBy("requestedAt", "desc"),
+      fsLimit(300),
+    );
+
+  async createTransferRequest(input: LivestockTransferInput): Promise<TransferRequest> {
+    const actor = getAuditActor();
+    const id = doc(this.col(paths.transferRequests(this.farmId))).id;
+    const req: TransferRequest = {
+      id,
+      farmId: this.farmId,
+      status: "pending",
+      toZoneId: input.toZoneId,
+      animalIds: [...input.animalIds],
+      date: input.date,
+      reason: input.reason,
+      notes: input.notes,
+      requestedBy: actor.uid,
+      requestedByName: actor.name,
+      requestedAt: new Date().toISOString(),
+    };
+    await setDoc(doc(this.db, paths.transferRequests(this.farmId), id), omitUndefined(req));
+    this.audit({
+      category: "animals",
+      action: "transfer.request",
+      summary: `Requested a transfer of ${req.animalIds.length} head`,
+      summaryAr: `طلب تحويل ${req.animalIds.length} رأس`,
+      target: input.toZoneId,
+    });
+    return req;
+  }
+
+  async approveTransferRequest(id: ID): Promise<LivestockTransfer> {
+    const snap = await getDoc(doc(this.db, paths.transferRequests(this.farmId), id));
+    if (!snap.exists()) throw new Error("Transfer request not found.");
+    const req = { id: snap.id, ...snap.data() } as TransferRequest;
+    if (req.status !== "pending") throw new Error("This request has already been decided.");
+    // Execute the real, immutable transfer (this also validates + moves pens).
+    const transfer = await this.recordLivestockTransfer({
+      toZoneId: req.toZoneId,
+      animalIds: req.animalIds,
+      date: req.date,
+      reason: req.reason,
+      notes: req.notes,
+    });
+    const actor = getAuditActor();
+    await updateDoc(doc(this.db, paths.transferRequests(this.farmId), id), {
+      status: "approved",
+      decidedBy: actor.uid,
+      decidedByName: actor.name,
+      decidedAt: new Date().toISOString(),
+      transferId: transfer.id,
+    });
+    this.audit({
+      category: "animals",
+      action: "transfer.approve",
+      summary: `Approved a transfer request (${req.animalIds.length} head)`,
+      summaryAr: `الموافقة على طلب تحويل (${req.animalIds.length} رأس)`,
+      target: req.toZoneId,
+    });
+    return transfer;
+  }
+
+  async rejectTransferRequest(id: ID, note?: string): Promise<void> {
+    const actor = getAuditActor();
+    await updateDoc(
+      doc(this.db, paths.transferRequests(this.farmId), id),
+      omitUndefined({
+        status: "rejected",
+        decidedBy: actor.uid,
+        decidedByName: actor.name,
+        decidedAt: new Date().toISOString(),
+        decisionNote: note,
+      }),
+    );
+    this.audit({
+      category: "animals",
+      action: "transfer.reject",
+      summary: "Rejected a transfer request",
+      summaryAr: "رفض طلب تحويل",
+    });
   }
 
   /* ---------------------------------- Stores -------------------------------- */

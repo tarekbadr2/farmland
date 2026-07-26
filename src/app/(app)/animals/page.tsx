@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowRightLeft, Download, Filter, Plus, QrCode, Search, X } from "lucide-react";
+import { ArrowRightLeft, ClipboardList, Download, Filter, Plus, QrCode, Search, X } from "lucide-react";
 
 import { PageHeader, gridStagger } from "@/components/common/page-header";
 import { StatCard } from "@/components/common/stat-card";
@@ -38,6 +38,7 @@ import { cn } from "@/lib/utils";
 import { downloadTableXlsx } from "@/lib/export";
 import { ScanTagDialog } from "@/components/animals/scan-tag-dialog";
 import { TransferAnimalsDialog } from "@/components/animals/transfer-animals-dialog";
+import { TransferRequestsDialog } from "@/components/animals/transfer-requests-dialog";
 import { Beef, Droplets, Baby, Activity } from "lucide-react";
 
 const PAGE_SIZE = 25;
@@ -290,6 +291,13 @@ export default function AnimalsPage() {
               trigger={
                 <Button variant="outline" size="sm">
                   <QrCode /> {t("animals.scanTag")}
+                </Button>
+              }
+            />
+            <TransferRequestsDialog
+              trigger={
+                <Button variant="outline" size="sm">
+                  <ClipboardList /> {locale === "ar" ? "طلبات التحويل" : "Requests"}
                 </Button>
               }
             />
