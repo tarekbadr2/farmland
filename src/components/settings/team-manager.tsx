@@ -16,7 +16,9 @@ import { Avatar, AvatarFallback, Label } from "@/components/ui/primitives";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/menu";
 import { useI18n } from "@/lib/i18n/provider";
 import { useAuth } from "@/lib/auth/provider";
+import Link from "next/link";
 import { useMembers, usePendingInvites, useFarm, qk } from "@/hooks/use-farm-data";
+import { useBilling } from "@/hooks/use-billing";
 import { getRepository, isFirebaseBackend } from "@/core/repositories";
 import { createInvite } from "@/infrastructure/firebase/client";
 import { formatDate } from "@/lib/date";
@@ -53,6 +55,13 @@ export function TeamManager() {
 
   const { data: members = [] } = useMembers();
   const { data: invites = [] } = usePendingInvites();
+
+  // Seats: how many people the plan allows. Pending invites hold a seat too, so
+  // a farm can't over-commit past its plan while invites are outstanding.
+  const { entitlement } = useBilling();
+  const seats = entitlement.plan.seats;
+  const seatsUsed = members.length + invites.length;
+  const seatsFull = seatsUsed >= seats;
 
   // In the demo there's no signed-in identity, so treat the viewer as owner to
   // keep the screen explorable; on Firebase this is the real role.
@@ -104,6 +113,13 @@ export function TeamManager() {
 
   const invite = useMutation({
     mutationFn: async (v: InviteForm) => {
+      if (seatsFull) {
+        throw new Error(
+          locale === "ar"
+            ? `خطتك تسمح بـ ${seats} مقعدًا. رقِّ الخطة لإضافة المزيد.`
+            : `Your plan allows ${seats} seats. Upgrade to add more.`,
+        );
+      }
       const farmIds = selectedFarms.length ? selectedFarms : farmOptions.map((f) => f.id);
       if (isFirebaseBackend()) {
         await createInvite({
@@ -270,12 +286,34 @@ export function TeamManager() {
       {/* Invite form */}
       {isOwner && (
         <Card>
-          <div className="px-5 pb-2 pt-4">
+          <div className="flex items-center justify-between px-5 pb-2 pt-4">
             <CardTitle className="flex items-center gap-2 text-[14px]">
               <UserPlus className="size-4" /> {t("settings.inviteMember")}
             </CardTitle>
+            <span
+              className={cn(
+                "tabular rounded-full px-2 py-0.5 text-[11px] font-medium",
+                seatsFull ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground",
+              )}
+            >
+              {locale === "ar"
+                ? `${formatNumber(seatsUsed)} / ${formatNumber(seats)} مقعد`
+                : `${formatNumber(seatsUsed)} / ${formatNumber(seats)} seats`}
+            </span>
           </div>
           <CardContent>
+            {seatsFull && (
+              <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.06] px-3 py-2 text-[12.5px]">
+                <span>
+                  {locale === "ar"
+                    ? "لقد وصلت إلى حد المقاعد في خطتك."
+                    : "You've reached your plan's seat limit."}
+                </span>
+                <Link href="/billing" className="shrink-0 font-medium text-primary hover:underline">
+                  {locale === "ar" ? "ترقية" : "Upgrade"}
+                </Link>
+              </div>
+            )}
             <form
               onSubmit={form.handleSubmit((v) => invite.mutate(v))}
               className="space-y-3"
@@ -373,7 +411,7 @@ export function TeamManager() {
                 />
               </div>
 
-              <Button type="submit" disabled={invite.isPending}>
+              <Button type="submit" disabled={invite.isPending || seatsFull}>
                 {invite.isPending ? <Loader2 className="animate-spin" /> : <Mail />}
                 {t("settings.sendInvite")}
               </Button>

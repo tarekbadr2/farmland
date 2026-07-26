@@ -73,6 +73,29 @@ export const createInvite = onCall({ region: REGION }, async (req) => {
   const assigned = farmIds.filter((f) => orgFarmIds.has(f));
   if (assigned.length === 0) throw new HttpsError("invalid-argument", "No valid farms.");
 
+  // Seat limit: each plan tier includes a fixed number of team seats. Members
+  // and outstanding invites both hold a seat. Only enforced once billing is on
+  // (pre-launch testing shouldn't be blocked). Mirror of plans.ts `seats`.
+  if (process.env.BILLING_ENFORCED === "1") {
+    const SEATS: Record<string, number> = {
+      starter: 3, growth: 10, pro: 25, enterprise: 100, scale: 1000,
+    };
+    for (const farmId of assigned) {
+      const farm = orgFarms.docs.find((d) => d.id === farmId)?.data();
+      const cap = SEATS[farm?.subscription?.tier ?? "starter"] ?? 3;
+      const memberCount = (await db.collection(`farms/${farmId}/members`).count().get()).data().count;
+      const pending = (
+        await db.collection(`orgs/${orgId}/invites`).where("farmIds", "array-contains", farmId).get()
+      ).size;
+      if (memberCount + pending >= cap) {
+        throw new HttpsError(
+          "failed-precondition",
+          `This farm is at its ${cap}-seat plan limit. Upgrade to add more members.`,
+        );
+      }
+    }
+  }
+
   const token = newToken();
   const now = Date.now();
   const ttl = EXPIRY_PRESETS[expiry] ?? EXPIRY_PRESETS["7d"];
