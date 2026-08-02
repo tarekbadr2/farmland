@@ -135,6 +135,7 @@ import {
   type PurchaseInput,
 } from "@/core/services/automation";
 import { checkTransfer, commonOrigin, transferNumber } from "@/core/services/livestock";
+import { normalizeRation, rationCostPerHead } from "@/core/services/rations";
 import { isValidRate } from "@/core/services/org";
 import {
   allocateOutputCosts,
@@ -1019,7 +1020,47 @@ export class FirebaseFarmRepository implements FarmRepository {
   /* ---------------------------------- Feed --------------------------------- */
 
   getFeedItems = () => this.all<FeedItem>(paths.feedItems(this.farmId), orderBy("name"));
-  getRations = () => this.all<FeedRation>(paths.rations(this.farmId), orderBy("name"));
+  getRations = async (): Promise<FeedRation[]> =>
+    (await this.all<FeedRation>(paths.rations(this.farmId), orderBy("name"))).map(normalizeRation);
+
+  async saveRation(
+    ration: Omit<FeedRation, "id" | "farmId" | "costPerHead"> & { id?: ID },
+  ): Promise<FeedRation> {
+    const id = ration.id ?? doc(this.col(paths.rations(this.farmId))).id;
+    const feeds = await this.getFeedItems();
+    const normalized = normalizeRation({
+      ...ration,
+      id,
+      farmId: this.farmId,
+      costPerHead: 0,
+    } as FeedRation);
+    const record: FeedRation = {
+      ...normalized,
+      costPerHead: rationCostPerHead(normalized, feeds),
+    };
+    await setDoc(doc(this.db, paths.rations(this.farmId), id), omitUndefined(record), {
+      merge: true,
+    });
+    this.audit({
+      category: "feeding",
+      action: ration.id ? "ration.edit" : "ration.create",
+      summary: `Feed formula: ${record.name}`,
+      summaryAr: `تركيبة علف: ${record.nameAr || record.name}`,
+      target: id,
+    });
+    return record;
+  }
+
+  async deleteRation(id: ID): Promise<void> {
+    await deleteDoc(doc(this.db, paths.rations(this.farmId), id));
+    this.audit({
+      category: "feeding",
+      action: "ration.delete",
+      summary: `Deleted feed formula ${id}`,
+      summaryAr: `حذف تركيبة علف ${id}`,
+      target: id,
+    });
+  }
   getFeedConsumption = () =>
     this.all<FeedConsumption>(
       paths.feedConsumption(this.farmId),
@@ -1053,13 +1094,17 @@ export class FirebaseFarmRepository implements FarmRepository {
       throw new Error("Open the feed page once while online — then this works offline.");
     }
     if (!rationSnap.exists()) throw new Error(`Ration ${input.rationId} not found`);
-    const ration = rationSnap.data() as FeedRation;
-    const components = ration.components ?? [];
+    const ration = normalizeRation(rationSnap.data() as FeedRation);
+
+    // The feeding may deviate from the stored formula: a heavier ration today,
+    // or a temporarily different blend. Overrides win; otherwise the formula.
+    const kgPerHead = input.kgPerHead ?? ration.kgPerHead;
+    const mix = input.mix ?? ration.components;
 
     // A component whose feed doc isn't cached offline still logs; it just can't
     // draw down that item's stock until the write path can read it.
     const feedSnaps = await Promise.all(
-      components.map((c) =>
+      mix.map((c) =>
         read(doc(this.db, paths.feedItems(this.farmId), c.feedItemId)).catch(() => null),
       ),
     );
@@ -1068,7 +1113,8 @@ export class FirebaseFarmRepository implements FarmRepository {
     let totalCost = 0;
     const batch = writeBatch(this.db);
     feedSnaps.forEach((snap, i) => {
-      const kg = round(components[i].kgPerHead * input.heads, 1);
+      // kg for this ingredient = total kg/head × its share × head count.
+      const kg = round(kgPerHead * ((Number(mix[i].percent) || 0) / 100) * input.heads, 1);
       totalKg += kg;
       if (snap?.exists()) {
         const feed = snap.data() as FeedItem;

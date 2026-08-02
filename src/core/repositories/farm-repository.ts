@@ -121,6 +121,10 @@ export interface FeedConsumptionInput {
   zoneId: ID;
   rationId: ID;
   heads: number;
+  /** Override the ration's default total kg/head for this one feeding. */
+  kgPerHead?: number;
+  /** Override the ration's % split for this one feeding (sums to 100). */
+  mix?: { feedItemId: ID; percent: number }[];
 }
 
 /**
@@ -219,6 +223,11 @@ export interface FarmRepository {
 
   getFeedItems(): Promise<FeedItem[]>;
   getRations(): Promise<FeedRation[]>;
+  /** Create or edit a feed formula. `costPerHead` is derived from live prices. */
+  saveRation(
+    ration: Omit<FeedRation, "id" | "farmId" | "costPerHead"> & { id?: ID },
+  ): Promise<FeedRation>;
+  deleteRation(id: ID): Promise<void>;
   getFeedConsumption(): Promise<FeedConsumption[]>;
   /** Logs a feeding and draws each of the ration's components from feed stock. */
   logFeedConsumption(input: FeedConsumptionInput): Promise<FeedConsumption>;

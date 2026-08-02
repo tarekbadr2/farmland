@@ -24,9 +24,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useI18n } from "@/lib/i18n/provider";
 import { useRations, useZones, useFeedItems } from "@/hooks/use-farm-data";
 import { getRepository } from "@/core/repositories";
-import { kgPerUnit } from "@/core/domain/rules";
+import { resolveFeeding } from "@/core/services/rations";
 import { TODAY } from "@/core/data/seed";
-import { round } from "@/lib/utils";
 
 const schema = z.object({
   rationId: z.string().min(1, "Pick a ration"),
@@ -65,21 +64,22 @@ export function LogFeedingDialog({ trigger }: { trigger?: React.ReactNode }) {
   const heads = form.watch("heads");
   const ration = rations.find((r) => r.id === rationId);
 
+  // The per-head amount defaults to the formula but can be nudged for this one
+  // feeding (a heavier ration today) without editing the formula itself.
+  const [kgPerHead, setKgPerHead] = React.useState("");
+  React.useEffect(() => {
+    setKgPerHead(ration ? String(ration.kgPerHead) : "");
+  }, [ration]);
+
   // Mirror the repository's arithmetic so the preview and the write agree.
   const totals = React.useMemo(() => {
     if (!ration) return null;
-    const n = Number(heads) || 0;
-    let kg = 0;
-    let cost = 0;
-    for (const c of ration.components ?? []) {
-      const componentKg = c.kgPerHead * n;
-      kg += componentKg;
-      const feed = feeds.find((f) => f.id === c.feedItemId);
-      // Cost is per unit (ton/bale); the ration is in kg. Convert before costing.
-      if (feed) cost += (componentKg / kgPerUnit(feed.unit)) * (feed.costPerUnit ?? 0);
-    }
-    return { kg: round(kg, 1), cost: round(cost, 2) };
-  }, [ration, heads, feeds]);
+    const over = Number(kgPerHead) || 0;
+    const { totalKg, totalCost } = resolveFeeding(ration, Number(heads) || 0, feeds, {
+      kgPerHead: over || undefined,
+    });
+    return { kg: totalKg, cost: totalCost };
+  }, [ration, heads, kgPerHead, feeds]);
 
   const save = useMutation({
     mutationFn: async (values: FormValues) =>
@@ -88,6 +88,7 @@ export function LogFeedingDialog({ trigger }: { trigger?: React.ReactNode }) {
         zoneId: values.zoneId,
         rationId: values.rationId,
         heads: values.heads,
+        kgPerHead: Number(kgPerHead) || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries();
@@ -178,9 +179,25 @@ export function LogFeedingDialog({ trigger }: { trigger?: React.ReactNode }) {
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="fdate">{t("common.date")}</Label>
-            <Input id="fdate" type="date" {...form.register("date")} />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="fdate">{t("common.date")}</Label>
+              <Input id="fdate" type="date" {...form.register("date")} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="fkg">{locale === "ar" ? "كجم/رأس" : "kg / head"}</Label>
+              <Input
+                id="fkg"
+                type="number"
+                min={0}
+                step="0.1"
+                inputMode="decimal"
+                value={kgPerHead}
+                onChange={(e) => setKgPerHead(e.target.value)}
+                disabled={!ration}
+                className="tabular-nums"
+              />
+            </div>
           </div>
 
           {totals && Number(heads) > 0 && (

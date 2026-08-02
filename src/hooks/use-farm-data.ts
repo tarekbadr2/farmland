@@ -8,6 +8,7 @@ import type {
   Warehouse,
   ChequeStatus,
   FarmTask,
+  FeedRation,
   FiscalYear,
   ID,
   Branch,
@@ -101,6 +102,24 @@ export const useSemen = () => useQuery({ queryKey: qk.semen, queryFn: () => repo
 export const useHealth = () => useQuery({ queryKey: qk.health, queryFn: () => repo.getHealthEvents() });
 export const useFeedItems = () => useQuery({ queryKey: qk.feedItems, queryFn: () => repo.getFeedItems() });
 export const useRations = () => useQuery({ queryKey: qk.rations, queryFn: () => repo.getRations() });
+
+export function useSaveRation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ration: Omit<FeedRation, "id" | "farmId" | "costPerHead"> & { id?: ID }) =>
+      repo.saveRation(ration),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.rations }),
+  });
+}
+
+export function useDeleteRation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: ID) => repo.deleteRation(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.rations }),
+  });
+}
+
 export const useFeedConsumption = () =>
   useQuery({ queryKey: qk.feedConsumption, queryFn: () => repo.getFeedConsumption() });
 export const useInventory = () => useQuery({ queryKey: qk.inventory, queryFn: () => repo.getInventory() });

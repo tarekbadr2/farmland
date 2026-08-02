@@ -16,7 +16,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { AlertTriangle, Boxes, Leaf, Package, Percent, ShoppingCart, Wheat } from "lucide-react";
+import { AlertTriangle, Boxes, Leaf, Package, Pencil, Percent, Plus, ShoppingCart, Trash2, Wheat } from "lucide-react";
 
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
 import { PurchaseDialog } from "@/components/common/purchase-dialog";
@@ -25,6 +25,7 @@ import { StatCard } from "@/components/common/stat-card";
 import { ChartCard, ChartTooltip, CHART_COLORS, axisProps, gridProps } from "@/components/common/chart";
 import { DataTable, type Column } from "@/components/common/data-table";
 import { LogFeedingDialog } from "@/components/feed/log-feeding-dialog";
+import { RationFormDialog } from "@/components/feed/ration-form-dialog";
 import { Can } from "@/lib/auth/guard";
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +34,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import {
   useFeedConsumption,
   useFeedItems,
+  useDeleteRation,
   useMilkDaily,
   useRations,
   useZones,
@@ -51,6 +53,7 @@ export default function FeedPage() {
   const { data: consumption = [] } = useFeedConsumption();
   const { data: daily = [] } = useMilkDaily();
   const { data: zones = [] } = useZones();
+  const deleteRation = useDeleteRation();
 
   const m = React.useMemo(
     () => feedMetrics(items, consumption, daily, TODAY, rations),
@@ -375,53 +378,106 @@ export default function FeedPage() {
               </TabsContent>
 
               <TabsContent value="rations">
+                <div className="flex items-center justify-between gap-2 px-5 pb-1 pt-2">
+                  <p className="text-[12px] text-muted-foreground">
+                    {locale === "ar"
+                      ? "الخلطات معرّفة بالنسبة المئوية من الوزن — عدّلها كلما تغيّر المزيج."
+                      : "Formulas are defined by % of weight — edit them as the blend changes."}
+                  </p>
+                  <Can permission="feeding.write">
+                    <RationFormDialog
+                      trigger={
+                        <Button size="sm" variant="outline">
+                          <Plus /> {locale === "ar" ? "تركيبة" : "New formula"}
+                        </Button>
+                      }
+                    />
+                  </Can>
+                </div>
                 <div className="grid gap-3 p-5 pt-2 md:grid-cols-2">
-                  {rations.map((r) => (
-                    <Card key={r.id} className="p-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-[14px] font-semibold">{ln(r)}</p>
-                          <p className="text-[11px] text-muted-foreground">
-                            {t("common.head")}: {r.targetGroup}
-                          </p>
+                  {rations.map((r) => {
+                    const costKg = r.kgPerHead > 0 ? r.costPerHead / r.kgPerHead : 0;
+                    return (
+                      <Card key={r.id} className="p-4">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-[14px] font-semibold">{ln(r)}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {formatNumber(r.kgPerHead)}
+                              {t("common.kg")}/{t("common.head")} · {formatCurrency(costKg)}/
+                              {t("common.kg")}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Badge variant="default">
+                              {formatCurrency(r.costPerHead)} / {t("common.head")}
+                            </Badge>
+                            <Can permission="feeding.write">
+                              <RationFormDialog
+                                ration={r}
+                                trigger={
+                                  <button
+                                    className="text-muted-foreground transition hover:text-foreground"
+                                    aria-label={locale === "ar" ? "تعديل" : "Edit"}
+                                  >
+                                    <Pencil className="size-3.5" />
+                                  </button>
+                                }
+                              />
+                              <button
+                                onClick={() => {
+                                  if (
+                                    typeof window !== "undefined" &&
+                                    !window.confirm(
+                                      locale === "ar"
+                                        ? `حذف التركيبة "${ln(r)}"؟`
+                                        : `Delete the formula "${ln(r)}"?`,
+                                    )
+                                  )
+                                    return;
+                                  deleteRation.mutate(r.id);
+                                }}
+                                className="text-muted-foreground transition hover:text-destructive"
+                                aria-label={locale === "ar" ? "حذف" : "Delete"}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            </Can>
+                          </div>
                         </div>
-                        <Badge variant="default">
-                          {formatCurrency(r.costPerHead)} / {t("common.head")}
-                        </Badge>
-                      </div>
-                      <p className="mt-3 mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
-                        {locale === "ar" ? "التركيبة حسب التكلفة" : "Formula by cost"}
-                      </p>
-                      <ul className="space-y-1.5">
-                        {r.components
-                          .map((c) => {
-                            const item = items.find((i) => i.id === c.feedItemId);
-                            const costKg = item ? item.costPerUnit / kgPerUnit(item.unit) : 0;
-                            const compCost = c.kgPerHead * costKg;
-                            const costShare = r.costPerHead > 0 ? (compCost / r.costPerHead) * 100 : 0;
-                            return { c, item, compCost, costShare };
-                          })
-                          .sort((a, b) => b.costShare - a.costShare)
-                          .map(({ c, item, compCost, costShare }) => (
-                            <li key={c.feedItemId} className="text-[12px]">
-                              <div className="flex items-center gap-2">
-                                <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                                  {item ? ln(item) : c.feedItemId}
-                                </span>
-                                <span className="tabular w-9 text-end font-semibold">
-                                  {Math.round(costShare)}%
-                                </span>
-                                <span className="tabular w-24 text-end text-muted-foreground">
-                                  {formatNumber(c.kgPerHead)}
-                                  {t("common.kg")} · {formatCurrency(compCost)}
-                                </span>
-                              </div>
-                              <Progress value={costShare} className="mt-1 h-1.5" />
-                            </li>
-                          ))}
-                      </ul>
-                    </Card>
-                  ))}
+                        <p className="mt-3 mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                          {locale === "ar" ? "التركيبة حسب الوزن" : "Formula by weight"}
+                        </p>
+                        <ul className="space-y-1.5">
+                          {r.components
+                            .map((c) => {
+                              const item = items.find((i) => i.id === c.feedItemId);
+                              const kg = (r.kgPerHead * c.percent) / 100;
+                              const costKgItem = item ? item.costPerUnit / kgPerUnit(item.unit) : 0;
+                              return { c, item, kg, compCost: kg * costKgItem };
+                            })
+                            .sort((a, b) => b.c.percent - a.c.percent)
+                            .map(({ c, item, kg, compCost }) => (
+                              <li key={c.feedItemId} className="text-[12px]">
+                                <div className="flex items-center gap-2">
+                                  <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                                    {item ? ln(item) : c.feedItemId}
+                                  </span>
+                                  <span className="tabular w-9 text-end font-semibold">
+                                    {Math.round(c.percent)}%
+                                  </span>
+                                  <span className="tabular w-24 text-end text-muted-foreground">
+                                    {formatNumber(Math.round(kg * 100) / 100)}
+                                    {t("common.kg")} · {formatCurrency(compCost)}
+                                  </span>
+                                </div>
+                                <Progress value={c.percent} className="mt-1 h-1.5" />
+                              </li>
+                            ))}
+                        </ul>
+                      </Card>
+                    );
+                  })}
                 </div>
               </TabsContent>
             </Tabs>

@@ -445,13 +445,31 @@ export interface FeedItem {
   energyMcalPerKg: number;
 }
 
+/** One ingredient of a ration, as a share of the mix by weight. */
+export interface FeedRationComponent {
+  feedItemId: ID;
+  /** Percent of the total mix by weight. A ration's components sum to 100. */
+  percent: number;
+}
+
+/**
+ * A feed formula: a total kilograms-per-head plus the mix that makes it up,
+ * expressed as percentages by weight (soy 40%, wheat 30%, …) because the blend
+ * is re-tuned constantly while the per-head amount stays roughly fixed. Cost is
+ * always derived from each ingredient's current, user-entered price — never
+ * typed in — so a formula re-prices itself the moment feed prices change.
+ */
 export interface FeedRation {
   id: ID;
   farmId: ID;
   name: string;
   nameAr: string;
   targetGroup: "lactating" | "dry" | "calves" | "bulls" | "heifers";
-  components: { feedItemId: ID; kgPerHead: number }[];
+  /** Total kilograms of the mix a single head is fed per feeding. */
+  kgPerHead: number;
+  /** The blend, as percentages by weight. Sums to 100. */
+  components: FeedRationComponent[];
+  /** Derived cache: blended cost of one head's ration at current prices. */
   costPerHead: number;
 }
 

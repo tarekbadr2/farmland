@@ -34,6 +34,7 @@ import {
   workOrderNumber,
 } from "@/core/services/production";
 import { stocktakeVariance } from "@/core/services/warehouse";
+import { normalizeRation, rationCostPerHead, resolveFeeding } from "@/core/services/rations";
 import {
   FEED_EXPENSE_CATEGORY,
   INVENTORY_EXPENSE_CATEGORY,
@@ -71,6 +72,7 @@ import type {
   Employee,
   FarmTask,
   FeedConsumption,
+  FeedRation,
   FiscalYear,
   HealthEvent,
   ID,
@@ -578,7 +580,7 @@ export class DemoFarmRepository implements FarmRepository {
   getSemenInventory = () => tick(this.db.semen);
   getHealthEvents = () => tick(this.db.health);
   getFeedItems = () => tick(this.db.feedItems);
-  getRations = () => tick(this.db.rations);
+  getRations = () => tick(this.db.rations.map(normalizeRation));
   getFeedConsumption = () => tick(this.db.feedConsumption);
   getInventory = () => tick(this.db.inventory);
   getStockMovements = () => tick(this.db.movements);
@@ -612,20 +614,47 @@ export class DemoFarmRepository implements FarmRepository {
 
   getTasks = () => tick(this.db.tasks);
 
-  async logFeedConsumption(input: FeedConsumptionInput) {
-    const ration = this.db.rations.find((r) => r.id === input.rationId);
-    if (!ration) throw new Error(`Ration ${input.rationId} not found`);
+  async saveRation(
+    ration: Omit<FeedRation, "id" | "farmId" | "costPerHead"> & { id?: ID },
+  ) {
+    const normalized = normalizeRation({
+      ...ration,
+      id: ration.id ?? "",
+      farmId: this.db.farm.id,
+      costPerHead: 0,
+    } as FeedRation);
+    const record: FeedRation = {
+      ...normalized,
+      id: ration.id ?? `ration_${Date.now()}`,
+      farmId: this.db.farm.id,
+      costPerHead: rationCostPerHead(normalized, this.db.feedItems),
+    };
+    const idx = ration.id ? this.db.rations.findIndex((r) => r.id === ration.id) : -1;
+    if (idx >= 0) this.db.rations[idx] = record;
+    else this.db.rations.unshift(record);
+    return tick(record);
+  }
 
-    let totalKg = 0;
-    let totalCost = 0;
-    for (const c of ration.components ?? []) {
-      const kg = round(c.kgPerHead * input.heads, 1);
-      totalKg += kg;
-      const feed = this.db.feedItems.find((f) => f.id === c.feedItemId);
+  async deleteRation(id: ID) {
+    this.db.rations = this.db.rations.filter((r) => r.id !== id);
+  }
+
+  async logFeedConsumption(input: FeedConsumptionInput) {
+    const raw = this.db.rations.find((r) => r.id === input.rationId);
+    if (!raw) throw new Error(`Ration ${input.rationId} not found`);
+    const ration = normalizeRation(raw);
+
+    const { lines, totalKg, totalCost } = resolveFeeding(
+      ration,
+      input.heads,
+      this.db.feedItems,
+      { kgPerHead: input.kgPerHead, mix: input.mix },
+    );
+
+    for (const line of lines) {
+      const feed = this.db.feedItems.find((f) => f.id === line.feedItemId);
       if (feed) {
-        // Ration is kg; stock and cost are per-unit (a ton, a bale).
-        const unitsDrawn = kg / kgPerUnit(feed.unit);
-        totalCost += unitsDrawn * (feed.costPerUnit ?? 0);
+        const unitsDrawn = line.kg / kgPerUnit(feed.unit);
         feed.stock = round(Math.max(0, feed.stock - unitsDrawn), 2);
       }
     }
@@ -636,8 +665,8 @@ export class DemoFarmRepository implements FarmRepository {
       date: input.date,
       zoneId: input.zoneId,
       rationId: input.rationId,
-      kg: round(totalKg, 1),
-      cost: round(totalCost, 2),
+      kg: totalKg,
+      cost: totalCost,
       heads: input.heads,
     };
     this.db.feedConsumption.unshift(record);

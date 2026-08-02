@@ -544,6 +544,19 @@ function build(): FarmDataset {
     },
   );
 
+  // Formulas are authored in kilograms (how a nutritionist thinks) and stored as
+  // a total kg/head plus percentages by weight (how the app models a blend).
+  const mix = (parts: { feedItemId: string; kg: number }[]) => {
+    const total = parts.reduce((s, p) => s + p.kg, 0);
+    return {
+      kgPerHead: round(total, 2),
+      components: parts.map((p) => ({
+        feedItemId: p.feedItemId,
+        percent: round((p.kg / total) * 100, 1),
+      })),
+    };
+  };
+
   const rations: FeedRation[] = [
     {
       id: "ration_1",
@@ -551,15 +564,15 @@ function build(): FarmDataset {
       name: "High-yield lactating TMR",
       nameAr: "خلطة كاملة للحلابات عالية الإنتاج",
       targetGroup: "lactating",
-      components: [
-        { feedItemId: "feed_001", kgPerHead: 22 },
-        { feedItemId: "feed_002", kgPerHead: 12 },
-        { feedItemId: "feed_004", kgPerHead: 3.5 },
-        { feedItemId: "feed_005", kgPerHead: 2.2 },
-        { feedItemId: "feed_007", kgPerHead: 3 },
-        { feedItemId: "feed_011", kgPerHead: 0.15 },
-        { feedItemId: "feed_013", kgPerHead: 0.3 },
-      ],
+      ...mix([
+        { feedItemId: "feed_001", kg: 22 },
+        { feedItemId: "feed_002", kg: 12 },
+        { feedItemId: "feed_004", kg: 3.5 },
+        { feedItemId: "feed_005", kg: 2.2 },
+        { feedItemId: "feed_007", kg: 3 },
+        { feedItemId: "feed_011", kg: 0.15 },
+        { feedItemId: "feed_013", kg: 0.3 },
+      ]),
       costPerHead: 155,
     },
     {
@@ -568,12 +581,12 @@ function build(): FarmDataset {
       name: "Dry cow ration",
       nameAr: "علف الجاف",
       targetGroup: "dry",
-      components: [
-        { feedItemId: "feed_003", kgPerHead: 6 },
-        { feedItemId: "feed_001", kgPerHead: 10 },
-        { feedItemId: "feed_004", kgPerHead: 1.5 },
-        { feedItemId: "feed_011", kgPerHead: 0.1 },
-      ],
+      ...mix([
+        { feedItemId: "feed_003", kg: 6 },
+        { feedItemId: "feed_001", kg: 10 },
+        { feedItemId: "feed_004", kg: 1.5 },
+        { feedItemId: "feed_011", kg: 0.1 },
+      ]),
       costPerHead: 92,
     },
     {
@@ -582,10 +595,10 @@ function build(): FarmDataset {
       name: "Calf starter program",
       nameAr: "برنامج بادئ العجول",
       targetGroup: "calves",
-      components: [
-        { feedItemId: "feed_014", kgPerHead: 1.6 },
-        { feedItemId: "feed_002", kgPerHead: 2 },
-      ],
+      ...mix([
+        { feedItemId: "feed_014", kg: 1.6 },
+        { feedItemId: "feed_002", kg: 2 },
+      ]),
       costPerHead: 48,
     },
     {
@@ -594,11 +607,11 @@ function build(): FarmDataset {
       name: "Heifer growing ration",
       nameAr: "علف نمو العشار",
       targetGroup: "heifers",
-      components: [
-        { feedItemId: "feed_001", kgPerHead: 14 },
-        { feedItemId: "feed_004", kgPerHead: 2 },
-        { feedItemId: "feed_006", kgPerHead: 1.2 },
-      ],
+      ...mix([
+        { feedItemId: "feed_001", kg: 14 },
+        { feedItemId: "feed_004", kg: 2 },
+        { feedItemId: "feed_006", kg: 1.2 },
+      ]),
       costPerHead: 108,
     },
     {
@@ -607,10 +620,10 @@ function build(): FarmDataset {
       name: "Bull maintenance",
       nameAr: "علف صيانة الطلائق",
       targetGroup: "bulls",
-      components: [
-        { feedItemId: "feed_003", kgPerHead: 8 },
-        { feedItemId: "feed_007", kgPerHead: 2.5 },
-      ],
+      ...mix([
+        { feedItemId: "feed_003", kg: 8 },
+        { feedItemId: "feed_007", kg: 2.5 },
+      ]),
       costPerHead: 86,
     },
   ];
@@ -625,8 +638,7 @@ function build(): FarmDataset {
         if (!heads) return;
         const ration =
           z.kind === "barn" ? rations[2] : z.id === "zone_5" || z.id === "zone_6" ? rations[1] : z.id === "zone_7" ? rations[3] : z.id === "zone_8" ? rations[4] : rations[0];
-        const kgPerHead = ration.components.reduce((s, c) => s + c.kgPerHead, 0);
-        const kg = round(heads * kgPerHead * between(r, 0.93, 1.07), 1);
+        const kg = round(heads * ration.kgPerHead * between(r, 0.93, 1.07), 1);
         feedConsumption.push({
           id: `fc_${date}_${z.id}`,
           farmId: FARM_ID,
