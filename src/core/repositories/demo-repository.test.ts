@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 
 import { DemoFarmRepository } from "./demo-repository";
 import { trialBalance } from "@/core/services/accounting";
+import { resolveFeeding } from "@/core/services/rations";
 import { TODAY } from "@/core/data/seed";
 import { DEFAULT_WAREHOUSE_ID, stockInWarehouse } from "@/core/services/warehouse";
 
@@ -457,6 +458,77 @@ describe("demo repository — production work orders", () => {
       outputs: [{ source: "feed", itemId: sink.id, quantity: 1 }],
     });
     await expect(repo.completeWorkOrder(greedy.id)).rejects.toThrow("insufficient-stock");
+  });
+});
+
+describe("demo repository — feeding draws stock and formulas are editable", () => {
+  it("logging a feeding records consumption and draws each component from stock", async () => {
+    const rations = await repo.getRations();
+    const r = rations[0];
+    const feedsBefore = await repo.getFeedItems();
+    const stockBefore = new Map(feedsBefore.map((f) => [f.id, f.stock]));
+    const pen = (await repo.getZones()).find((z) => z.kind === "pen")!;
+
+    const expected = resolveFeeding(r, 10, feedsBefore);
+    const rec = await repo.logFeedConsumption({
+      date: TODAY,
+      zoneId: pen.id,
+      rationId: r.id,
+      heads: 10,
+    });
+
+    // The write agrees with the shared math, and it's readable back.
+    expect(rec.kg).toBe(expected.totalKg);
+    expect(rec.cost).toBe(expected.totalCost);
+    expect(rec.kg).toBeGreaterThan(0);
+    expect((await repo.getFeedConsumption()).find((c) => c.id === rec.id)).toBeTruthy();
+
+    // Every ingredient with a share was actually drawn down.
+    const feedsAfter = await repo.getFeedItems();
+    for (const c of r.components) {
+      if (c.percent <= 0) continue;
+      const after = feedsAfter.find((f) => f.id === c.feedItemId)!.stock;
+      expect(after).toBeLessThan(stockBefore.get(c.feedItemId)!);
+    }
+  });
+
+  it("a per-feeding kg/head override scales the draw", async () => {
+    const r = (await repo.getRations())[0];
+    const pen = (await repo.getZones()).find((z) => z.kind === "pen")!;
+    const feeds = await repo.getFeedItems();
+
+    const base = resolveFeeding(r, 5, feeds);
+    const rec = await repo.logFeedConsumption({
+      date: TODAY,
+      zoneId: pen.id,
+      rationId: r.id,
+      heads: 5,
+      kgPerHead: r.kgPerHead * 2,
+    });
+    // Doubling the per-head amount roughly doubles the kilograms drawn.
+    expect(Math.abs(rec.kg - base.totalKg * 2)).toBeLessThan(1);
+  });
+
+  it("creating a formula normalizes it, derives cost/head, and deleting removes it", async () => {
+    const [a, b] = await repo.getFeedItems();
+    const saved = await repo.saveRation({
+      name: "Test blend",
+      nameAr: "خلطة اختبار",
+      targetGroup: "lactating",
+      kgPerHead: 20,
+      components: [
+        { feedItemId: a.id, percent: 60 },
+        { feedItemId: b.id, percent: 40 },
+      ],
+    });
+
+    expect(saved.id).toBeTruthy();
+    expect(saved.kgPerHead).toBe(20);
+    expect(saved.costPerHead).toBeGreaterThan(0);
+    expect((await repo.getRations()).find((r) => r.id === saved.id)).toBeTruthy();
+
+    await repo.deleteRation(saved.id);
+    expect((await repo.getRations()).find((r) => r.id === saved.id)).toBeUndefined();
   });
 });
 
