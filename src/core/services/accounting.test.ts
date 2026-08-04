@@ -260,6 +260,49 @@ describe("balanceSheet", () => {
   });
 });
 
+describe("period-aware statements", () => {
+  const withFeb: JournalEntry[] = [
+    ...ENTRIES,
+    entry("j5", "JV-0005", "2026-02-10", [
+      { accountId: "a101", debit: 8_000 },
+      { accountId: "a401", credit: 8_000 },
+    ]),
+    entry("j6", "JV-0006", "2026-02-12", [
+      { accountId: "a501", debit: 3_000 },
+      { accountId: "a201", credit: 3_000 },
+    ]),
+  ];
+
+  it("the income statement counts only flows inside the window", () => {
+    const jan = incomeStatement(ACCOUNTS, withFeb, { from: "2026-01-01", upTo: "2026-01-31" });
+    expect(jan.totalRevenue).toBe(5_000);
+    expect(jan.totalExpenses).toBe(2_000);
+    expect(jan.netIncome).toBe(3_000);
+
+    const feb = incomeStatement(ACCOUNTS, withFeb, { from: "2026-02-01", upTo: "2026-02-28" });
+    expect(feb.totalRevenue).toBe(8_000);
+    expect(feb.totalExpenses).toBe(3_000);
+    expect(feb.netIncome).toBe(5_000);
+  });
+
+  it("all-time income equals the sum of the periods", () => {
+    const all = incomeStatement(ACCOUNTS, withFeb);
+    expect(all.totalRevenue).toBe(13_000);
+    expect(all.netIncome).toBe(8_000);
+  });
+
+  it("the balance sheet is a cumulative snapshot and balances as of any date", () => {
+    const janEnd = balanceSheet(ACCOUNTS, withFeb, { upTo: "2026-01-31" });
+    expect(janEnd.balanced).toBe(true);
+    expect(janEnd.netIncome).toBe(3_000); // retained through Jan
+
+    const febEnd = balanceSheet(ACCOUNTS, withFeb, { upTo: "2026-02-28" });
+    expect(febEnd.balanced).toBe(true);
+    expect(febEnd.netIncome).toBe(8_000); // retained through Feb
+    expect(febEnd.totalAssets).toBe(113_000);
+  });
+});
+
 describe("accountLedger", () => {
   it("walks one account in date order with a running balance", () => {
     const cash = ACCOUNTS.find((a) => a.id === "a101")!;

@@ -86,7 +86,7 @@ const POSTED = (e: JournalEntry) => e.status === "posted";
 export function accountBalances(
   accounts: Account[],
   entries: JournalEntry[],
-  opts: { upTo?: string; fiscalYearId?: ID } = {},
+  opts: { from?: string; upTo?: string; fiscalYearId?: ID } = {},
 ): Map<ID, AccountBalance> {
   const out = new Map<ID, AccountBalance>();
 
@@ -94,7 +94,10 @@ export function accountBalances(
     let debit = 0;
     let credit = 0;
     const opening = a.openingBalance ?? 0;
-    if (opening !== 0) {
+    // The opening balance is the state *before* any entry, so it belongs to a
+    // cumulative (as-of) view. A period view with a lower bound counts only the
+    // flows inside the window, so the opening is left out.
+    if (opening !== 0 && !opts.from) {
       const onNormalSide = opening > 0;
       const amount = Math.abs(opening);
       const debitSide = a.nature === "debit" ? onNormalSide : !onNormalSide;
@@ -106,6 +109,7 @@ export function accountBalances(
 
   for (const e of entries) {
     if (!POSTED(e)) continue;
+    if (opts.from && e.date < opts.from) continue;
     if (opts.upTo && e.date > opts.upTo) continue;
     if (opts.fiscalYearId && e.fiscalYearId !== opts.fiscalYearId) continue;
     for (const l of e.lines) {
@@ -280,7 +284,7 @@ export interface IncomeStatement {
 export function incomeStatement(
   accounts: Account[],
   entries: JournalEntry[],
-  opts: { upTo?: string } = {},
+  opts: { from?: string; upTo?: string; fiscalYearId?: ID } = {},
 ): IncomeStatement {
   const balances = accountBalances(accounts, entries, opts);
   const pick = (type: AccountType) =>
@@ -319,9 +323,14 @@ export interface BalanceSheet {
 export function balanceSheet(
   accounts: Account[],
   entries: JournalEntry[],
-  opts: { upTo?: string } = {},
+  opts: { upTo?: string; fiscalYearId?: ID } = {},
 ): BalanceSheet {
-  const balances = accountBalances(accounts, entries, opts);
+  // A balance sheet is always a snapshot as of a date — never a windowed range —
+  // so it uses only the upper bound. Retained earnings must be the cumulative
+  // result up to that date for the sheet to balance, so `from` is deliberately
+  // dropped before both the balances and the net-income roll-in.
+  const asOf = { upTo: opts.upTo, fiscalYearId: opts.fiscalYearId };
+  const balances = accountBalances(accounts, entries, asOf);
   const pick = (type: AccountType) =>
     [...accounts]
       .filter((a) => a.type === type && !a.isGroup)
@@ -332,7 +341,7 @@ export function balanceSheet(
   const assets = pick("asset");
   const liabilities = pick("liability");
   const equity = pick("equity");
-  const { netIncome } = incomeStatement(accounts, entries, opts);
+  const { netIncome } = incomeStatement(accounts, entries, asOf);
 
   const totalAssets = round(assets.reduce((s, l) => s + l.amount, 0), 2);
   const totalLiabilities = round(liabilities.reduce((s, l) => s + l.amount, 0), 2);

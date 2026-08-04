@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/c
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/primitives";
+import { Input } from "@/components/ui/input";
 import { useI18n } from "@/lib/i18n/provider";
 import {
   useAccounts,
@@ -73,8 +74,53 @@ export default function AccountingPage() {
   const tree = React.useMemo(() => buildAccountTree(accounts, balances), [accounts, balances]);
   const rows = React.useMemo(() => flattenTree(tree), [tree]);
   const tb = React.useMemo(() => trialBalance(accounts, entries), [accounts, entries]);
-  const pl = React.useMemo(() => incomeStatement(accounts, entries), [accounts, entries]);
-  const bs = React.useMemo(() => balanceSheet(accounts, entries), [accounts, entries]);
+  // Reporting period. The income statement covers the window; the balance sheet
+  // is always a snapshot as of the window's end (or today for "all time").
+  const [period, setPeriod] = React.useState<"all" | "month" | "quarter" | "year" | "custom">("all");
+  const [customFrom, setCustomFrom] = React.useState("");
+  const [customTo, setCustomTo] = React.useState("");
+
+  const range = React.useMemo((): { from?: string; upTo?: string } => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const today = ymd(now);
+    switch (period) {
+      case "month":
+        return { from: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), upTo: today };
+      case "quarter":
+        return {
+          from: ymd(new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)),
+          upTo: today,
+        };
+      case "year":
+        return { from: ymd(new Date(now.getFullYear(), 0, 1)), upTo: today };
+      case "custom":
+        return { from: customFrom || undefined, upTo: customTo || undefined };
+      default:
+        return {};
+    }
+  }, [period, customFrom, customTo]);
+
+  const periodLabel =
+    period === "all"
+      ? ar ? "كل الفترات" : "All time"
+      : period === "month"
+        ? ar ? "هذا الشهر" : "This month"
+        : period === "quarter"
+          ? ar ? "هذا الربع" : "This quarter"
+          : period === "year"
+            ? ar ? "هذه السنة" : "This year"
+            : ar ? "فترة مخصصة" : "Custom range";
+
+  const pl = React.useMemo(
+    () => incomeStatement(accounts, entries, range),
+    [accounts, entries, range],
+  );
+  const bs = React.useMemo(
+    () => balanceSheet(accounts, entries, { upTo: range.upTo }),
+    [accounts, entries, range],
+  );
   const { data: partners = [] } = usePartners();
   const { data: cheques = [] } = useCheques();
   const partnerName = (id?: string) => {
@@ -142,6 +188,38 @@ export default function AccountingPage() {
         }
         actions={
           <>
+            {/* Reporting period — drives the income statement, the balance-sheet
+                as-of date, and the net-income stat card. */}
+            <Select value={period} onValueChange={(v) => setPeriod(v as typeof period)}>
+              <SelectTrigger className="h-8 w-36 text-[12.5px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{ar ? "كل الفترات" : "All time"}</SelectItem>
+                <SelectItem value="month">{ar ? "هذا الشهر" : "This month"}</SelectItem>
+                <SelectItem value="quarter">{ar ? "هذا الربع" : "This quarter"}</SelectItem>
+                <SelectItem value="year">{ar ? "هذه السنة" : "This year"}</SelectItem>
+                <SelectItem value="custom">{ar ? "مخصص" : "Custom"}</SelectItem>
+              </SelectContent>
+            </Select>
+            {period === "custom" && (
+              <>
+                <Input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="h-8 w-36 text-[12.5px]"
+                  aria-label={ar ? "من" : "From"}
+                />
+                <Input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="h-8 w-36 text-[12.5px]"
+                  aria-label={ar ? "إلى" : "To"}
+                />
+              </>
+            )}
             {/* Only worth showing once the farm actually has more than one site. */}
             {branches.length > 1 && (
               <Select value={branchScope} onValueChange={setBranchScope}>
@@ -224,6 +302,7 @@ export default function AccountingPage() {
             value={formatCurrency(pl.netIncome)}
             icon={Sigma}
             tone={pl.netIncome >= 0 ? "success" : "destructive"}
+            hint={periodLabel}
           />
         </motion.div>
         <motion.div variants={cardIn}>
@@ -620,7 +699,9 @@ export default function AccountingPage() {
             <Card>
               <div className="px-5 pb-2 pt-4">
                 <CardTitle>{ar ? "قائمة الدخل" : "Income statement"}</CardTitle>
-                <CardDescription>{ar ? "الإيرادات ناقص المصروفات" : "Revenue less expenses"}</CardDescription>
+                <CardDescription>
+                  {ar ? "الإيرادات ناقص المصروفات" : "Revenue less expenses"} · {periodLabel}
+                </CardDescription>
               </div>
               <CardContent className="space-y-1.5 text-[13px]">
                 <Section title={ar ? "الإيرادات" : "Revenue"} />
@@ -648,9 +729,11 @@ export default function AccountingPage() {
               <div className="px-5 pb-2 pt-4">
                 <CardTitle>{ar ? "الميزانية العمومية" : "Balance sheet"}</CardTitle>
                 <CardDescription>
-                  {bs.balanced
+                  {(bs.balanced
                     ? ar ? "الأصول = الخصوم + حقوق الملكية" : "Assets = liabilities + equity"
-                    : ar ? "غير متوازنة!" : "Does not balance!"}
+                    : ar ? "غير متوازنة!" : "Does not balance!")}
+                  {" · "}
+                  {ar ? "حتى" : "as of"} {range.upTo ? formatDate(range.upTo, locale) : ar ? "اليوم" : "today"}
                 </CardDescription>
               </div>
               <CardContent className="space-y-1.5 text-[13px]">
