@@ -73,6 +73,18 @@ service cloud.firestore {
       return isMember(farmId) && permsOf(farmId).hasAny(['*', key, wild]);
     }
 
+    // A farm may WRITE only while its subscription is in good standing. The flag
+    // is server-maintained — createFarm and the Paymob webhook set it, the daily
+    // billingSweep keeps it honest. A missing flag reads as "active", so legacy /
+    // pre-billing tenants and any unexpected shape fail OPEN (a lapsed tenant is
+    // never wrongly locked out of paying; only an explicit "blocked" stops writes).
+    // Reads are never gated on billing — a lapsed farm stays read-only, able to
+    // view and export its own data.
+    function farmActive(farmId) {
+      return get(/databases/$(database)/documents/farms/$(farmId))
+        .data.get('subscription', {}).get('access', 'active') != 'blocked';
+    }
+
     // The org a user belongs to (top-level mapping written server-side).
     function myOrg() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('orgId', '');
@@ -123,18 +135,18 @@ service cloud.firestore {
       // --------------------------- Herd ------------------------------
       match /animals/{animalId} {
         allow read: if isMember(farmId);
-        allow create, update: if hasPerm(farmId, 'animals.write', 'animals.*');
-        allow delete: if hasPerm(farmId, 'animals.delete', 'animals.*');
+        allow create, update: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
+        allow delete: if hasPerm(farmId, 'animals.delete', 'animals.*') && farmActive(farmId);
 
         match /weights/{weightId} {
           allow read: if isMember(farmId);
-          allow write: if isMember(farmId);   // smart scale writes as the handler
+          allow write: if isMember(farmId) && farmActive(farmId);   // smart scale writes as the handler
         }
       }
 
       match /zones/{zoneId} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'animals.write', 'animals.*');
+        allow write: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
       }
 
       // --------------------------- Milk ------------------------------
@@ -143,6 +155,7 @@ service cloud.firestore {
       match /milkRecords/{recordId} {
         allow read: if isMember(farmId);
         allow create: if hasPerm(farmId, 'milk.write', 'milk.*')
+                      && farmActive(farmId)
                       && request.resource.data.volumeL is number
                       && request.resource.data.volumeL >= 0
                       && request.resource.data.volumeL < 80;
@@ -155,43 +168,43 @@ service cloud.firestore {
 
       match /milkDaily/{date} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'milk.write', 'milk.*');
+        allow write: if hasPerm(farmId, 'milk.write', 'milk.*') && farmActive(farmId);
       }
 
       // ------------------------ Clinical -----------------------------
       match /health/{eventId} {
         allow read: if isMember(farmId);
-        allow create, update: if hasPerm(farmId, 'medical.write', 'medical.*');
+        allow create, update: if hasPerm(farmId, 'medical.write', 'medical.*') && farmActive(farmId);
         allow delete: if isOwner(farmId);
       }
 
       match /breeding/{eventId} {
         allow read: if isMember(farmId);
-        allow create, update: if hasPerm(farmId, 'breeding.write', 'breeding.*');
+        allow create, update: if hasPerm(farmId, 'breeding.write', 'breeding.*') && farmActive(farmId);
         allow delete: if isOwner(farmId);
       }
 
       match /semen/{strawId} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'breeding.write', 'breeding.*');
+        allow write: if hasPerm(farmId, 'breeding.write', 'breeding.*') && farmActive(farmId);
       }
 
       // --------------------- Feed & inventory ------------------------
       match /feedItems/{itemId} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'feeding.write', 'feeding.*');
+        allow write: if hasPerm(farmId, 'feeding.write', 'feeding.*') && farmActive(farmId);
       }
       match /rations/{rationId} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'feeding.write', 'feeding.*');
+        allow write: if hasPerm(farmId, 'feeding.write', 'feeding.*') && farmActive(farmId);
       }
       match /feedConsumption/{recordId} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'feeding.write', 'feeding.*');
+        allow write: if hasPerm(farmId, 'feeding.write', 'feeding.*') && farmActive(farmId);
       }
       match /inventory/{itemId} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'inventory.write', 'inventory.*');
+        allow write: if hasPerm(farmId, 'inventory.write', 'inventory.*') && farmActive(farmId);
       }
       // Document-number sequences. Anyone who can create a numbered document may
       // advance its counter; the transaction that does it is the integrity point.
@@ -205,21 +218,21 @@ service cloud.firestore {
       // numbers may change them.
       match /branches/{branchId} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*') && farmActive(farmId);
       }
       match /currencies/{currencyId} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*') && farmActive(farmId);
       }
       match /workOrders/{orderId} {
         allow read: if isMember(farmId);
-        allow create, update: if hasPerm(farmId, 'maintenance.write', 'maintenance.*');
+        allow create, update: if hasPerm(farmId, 'maintenance.write', 'maintenance.*') && farmActive(farmId);
         allow delete: if false;
       }
       // A pen move is a record of what happened, so it isn't edited away.
       match /livestockTransfers/{transferId} {
         allow read: if isMember(farmId);
-        allow create: if hasPerm(farmId, 'animals.write', 'animals.*');
+        allow create: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
         allow update, delete: if false;
       }
       // Transfer requests (طلب تحويل): any member may raise one; approving or
@@ -227,23 +240,23 @@ service cloud.firestore {
       // real, immutable livestockTransfer, which the same permission guards.
       match /transferRequests/{requestId} {
         allow read: if isMember(farmId);
-        allow create: if isMember(farmId);
-        allow update: if hasPerm(farmId, 'animals.write', 'animals.*');
+        allow create: if isMember(farmId) && farmActive(farmId);
+        allow update: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
         allow delete: if false;
       }
       match /warehouses/{warehouseId} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'inventory.write', 'inventory.*');
+        allow write: if hasPerm(farmId, 'inventory.write', 'inventory.*') && farmActive(farmId);
       }
       match /stockMovements/{movementId} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'inventory.write', 'inventory.*');
+        allow write: if hasPerm(farmId, 'inventory.write', 'inventory.*') && farmActive(farmId);
       }
       // Itemised purchase log — an immutable record of what was bought and for
       // how much; drives the Purchases screen's spend analytics.
       match /purchases/{purchaseId} {
         allow read: if hasPerm(farmId, 'inventory.read', 'inventory.*');
-        allow create: if hasPerm(farmId, 'inventory.write', 'inventory.*');
+        allow create: if hasPerm(farmId, 'inventory.write', 'inventory.*') && farmActive(farmId);
         allow update, delete: if false;
       }
 
@@ -254,20 +267,20 @@ service cloud.firestore {
         allow read: if hasPerm(farmId, 'employees.read', 'employees.*')
                     || hasPerm(farmId, 'payroll.read', 'payroll.*')
                     || hasPerm(farmId, 'accounting.read', 'accounting.*');
-        allow write: if hasPerm(farmId, 'employees.manage', 'employees.*');
+        allow write: if hasPerm(farmId, 'employees.manage', 'employees.*') && farmActive(farmId);
       }
 
       match /attendance/{recordId} {
         allow read: if hasPerm(farmId, 'employees.read', 'employees.*')
                     || hasPerm(farmId, 'payroll.read', 'payroll.*')
                     || hasPerm(farmId, 'accounting.read', 'accounting.*');
-        allow create: if isMember(farmId);
-        allow update, delete: if hasPerm(farmId, 'employees.manage', 'employees.*');
+        allow create: if isMember(farmId) && farmActive(farmId);
+        allow update, delete: if hasPerm(farmId, 'employees.manage', 'employees.*') && farmActive(farmId);
       }
 
       match /tasks/{taskId} {
         allow read: if isMember(farmId);
-        allow create, delete: if hasPerm(farmId, 'tasks.write', 'tasks.*');
+        allow create, delete: if hasPerm(farmId, 'tasks.write', 'tasks.*') && farmActive(farmId);
         // A worker may only move a task assigned to them, and only its status.
         allow update: if hasPerm(farmId, 'tasks.write', 'tasks.*')
                       || (isMember(farmId)
@@ -282,22 +295,23 @@ service cloud.firestore {
         allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*')
                     || hasPerm(farmId, 'expenses.read', 'expenses.*')
                     || hasPerm(farmId, 'payroll.read', 'payroll.*');
-        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*')
-                    || hasPerm(farmId, 'expenses.write', 'expenses.*');
+        allow write: if farmActive(farmId)
+                    && (hasPerm(farmId, 'accounting.write', 'accounting.*')
+                        || hasPerm(farmId, 'expenses.write', 'expenses.*'));
       }
       match /invoices/{invoiceId} {
         allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*')
                     || hasPerm(farmId, 'expenses.read', 'expenses.*');
-        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*') && farmActive(farmId);
       }
       match /partners/{partnerId} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*') && farmActive(farmId);
       }
 
       match /assets/{assetId} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*') && farmActive(farmId);
       }
 
       // The books. Reading needs accounting.read (sealed at the DB, not just
@@ -307,21 +321,21 @@ service cloud.firestore {
       // so the audit trail stands.
       match /cheques/{chequeId} {
         allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*');
-        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*') && farmActive(farmId);
         allow delete: if false;
       }
       match /accounts/{accountId} {
         allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*');
-        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*') && farmActive(farmId);
       }
       match /journalEntries/{entryId} {
         allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*');
-        allow create, update: if hasPerm(farmId, 'accounting.write', 'accounting.*');
+        allow create, update: if hasPerm(farmId, 'accounting.write', 'accounting.*') && farmActive(farmId);
         allow delete: if false;
       }
       match /fiscalYears/{yearId} {
         allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*');
-        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
+        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*') && farmActive(farmId);
         allow delete: if false;
       }
 
@@ -339,8 +353,9 @@ service cloud.firestore {
       }
       match /utilities/{readingId} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*')
-                    || hasPerm(farmId, 'org.settings', 'org.*');
+        allow write: if farmActive(farmId)
+                    && (hasPerm(farmId, 'accounting.write', 'accounting.*')
+                        || hasPerm(farmId, 'org.settings', 'org.*'));
       }
 
       // Activity log — append-only. Any member may write an entry for an action
@@ -348,7 +363,7 @@ service cloud.firestore {
       // deletes history.
       match /auditLog/{entryId} {
         allow read: if hasPerm(farmId, 'audit.read', 'audit.*');
-        allow create: if isMember(farmId);
+        allow create: if isMember(farmId) && farmActive(farmId);
         allow update, delete: if false;
       }
     }
