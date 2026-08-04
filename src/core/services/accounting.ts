@@ -21,8 +21,14 @@ import { round } from "@/lib/utils";
  * dependency-free module — so the accounting page can import it without pulling
  * the Firestore adapter (and its SDK) into its bundle. The Firebase adapter
  * re-exports it for its own read bound.
+ *
+ * Capped at 10,000: that is Firestore's hard maximum for a query `limit()`, and
+ * exceeding it makes the query itself throw `invalid-argument` ("Limit value in
+ * the structured query is over the maximum of 10000") — which fails not just
+ * ledger reads but every accounting *write*, since a save reads the ledger to
+ * allocate the next document number.
  */
-export const LEDGER_READ_LIMIT = 20_000;
+export const LEDGER_READ_LIMIT = 10_000;
 
 /** Which side increases this kind of account (طبيعة الحساب). */
 export function normalBalance(type: AccountType): AccountNature {
