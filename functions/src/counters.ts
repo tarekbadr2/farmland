@@ -92,34 +92,52 @@ export const onAnimalWritten = onDocumentWritten(
  * Firestore bills at one read per 1,000 documents — a full 50,000-head recount
  * costs 50 reads, so there is no reason not to run it.
  */
+async function reconcileFarm(farmId: string): Promise<void> {
+  const animals = db.collection(`${farmPath(farmId)}/animals`);
+  const onFarm = animals.where("status", "in", ON_FARM as unknown as string[]);
+  const n = async (q: FirebaseFirestore.Query) => (await q.count().get()).data().count;
+
+  const [total, lactating, dry, calves, pregnant, healthy, bulls] = await Promise.all([
+    n(onFarm),
+    n(onFarm.where("milkStatus", "==", "lactating")),
+    n(onFarm.where("milkStatus", "==", "dry")),
+    n(onFarm.where("isCalf", "==", true)),
+    n(onFarm.where("reproStatus", "==", "pregnant")),
+    n(onFarm.where("healthScore", ">=", 80)),
+    n(onFarm.where("sex", "==", "male").where("isCalf", "==", false)),
+  ]);
+
+  const counts = { total, lactating, dry, calves, pregnant, healthy, bulls, sick: total - healthy };
+  const before = (await db.doc(farmPath(farmId)).get()).data()?.counts ?? {};
+  const drifted = Object.entries(counts).filter(([k, v]) => before[k] !== v);
+  await db.doc(farmPath(farmId)).set({ counts }, { merge: true });
+  if (drifted.length) {
+    logger.warn("counter drift corrected", { farmId, drifted, before, after: counts });
+  }
+}
+
 export const reconcileCounters = onSchedule(
-  { schedule: "every sunday 03:00", timeZone: "Africa/Cairo", region: REGION },
+  // Stopgap for scale: the default 60s timeout dies at ~150 farms while this
+  // loops every farm. Raise the ceiling (9-min cap + more memory) and process
+  // farms in bounded-concurrency batches. TODO before big scale: fan out one
+  // invocation per farm via Cloud Tasks/Pub-Sub instead of one container.
+  {
+    schedule: "every sunday 03:00",
+    timeZone: "Africa/Cairo",
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: "512MiB",
+  },
   async () => {
-    for (const farmId of await allFarmIds()) {
-      const animals = db.collection(`${farmPath(farmId)}/animals`);
-      const onFarm = animals.where("status", "in", ON_FARM as unknown as string[]);
-      const n = async (q: FirebaseFirestore.Query) => (await q.count().get()).data().count;
-
-      const [total, lactating, dry, calves, pregnant, healthy, bulls] = await Promise.all([
-        n(onFarm),
-        n(onFarm.where("milkStatus", "==", "lactating")),
-        n(onFarm.where("milkStatus", "==", "dry")),
-        n(onFarm.where("isCalf", "==", true)),
-        n(onFarm.where("reproStatus", "==", "pregnant")),
-        n(onFarm.where("healthScore", ">=", 80)),
-        n(onFarm.where("sex", "==", "male").where("isCalf", "==", false)),
-      ]);
-
-      const counts = { total, lactating, dry, calves, pregnant, healthy, bulls, sick: total - healthy };
-
-      const before = (await db.doc(farmPath(farmId)).get()).data()?.counts ?? {};
-      const drifted = Object.entries(counts).filter(([k, v]) => before[k] !== v);
-
-      await db.doc(farmPath(farmId)).set({ counts }, { merge: true });
-
-      if (drifted.length) {
-        logger.warn("counter drift corrected", { farmId, drifted, before, after: counts });
-      }
+    const farmIds = await allFarmIds();
+    const BATCH = 12; // bounded concurrency — don't open thousands of queries at once
+    let failed = 0;
+    for (let i = 0; i < farmIds.length; i += BATCH) {
+      const results = await Promise.allSettled(
+        farmIds.slice(i, i + BATCH).map((farmId) => reconcileFarm(farmId)),
+      );
+      failed += results.filter((r) => r.status === "rejected").length;
     }
+    logger.info("counter reconcile complete", { farms: farmIds.length, failed });
   },
 );

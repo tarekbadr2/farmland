@@ -912,7 +912,11 @@ export class DemoFarmRepository implements FarmRepository {
     const inv = this.db.invoices[idx];
 
     const total = invoiceTotal(inv);
-    const paidAmount = round(Math.min(total, (inv.paidAmount ?? 0) + input.amount), 2);
+    // Cap the applied amount to what's outstanding so an overpayment can't drive
+    // the partner's receivable negative (parity with the Firebase adapter).
+    const outstanding = round(Math.max(0, total - (inv.paidAmount ?? 0)), 2);
+    const applied = round(Math.min(Math.max(0, input.amount), outstanding), 2);
+    const paidAmount = round((inv.paidAmount ?? 0) + applied, 2);
     const updated: Invoice = {
       ...inv,
       paidAmount,
@@ -940,7 +944,7 @@ export class DemoFarmRepository implements FarmRepository {
       farmId: this.db.farm.id,
       kind: incoming ? "income" : "expense",
       category,
-      amount: input.amount,
+      amount: applied,
       date: input.date,
       description: `Payment · invoice ${inv.number}`,
       counterpartyId: inv.customerId,

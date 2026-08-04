@@ -581,6 +581,35 @@ describe("demo repository — invoice payment direction", () => {
   });
 });
 
+describe("demo repository — overpayment can't drive receivables negative", () => {
+  it("caps the applied amount and the ledger credit to what's outstanding", async () => {
+    const sale = await repo.saveInvoice({
+      kind: "sale",
+      number: "TEST-OVERPAY",
+      customerId: "partner_x",
+      issuedAt: TODAY,
+      dueAt: TODAY,
+      lines: [{ description: "Milk", qty: 1, unitPrice: 1_000 }],
+      paidAmount: 0,
+      status: "sent",
+    });
+
+    await repo.recordInvoicePayment({ invoiceId: sale.id, amount: 900, date: TODAY, paymentMethod: "cash" });
+    // Overpay: 500 against only 100 outstanding.
+    await repo.recordInvoicePayment({ invoiceId: sale.id, amount: 500, date: TODAY, paymentMethod: "cash" });
+
+    const inv = (await repo.getInvoices()).find((i) => i.id === sale.id)!;
+    expect(inv.status).toBe("paid");
+    expect(inv.paidAmount).toBe(1_000); // never exceeds the total
+
+    // The two payment transactions for this invoice sum to the total, not 1,400.
+    const paid = (await repo.getTransactions())
+      .filter((t) => t.invoiceId === sale.id)
+      .reduce((s, t) => s + t.amount, 0);
+    expect(paid).toBe(1_000);
+  });
+});
+
 describe("demo repository — duplicate same-day payments", () => {
   it("two equal payments on one day both reach the ledger (no id collision)", async () => {
     const sale = await repo.saveInvoice({

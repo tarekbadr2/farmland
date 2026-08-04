@@ -42,18 +42,26 @@ export function computeAccess(sub: Subscription | undefined, now = Date.now()): 
  * silent lapses nobody triggers — a trial that quietly ran out.
  */
 export const billingSweep = onSchedule(
-  { schedule: "30 3 * * *", timeZone: "Africa/Cairo", region: REGION, timeoutSeconds: 300 },
+  // 9-min cap + bounded-concurrency batches so a large tenant count can't make
+  // the sweep time out and silently leave farms un-enforced. TODO before big
+  // scale: fan out per farm via Cloud Tasks/Pub-Sub.
+  { schedule: "30 3 * * *", timeZone: "Africa/Cairo", region: REGION, timeoutSeconds: 540 },
   async () => {
     const now = Date.now();
     const farms = await db.collection("farms").get();
+    const BATCH = 20;
     let changed = 0;
 
-    for (const doc of farms.docs) {
-      const sub = (doc.data() as { subscription?: Subscription }).subscription;
-      const access = computeAccess(sub, now);
-      if (sub?.access === access) continue; // no write when nothing moved
-      await doc.ref.set({ subscription: { ...(sub ?? {}), access } }, { merge: true });
-      changed++;
+    for (let i = 0; i < farms.docs.length; i += BATCH) {
+      await Promise.allSettled(
+        farms.docs.slice(i, i + BATCH).map(async (doc) => {
+          const sub = (doc.data() as { subscription?: Subscription }).subscription;
+          const access = computeAccess(sub, now);
+          if (sub?.access === access) return; // no write when nothing moved
+          await doc.ref.set({ subscription: { ...(sub ?? {}), access } }, { merge: true });
+          changed++;
+        }),
+      );
     }
     logger.info("Billing sweep complete", { farms: farms.size, changed });
   },

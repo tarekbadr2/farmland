@@ -1303,7 +1303,13 @@ export class FirebaseFarmRepository implements FarmRepository {
     const invoice = { id: snap.id, ...snap.data() } as Invoice;
 
     const total = invoiceTotal(invoice);
-    const paidAmount = round(Math.min(total, (invoice.paidAmount ?? 0) + input.amount), 2);
+    // Cap the applied amount to what's still outstanding. The invoice paidAmount
+    // was already capped, but the transaction and the settlement journal entry
+    // used the raw input — overpaying drove the partner's receivable NEGATIVE
+    // (a phantom "farm owes the customer"). Post only what settles the debt.
+    const outstanding = round(Math.max(0, total - (invoice.paidAmount ?? 0)), 2);
+    const applied = round(Math.min(Math.max(0, input.amount), outstanding), 2);
+    const paidAmount = round((invoice.paidAmount ?? 0) + applied, 2);
     const status: Invoice["status"] = paidAmount >= total ? "paid" : "partial";
 
     let partner: Partner | undefined;
@@ -1333,7 +1339,7 @@ export class FirebaseFarmRepository implements FarmRepository {
       farmId: this.farmId,
       kind: incoming ? "income" : "expense",
       category,
-      amount: input.amount,
+      amount: applied,
       date: input.date,
       description: `Payment · invoice ${invoice.number}`,
       counterpartyId: invoice.customerId ?? null,
@@ -1349,7 +1355,7 @@ export class FirebaseFarmRepository implements FarmRepository {
       const settled = { ...invoice, paidAmount, status } as Invoice;
       const settlement = journalEntryFromInvoicePayment(
         settled,
-        input.amount,
+        applied,
         input.date,
         input.paymentMethod,
         accounts,
