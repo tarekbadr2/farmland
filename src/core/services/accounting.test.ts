@@ -212,6 +212,14 @@ describe("nextChildCode", () => {
   it("fills gaps left by deleted accounts", () => {
     expect(nextChildCode("102", ["10201", "10203"])).toBe("10202");
   });
+
+  it("ignores grandchildren when choosing the next direct child", () => {
+    // "1" has direct children 101, 102 (2-digit) and grandchildren like 10101.
+    // The grandchildren must neither set the width nor block a code.
+    expect(nextChildCode("1", ["101", "102", "10101", "10102"])).toBe("103");
+    // Width inferred from the shallowest level (2), not an arbitrary deep sibling.
+    expect(nextChildCode("1", ["10101", "101"])).toBe("102");
+  });
 });
 
 describe("trialBalance", () => {

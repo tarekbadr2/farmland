@@ -214,14 +214,22 @@ export function flattenTree(nodes: AccountNode[]): AccountNode[] {
  * uses 2-digit segments (102 → 10201) keeps doing so, defaulting to 2.
  */
 export function nextChildCode(parentCode: string, siblingCodes: string[], width?: number): string {
-  const kids = siblingCodes.filter((c) => c.startsWith(parentCode) && c.length > parentCode.length);
-  const w = width ?? (kids.length ? kids[0].length - parentCode.length : 2);
-  const taken = new Set(kids);
+  // Every descendant, then the DIRECT children only. `startsWith` also catches
+  // grandchildren (parent "1" matches "1001"), so infer the segment width from
+  // the shallowest descendant level and keep only codes at exactly that depth —
+  // otherwise a grandchild could set the width or block a code.
+  const descendants = siblingCodes.filter(
+    (c) => c.startsWith(parentCode) && c.length > parentCode.length,
+  );
+  const w =
+    width ??
+    (descendants.length ? Math.min(...descendants.map((c) => c.length - parentCode.length)) : 2);
+  const taken = new Set(descendants.filter((c) => c.length - parentCode.length === w));
   for (let n = 1; n < 10 ** w; n++) {
     const candidate = parentCode + String(n).padStart(w, "0");
     if (!taken.has(candidate)) return candidate;
   }
-  return parentCode + String(kids.length + 1);
+  return parentCode + String(taken.size + 1);
 }
 
 /* ------------------------------ Trial balance ------------------------------ */

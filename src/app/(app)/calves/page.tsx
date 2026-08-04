@@ -44,7 +44,7 @@ export default function CalvesPage() {
   const router = useRouter();
   const { t, ln, locale, formatNumber } = useI18n();
   const perDay = locale === "ar" ? "كجم/يوم" : "kg/day";
-  const { data: page, isLoading } = useAnimals({ group: "calves", pageSize: 100000 });
+  const { data: page, isLoading, isError, refetch } = useAnimals({ group: "calves", pageSize: 100000 });
   const { data: zones = [] } = useZones();
   const calves = React.useMemo(() => page?.items ?? [], [page]);
 
@@ -280,6 +280,8 @@ export default function CalvesPage() {
               columns={columns}
               rows={enriched}
               loading={isLoading}
+              error={isError}
+              onRetry={() => refetch()}
               onRowClick={(c) => router.push(`/animal?id=${c.id}`)}
               mobileCard={(c) => (
                 <div>

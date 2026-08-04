@@ -46,7 +46,7 @@ import { Can } from "@/lib/auth/guard";
 export default function HealthPage() {
   const router = useRouter();
   const { t, ln, locale, formatNumber, formatCurrency } = useI18n();
-  const { data: events = [], isLoading } = useHealth();
+  const { data: events = [], isLoading, isError, refetch } = useHealth();
   const { data: animalPage } = useAnimals({ pageSize: 100000 });
   const animals = React.useMemo(() => animalPage?.items ?? [], [animalPage]);
 
@@ -288,6 +288,8 @@ export default function HealthPage() {
                   columns={caseColumns}
                   rows={activeCases.slice(0, 50)}
                   loading={isLoading}
+                  error={isError}
+                  onRetry={() => refetch()}
                   onRowClick={(e) => router.push(`/animal?id=${e.animalId}`)}
                   mobileCard={(e) => (
                     <div>

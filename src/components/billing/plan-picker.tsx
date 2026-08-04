@@ -60,6 +60,10 @@ export function PlanPicker({
       } else {
         toast.error(ar ? "تعذّر بدء الدفع. حاول مرة أخرى." : "Couldn't start checkout. Try again.");
       }
+    } catch {
+      // A thrown network/auth error would otherwise leave the button spinning
+      // with no feedback.
+      toast.error(ar ? "تعذّر بدء الدفع. تحقّق من اتصالك." : "Couldn't start checkout — check your connection.");
     } finally {
       setPending(null);
     }

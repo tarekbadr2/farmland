@@ -48,7 +48,7 @@ import type { FeedItem } from "@/core/domain/types";
 
 export default function FeedPage() {
   const { t, ln, locale, formatNumber, formatCurrency, formatCompact } = useI18n();
-  const { data: items = [], isLoading } = useFeedItems();
+  const { data: items = [], isLoading, isError, refetch } = useFeedItems();
   const { data: rations = [] } = useRations();
   const { data: consumption = [] } = useFeedConsumption();
   const { data: daily = [] } = useMilkDaily();
@@ -361,6 +361,8 @@ export default function FeedPage() {
                   columns={columns}
                   rows={items}
                   loading={isLoading}
+                  error={isError}
+                  onRetry={() => refetch()}
                   mobileCard={(i) => (
                     <div>
                       <div className="flex items-center justify-between gap-2">
