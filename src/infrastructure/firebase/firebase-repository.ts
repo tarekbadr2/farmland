@@ -721,7 +721,9 @@ export class FirebaseFarmRepository implements FarmRepository {
       where("date", ">=", from),
       orderBy("date", "asc"),
     );
-    return list;
+    // Derive totalL from the session fields so it's always correct even when the
+    // morning and evening sessions were written by different (offline) devices.
+    return list.map((p) => ({ ...p, totalL: round((p.morningL ?? 0) + (p.eveningL ?? 0), 1) }));
   }
 
   getMilkRecords = (date: string) =>
@@ -776,17 +778,18 @@ export class FirebaseFarmRepository implements FarmRepository {
     } catch {
       prev = {}; // offline with nothing cached for this date → start at zero
     }
-    const morningL = session === "morning" ? sessionTotal : (prev.morningL ?? 0);
-    const eveningL = session === "evening" ? sessionTotal : (prev.eveningL ?? 0);
-
+    // Write ONLY this session's own volume field. Recording the morning must not
+    // zero an evening session another (offline) tablet already saved — writing a
+    // recomputed morningL+eveningL+totalL from a stale/empty `prev` was exactly
+    // that last-write-wins data loss. totalL is derived on read (getMilkDaily),
+    // so it's always the sum of whichever sessions have landed, in any order.
+    const sessionField = session === "morning" ? "morningL" : "eveningL";
     batch.set(
       dailyRef,
       {
         farmId: this.farmId,
         date,
-        morningL: round(morningL, 1),
-        eveningL: round(eveningL, 1),
-        totalL: round(morningL + eveningL, 1),
+        [sessionField]: round(sessionTotal, 1),
         rejectedL: round((prev.rejectedL ?? 0) + rejected, 1),
         avgFat: input.fatPct ?? prev.avgFat ?? 0,
         avgProtein: input.proteinPct ?? prev.avgProtein ?? 0,

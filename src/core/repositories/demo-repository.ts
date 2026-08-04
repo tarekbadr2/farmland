@@ -553,7 +553,12 @@ export class DemoFarmRepository implements FarmRepository {
     return tick(this.db.animals[idx]);
   }
 
-  getMilkDaily = (days = 730) => tick(this.db.milkDaily.slice(-days));
+  getMilkDaily = (days = 730) =>
+    tick(
+      this.db.milkDaily
+        .slice(-days)
+        .map((p) => ({ ...p, totalL: round((p.morningL ?? 0) + (p.eveningL ?? 0), 1) })),
+    );
 
   async getMilkRecords(date: string) {
     const lactating = this.db.animals.filter((a) => a.milkStatus === "lactating");
