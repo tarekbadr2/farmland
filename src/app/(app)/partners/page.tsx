@@ -29,7 +29,7 @@ const KIND_META: Record<PartnerKind, { icon: typeof Milk; labelKey: "partners.mi
 
 export default function PartnersPage() {
   const { t, ln, locale, formatNumber, formatCurrency, formatCompact } = useI18n();
-  const { data: partners = [], isLoading } = usePartners();
+  const { data: partners = [], isLoading, isError, refetch } = usePartners();
   const { data: invoices = [] } = useInvoices();
 
   const receivable = sum(partners.filter((p) => p.balance > 0).map((p) => p.balance));
@@ -187,6 +187,8 @@ export default function PartnersPage() {
                     columns={columns}
                     rows={key === "all" ? partners : partners.filter((p) => p.kind === key)}
                     loading={isLoading}
+                    error={isError}
+                    onRetry={() => refetch()}
                     mobileCard={(p) => (
                       <div className="flex items-center gap-3">
                         <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">

@@ -51,7 +51,7 @@ import type { InventoryItem, StockMovement } from "@/core/domain/types";
 
 export default function InventoryPage() {
   const { t, ln, locale, formatNumber, formatCurrency, formatCompact } = useI18n();
-  const { data: items = [], isLoading } = useInventory();
+  const { data: items = [], isLoading, isError, refetch } = useInventory();
   const { data: movements = [] } = useMovements();
   const { data: warehouses = [] } = useWarehouses();
   const [ledgerItem, setLedgerItem] = React.useState<InventoryItem | null>(null);
@@ -392,6 +392,8 @@ export default function InventoryPage() {
                   columns={columns}
                   rows={filtered}
                   loading={isLoading}
+                  error={isError}
+                  onRetry={() => refetch()}
                   onRowClick={setLedgerItem}
                   mobileCard={(i) => (
                     <div>

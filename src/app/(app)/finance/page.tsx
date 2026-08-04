@@ -41,7 +41,7 @@ import type { Invoice, Transaction } from "@/core/domain/types";
 export default function FinancePage() {
   const { t, ln, locale, formatNumber, formatCurrency, formatCompact } = useI18n();
   const ar = locale === "ar";
-  const { data: txns = [], isLoading } = useTransactions();
+  const { data: txns = [], isLoading, isError, refetch } = useTransactions();
   const { data: invoices = [] } = useInvoices();
   const { data: partners = [] } = usePartners();
   const { data: daily = [] } = useMilkDaily();
@@ -429,6 +429,8 @@ export default function FinancePage() {
                   columns={txnColumns}
                   rows={[...txns].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 60)}
                   loading={isLoading}
+                  error={isError}
+                  onRetry={() => refetch()}
                   mobileCard={(x) => (
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">

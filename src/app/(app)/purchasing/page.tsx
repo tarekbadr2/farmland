@@ -41,7 +41,7 @@ import type { Purchase } from "@/core/domain/types";
 export default function PurchasingPage() {
   const { t, locale, formatCurrency, formatNumber, formatCompact } = useI18n();
   const ar = locale === "ar";
-  const { data: purchases = [], isLoading } = usePurchases();
+  const { data: purchases = [], isLoading, isError, refetch } = usePurchases();
   const { data: partners = [] } = usePartners();
   const { data: warehouses = [] } = useWarehouses();
 
@@ -277,7 +277,7 @@ export default function PurchasingPage() {
         <div className="px-5 pb-1 pt-4">
           <CardTitle className="text-[14px]">{ar ? "سجل المشتريات" : "Purchase log"}</CardTitle>
         </div>
-        <DataTable columns={columns} rows={purchases} loading={isLoading} pageSize={20} />
+        <DataTable columns={columns} rows={purchases} loading={isLoading} error={isError} onRetry={() => refetch()} pageSize={20} />
       </Card>
     </>
   );
