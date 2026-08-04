@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:rules": "firebase emulators:exec --only firestore \"vitest run firestore-rules\"",
     "seed": "tsx scripts/seed-firestore.mjs",
     "seed:dry": "tsx scripts/seed-firestore.mjs --dry-run",
     "seed:reset": "tsx scripts/seed-firestore.mjs --wipe",
