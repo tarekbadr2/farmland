@@ -300,25 +300,27 @@ service cloud.firestore {
         allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
       }
 
-      // The books. Any member may read them; only the people who own the
-      // numbers may write. Deleting a posted entry is never allowed — the
-      // ledger is corrected with a reversing entry, so the audit trail stands.
+      // The books. Reading needs accounting.read (sealed at the DB, not just
+      // hidden in the UI — a farm hand can't pull the ledger by going around the
+      // app); only the people who own the numbers may write. Deleting a posted
+      // entry is never allowed — the ledger is corrected with a reversing entry,
+      // so the audit trail stands.
       match /cheques/{chequeId} {
-        allow read: if isMember(farmId);
+        allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*');
         allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
         allow delete: if false;
       }
       match /accounts/{accountId} {
-        allow read: if isMember(farmId);
+        allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*');
         allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
       }
       match /journalEntries/{entryId} {
-        allow read: if isMember(farmId);
+        allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*');
         allow create, update: if hasPerm(farmId, 'accounting.write', 'accounting.*');
         allow delete: if false;
       }
       match /fiscalYears/{yearId} {
-        allow read: if isMember(farmId);
+        allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*');
         allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*');
         allow delete: if false;
       }
