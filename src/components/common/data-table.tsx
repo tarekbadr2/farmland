@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Inbox } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Inbox, TriangleAlert } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -43,6 +43,8 @@ export function DataTable<T extends { id: string }>({
   mobileCard,
   emptyLabel,
   emptyHint,
+  error,
+  onRetry,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -58,8 +60,13 @@ export function DataTable<T extends { id: string }>({
   mobileCard?: (row: T) => React.ReactNode;
   emptyLabel?: string;
   emptyHint?: string;
+  /** The query failed — show a distinct error state, never an empty one (an
+   *  errored list that looks empty reads as data loss). */
+  error?: boolean;
+  onRetry?: () => void;
 }) {
-  const { t, formatNumber } = useI18n();
+  const { t, locale, formatNumber } = useI18n();
+  const ar = locale === "ar";
   const totalPages = total && pageSize ? Math.max(1, Math.ceil(total / pageSize)) : 1;
 
   if (loading) {
@@ -68,6 +75,29 @@ export function DataTable<T extends { id: string }>({
         {Array.from({ length: 8 }).map((_, i) => (
           <Skeleton key={i} className="h-11 w-full" />
         ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+        <span className="flex size-11 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
+          <TriangleAlert className="size-5" />
+        </span>
+        <p className="text-[14px] font-medium">
+          {ar ? "تعذّر تحميل البيانات" : "Couldn't load this data"}
+        </p>
+        <p className="max-w-xs text-[12px] text-muted-foreground">
+          {ar
+            ? "هذه ليست قائمة فارغة — فشل التحميل. تحقّق من الاتصال."
+            : "This isn't empty — the load failed. Check your connection."}
+        </p>
+        {onRetry && (
+          <Button variant="outline" size="sm" onClick={onRetry} className="mt-1">
+            {ar ? "إعادة المحاولة" : "Retry"}
+          </Button>
+        )}
       </div>
     );
   }

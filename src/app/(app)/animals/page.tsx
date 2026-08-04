@@ -70,7 +70,7 @@ export default function AnimalsPage() {
     return () => clearTimeout(id);
   }, [search]);
 
-  const { data: allAnimals, isLoading } = useAnimals({ pageSize: 100000 });
+  const { data: allAnimals, isLoading, isError, refetch } = useAnimals({ pageSize: 100000 });
   const all = React.useMemo(() => allAnimals?.items ?? [], [allAnimals?.items]);
   // The list is the LIVE herd (active + quarantine). Sold/dead animals leave the
   // herd and drop off this view; their records stay in reports and the sales
@@ -473,6 +473,8 @@ export default function AnimalsPage() {
           columns={columns}
           rows={pageItems}
           loading={isLoading}
+          error={isError}
+          onRetry={() => refetch()}
           onRowClick={(a) => router.push(`/animal?id=${a.id}`)}
           sortKey={sortBy}
           sortDir={sortDir}
