@@ -121,6 +121,47 @@ export default function AccountingPage() {
     () => balanceSheet(accounts, entries, { upTo: range.upTo }),
     [accounts, entries, range],
   );
+
+  // The equivalent window immediately before the current one, for comparison.
+  // Calendar periods shift by their unit (month/quarter/year, same day-of); a
+  // custom window shifts back by its own length. "All time" has no prior.
+  const prevRange = React.useMemo((): { from?: string; upTo?: string } | null => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const parse = (s?: string) => {
+      if (!s) return null;
+      const [y, m, d] = s.split("-").map(Number);
+      return new Date(y, m - 1, d);
+    };
+    const shift = (months: number, years: number) => {
+      const f = parse(range.from);
+      const t = parse(range.upTo);
+      if (!f || !t) return null;
+      f.setFullYear(f.getFullYear() + years);
+      f.setMonth(f.getMonth() + months);
+      t.setFullYear(t.getFullYear() + years);
+      t.setMonth(t.getMonth() + months);
+      return { from: ymd(f), upTo: ymd(t) };
+    };
+    if (period === "month") return shift(-1, 0);
+    if (period === "quarter") return shift(-3, 0);
+    if (period === "year") return shift(0, -1);
+    if (period === "custom") {
+      const f = parse(range.from);
+      const t = parse(range.upTo);
+      if (!f || !t) return null;
+      const days = Math.round((t.getTime() - f.getTime()) / 86_400_000);
+      const prevUpTo = new Date(f.getTime() - 86_400_000);
+      const prevFrom = new Date(prevUpTo.getTime() - days * 86_400_000);
+      return { from: ymd(prevFrom), upTo: ymd(prevUpTo) };
+    }
+    return null; // "all time"
+  }, [period, range]);
+
+  const plPrev = React.useMemo(
+    () => (prevRange ? incomeStatement(accounts, entries, prevRange) : null),
+    [accounts, entries, prevRange],
+  );
   const { data: partners = [] } = usePartners();
   const { data: cheques = [] } = useCheques();
   const partnerName = (id?: string) => {
@@ -722,6 +763,34 @@ export default function AccountingPage() {
                     {formatCurrency(pl.netIncome)}
                   </span>
                 </div>
+
+                {plPrev && (
+                  <div className="mt-3 space-y-1 rounded-lg border border-border/70 bg-muted/30 p-2.5">
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {ar ? "مقارنة بالفترة السابقة" : "vs previous period"}
+                    </p>
+                    {[
+                      { k: ar ? "الإيرادات" : "Revenue", cur: pl.totalRevenue, prev: plPrev.totalRevenue, goodUp: true },
+                      { k: ar ? "المصروفات" : "Expenses", cur: pl.totalExpenses, prev: plPrev.totalExpenses, goodUp: false },
+                      { k: ar ? "صافي الربح" : "Net income", cur: pl.netIncome, prev: plPrev.netIncome, goodUp: true },
+                    ].map((r) => {
+                      const up = r.cur - r.prev >= 0;
+                      const pct = r.prev !== 0 ? Math.round(((r.cur - r.prev) / Math.abs(r.prev)) * 100) : null;
+                      const favorable = up === r.goodUp;
+                      return (
+                        <div key={r.k} className="flex items-center justify-between gap-2 text-[12px]">
+                          <span className="text-muted-foreground">{r.k}</span>
+                          <span className="flex items-center gap-2.5">
+                            <span className="tabular-nums text-muted-foreground/70">{formatCurrency(r.prev)}</span>
+                            <span className={cn("w-16 text-end tabular-nums font-medium", favorable ? "text-primary" : "text-destructive")}>
+                              {up ? "▲" : "▼"} {pct === null ? "—" : `${Math.abs(pct)}%`}
+                            </span>
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
