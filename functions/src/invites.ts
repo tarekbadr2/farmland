@@ -22,24 +22,40 @@ function newToken(): string {
   return randomBytes(24).toString("base64url");
 }
 
-/** The caller's org + whether they may manage members in it. */
-async function callerOrgAccess(uid: string): Promise<{ orgId: string; canInvite: boolean }> {
+interface OrgAccess {
+  orgId: string;
+  canInvite: boolean;
+  isOrgOwner: boolean;
+  /** The specific farms this caller may add members to (not just any org farm). */
+  manageableFarmIds: Set<string>;
+}
+
+/** The caller's org + exactly which farms they may manage members on. */
+async function callerOrgAccess(uid: string): Promise<OrgAccess> {
   const userSnap = await db.doc(`users/${uid}`).get();
   const u = userSnap.data() ?? {};
   const orgId: string = u.orgId ?? "";
-  if (!orgId) return { orgId, canInvite: false };
+  const empty: OrgAccess = { orgId, canInvite: false, isOrgOwner: false, manageableFarmIds: new Set() };
+  if (!orgId) return empty;
 
+  // The org owner manages every farm in the org.
   const orgSnap = await db.doc(`orgs/${orgId}`).get();
-  if (orgSnap.data()?.ownerId === uid) return { orgId, canInvite: true };
+  if (orgSnap.data()?.ownerId === uid) {
+    const orgFarms = await db.collection("farms").where("orgId", "==", orgId).get();
+    const all = new Set(orgFarms.docs.map((d) => d.id));
+    return { orgId, canInvite: true, isOrgOwner: true, manageableFarmIds: all };
+  }
 
-  // Otherwise: hold org.members (or *) on any of their farms.
+  // Otherwise: only the farms where THIS caller holds org.members (or *). A
+  // manager of farm A must not be able to add members to farm B.
   const farmIds: string[] = Array.isArray(u.farmIds) ? u.farmIds : u.farmId ? [u.farmId] : [];
+  const manageable = new Set<string>();
   for (const farmId of farmIds) {
     const m = await db.doc(`farms/${farmId}/members/${uid}`).get();
     const perms: string[] = m.data()?.permissions ?? [];
-    if (perms.includes("*") || perms.includes("org.members")) return { orgId, canInvite: true };
+    if (perms.includes("*") || perms.includes("org.members")) manageable.add(farmId);
   }
-  return { orgId, canInvite: false };
+  return { orgId, canInvite: manageable.size > 0, isOrgOwner: false, manageableFarmIds: manageable };
 }
 
 /** List the org's still-pending invites (for the Team screen). */
@@ -84,7 +100,7 @@ export const createInvite = onCall({ region: REGION }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in first.");
 
-  const { orgId, canInvite } = await callerOrgAccess(uid);
+  const { orgId, canInvite, isOrgOwner, manageableFarmIds } = await callerOrgAccess(uid);
   if (!orgId) throw new HttpsError("failed-precondition", "No organization for this account.");
   if (!canInvite) throw new HttpsError("permission-denied", "You can't invite members.");
 
@@ -98,13 +114,18 @@ export const createInvite = onCall({ region: REGION }, async (req) => {
     throw new HttpsError("invalid-argument", "A valid email is required.");
   }
   if (!isKnownRole(role)) throw new HttpsError("invalid-argument", "Unknown role.");
+  // Only the org owner may mint another owner — a manager can't invite an owner.
+  if (role === "owner" && !isOrgOwner) {
+    throw new HttpsError("permission-denied", "Only the organization owner can invite an owner.");
+  }
   if (farmIds.length === 0) throw new HttpsError("invalid-argument", "Assign at least one farm.");
 
-  // Only farms in the caller's org may be assigned.
+  // Only farms THIS caller may manage — not just any farm in the org.
+  const assigned = farmIds.filter((f) => manageableFarmIds.has(f));
+  if (assigned.length === 0) {
+    throw new HttpsError("permission-denied", "You can't add members to those farms.");
+  }
   const orgFarms = await db.collection("farms").where("orgId", "==", orgId).get();
-  const orgFarmIds = new Set(orgFarms.docs.map((d) => d.id));
-  const assigned = farmIds.filter((f) => orgFarmIds.has(f));
-  if (assigned.length === 0) throw new HttpsError("invalid-argument", "No valid farms.");
 
   // Seat limit: each plan tier includes a fixed number of team seats. Members
   // and outstanding invites both hold a seat. Only enforced once billing is on

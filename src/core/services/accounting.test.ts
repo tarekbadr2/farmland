@@ -741,6 +741,13 @@ describe("nextSequence", () => {
   it("ignores malformed or foreign numbers rather than throwing", () => {
     expect(nextSequence(["JV-bad", "OTHER-2026-0099", "JV-2026-0005"], "JV")).toBe(6);
   });
+
+  it("scopes to the year so each year restarts at 1", () => {
+    const nums = ["INV-2025-4520", "INV-2026-0003", "INV-2026-0001"];
+    expect(nextSequence(nums, "INV", "2026")).toBe(4); // only 2026's numbers, max 3
+    expect(nextSequence(nums, "INV", "2027")).toBe(1); // no 2027 yet → starts at 1
+    expect(nextSequence(nums, "INV")).toBe(4521); // unscoped keeps the old cross-year behaviour
+  });
 });
 
 describe("isIncomingInvoice", () => {

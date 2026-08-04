@@ -90,7 +90,7 @@ export function VoucherDialog({ kind, trigger }: { kind: VoucherKind; trigger: R
   const submit = async () => {
     if (!canSave) return;
     // Counting would re-issue the same number once the ledger read is capped.
-    const seq = nextSequence(entries.map((e) => e.number), receipt ? "RV" : "PV");
+    const seq = nextSequence(entries.map((e) => e.number), receipt ? "RV" : "PV", date.slice(0, 4));
     const number = voucherNumber(kind, date, seq);
     const built = journalEntryFromVoucher(
       { kind, date, amount: value, treasuryAccountId, counterAccountId, description: description.trim(), partnerId: partnerId || undefined },

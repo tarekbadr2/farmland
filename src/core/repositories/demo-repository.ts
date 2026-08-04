@@ -797,7 +797,7 @@ export class DemoFarmRepository implements FarmRepository {
     const entry = journalEntryFromTransaction(
       txn,
       this.db.accounts,
-      journalNumber(txn.date, nextSequence(this.db.journalEntries.map((e) => e.number), "JV")),
+      journalNumber(txn.date, nextSequence(this.db.journalEntries.map((e) => e.number), "JV", txn.date.slice(0, 4))),
     );
     if (!entry) return; // chart is missing an account — leave the books untouched
     const idx = this.db.journalEntries.findIndex((e) => e.sourceId === txn.id);
@@ -893,7 +893,7 @@ export class DemoFarmRepository implements FarmRepository {
       invoiceDocNumber(
         kind,
         invoice.issuedAt,
-        nextSequence(this.db.invoices.map((i) => i.number), invoiceSeries(kind)),
+        nextSequence(this.db.invoices.map((i) => i.number), invoiceSeries(kind), invoice.issuedAt.slice(0, 4)),
       ),
       invoiceTotal(invoice),
     );
@@ -974,6 +974,7 @@ export class DemoFarmRepository implements FarmRepository {
         nextSequence(
           this.db.journalEntries.map((e) => e.number),
           isIncomingInvoice(updated.kind) ? "RV" : "PV",
+          input.date.slice(0, 4),
         ),
       ),
     );
@@ -1160,7 +1161,7 @@ export class DemoFarmRepository implements FarmRepository {
       farmId: this.db.farm.id,
       number:
         order.number ??
-        workOrderNumber(order.date, nextSequence(this.db.workOrders.map((w) => w.number), "WO")),
+        workOrderNumber(order.date, nextSequence(this.db.workOrders.map((w) => w.number), "WO", order.date.slice(0, 4))),
     } as WorkOrder;
     this.db.workOrders.unshift(created);
     return tick(created);
@@ -1251,7 +1252,7 @@ export class DemoFarmRepository implements FarmRepository {
       farmId: this.db.farm.id,
       number: transferNumber(
         input.date,
-        nextSequence(this.db.livestockTransfers.map((t) => t.number), "LT"),
+        nextSequence(this.db.livestockTransfers.map((t) => t.number), "LT", input.date.slice(0, 4)),
       ),
       date: input.date,
       // Blank when they came from different pens, rather than misreporting one.
@@ -1433,6 +1434,7 @@ export class DemoFarmRepository implements FarmRepository {
         nextSequence(
           this.db.journalEntries.map((e) => e.number),
           cheque.kind === "receivable" ? "CR" : "CP",
+          (opts.date ?? cheque.dueDate).slice(0, 4),
         ),
       ),
       opts,
@@ -1539,7 +1541,7 @@ export class DemoFarmRepository implements FarmRepository {
       farmId: this.db.farm.id,
       number:
         entry.number ??
-        journalNumber(entry.date, nextSequence(this.db.journalEntries.map((e) => e.number), "JV")),
+        journalNumber(entry.date, nextSequence(this.db.journalEntries.map((e) => e.number), "JV", entry.date.slice(0, 4))),
       createdAt: new Date().toISOString(),
     } as JournalEntry;
     this.db.journalEntries.unshift(created);

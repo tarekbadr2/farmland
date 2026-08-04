@@ -49,7 +49,12 @@ export function getFirebase() {
     // Offline-first: the parlor and the pens have no reliable signal, and two
     // tabs open on the office desktop must not fight over the same cache.
     db = initializeFirestore(app, {
-      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+      // Bound the on-device cache (default is effectively unbounded here) so a
+      // large farm's dataset can't grow IndexedDB without limit; LRU evicts.
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+        cacheSizeBytes: 80 * 1024 * 1024,
+      }),
     });
     auth = getAuth(app);
     storage = getStorage(app);

@@ -432,10 +432,17 @@ export function journalEntryFromInvoicePayment(
  * same second can collide. A counter document in a transaction is the complete
  * answer; this closes the systematic failure, not the racy one.
  */
-export function nextSequence(existingNumbers: (string | undefined)[], prefix: string): number {
+export function nextSequence(
+  existingNumbers: (string | undefined)[],
+  prefix: string,
+  year?: string,
+): number {
+  // Numbers are PREFIX-YEAR-SEQ. Scoping to the year makes each year restart at
+  // 1 (INV-2026-0001), instead of the first 2026 invoice inheriting 2025's count.
+  const scope = year ? `${prefix}-${year}-` : `${prefix}-`;
   let highest = 0;
   for (const number of existingNumbers) {
-    if (!number || !number.startsWith(`${prefix}-`)) continue;
+    if (!number || !number.startsWith(scope)) continue;
     const suffix = Number(number.slice(number.lastIndexOf("-") + 1));
     if (Number.isFinite(suffix) && suffix > highest) highest = suffix;
   }
