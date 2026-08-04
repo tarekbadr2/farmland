@@ -11,6 +11,11 @@ import { WebDownloadBanner } from "@/components/shell/web-download-banner";
 import { TrialBanner } from "@/components/billing/trial-banner";
 import { DesktopAlerts } from "@/components/shell/desktop-alerts";
 import { RouteGuard } from "@/lib/auth/guard";
+import type { Metadata } from "next";
+
+// The authenticated app is private — keep every route in this group out of
+// search indexes (the marketing pages stay indexable).
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (

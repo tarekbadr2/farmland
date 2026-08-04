@@ -231,16 +231,25 @@ const milkDrop: Detector = async (farmId, today) => {
     updates.push({ id: doc.id, baseline: round(baseline * 0.8 + daily * 0.2, 2) });
   }
 
-  for (let i = 0; i < updates.length; i += 400) {
-    const batch = db.batch();
-    for (const u of updates.slice(i, i + 400)) {
-      batch.set(
-        db.doc(`${farmPath(farmId)}/animals/${u.id}`),
-        { milkBaselineL: u.baseline },
-        { merge: true },
-      );
+  // The baseline EWMA update is NOT idempotent — a double-fire or a manual
+  // re-run would decay each baseline twice toward the same day and drift it.
+  // Guard the writes with a per-farm daily marker; the alerts above are
+  // recomputed from scratch every run and stay correct regardless.
+  const farmRef = db.doc(farmPath(farmId));
+  const alreadyUpdated = (await farmRef.get()).data()?.milkBaselineUpdatedFor === today;
+  if (!alreadyUpdated) {
+    for (let i = 0; i < updates.length; i += 400) {
+      const batch = db.batch();
+      for (const u of updates.slice(i, i + 400)) {
+        batch.set(
+          db.doc(`${farmPath(farmId)}/animals/${u.id}`),
+          { milkBaselineL: u.baseline },
+          { merge: true },
+        );
+      }
+      await batch.commit();
     }
-    await batch.commit();
+    await farmRef.set({ milkBaselineUpdatedFor: today }, { merge: true });
   }
 
   return alerts;

@@ -17,13 +17,29 @@ const arabic = IBM_Plex_Sans_Arabic({
   display: "swap",
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://farmland-ruddy.vercel.app";
+const SITE_DESC =
+  "Enterprise herd management for buffalo dairies: milk, breeding, health, feed, finance and analytics in one system.";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "Herd OS — Buffalo Farm Management",
     template: "%s · Herd OS",
   },
-  description:
-    "Enterprise herd management for buffalo dairies: milk, breeding, health, feed, finance and analytics in one system.",
+  description: SITE_DESC,
+  openGraph: {
+    type: "website",
+    siteName: "Herd OS",
+    title: "Herd OS — Buffalo Farm Management",
+    description: SITE_DESC,
+    url: SITE_URL,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Herd OS — Buffalo Farm Management",
+    description: SITE_DESC,
+  },
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Herd OS" },
   icons: {

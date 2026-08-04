@@ -1006,8 +1006,22 @@ export class FirebaseFarmRepository implements FarmRepository {
           await this.allocateSequence("JV", txn.date.slice(0, 4), nextSequence((await this.getJournalEntries()).map((e) => e.number), "JV", txn.date.slice(0, 4))),
         );
       await setDoc(ref, omitUndefined({ ...entry, number }), { merge: true });
-    } catch {
-      // Best-effort: the transaction is already saved.
+      // Clear any prior failure flag now that it posted.
+      await setDoc(
+        doc(this.db, paths.transactions(this.farmId), txn.id),
+        { postingFailed: deleteField() },
+        { merge: true },
+      ).catch(() => {});
+    } catch (e) {
+      // The money row is saved, but it did NOT reach the ledger. Don't swallow
+      // it silently — flag the source so a reconcile pass / banner can surface
+      // "N transactions not posted" instead of the books drifting invisibly.
+      console.error("[autoPost] ledger posting failed", e);
+      await setDoc(
+        doc(this.db, paths.transactions(this.farmId), txn.id),
+        { postingFailed: true },
+        { merge: true },
+      ).catch(() => {});
     }
   }
 
