@@ -18,4 +18,5 @@ export { claimMembership, createFarm } from "./members";
 export { createInvite, getInvite, acceptInvite, listOrgInvites, revokeOrgInvite } from "./invites";
 export { nightlyFirestoreBackup } from "./backup";
 export { trialEndingReminders } from "./reminders";
+export { billingSweep } from "./billing-sweep";
 export { onJournalEntryWritten } from "./ledger";

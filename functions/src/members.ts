@@ -116,6 +116,7 @@ export const createFarm = onCall({ region: REGION }, async (req) => {
       currentPeriodEnd: null,
       provider: null,
       providerRef: null,
+      access: "active", // server-maintained write-gate flag (see billing-sweep)
     },
     aiUsage: { month: nowIso.slice(0, 7), count: 0 },
   });

@@ -65,6 +65,7 @@ export async function POST(req: Request) {
         currentPeriodEnd: new Date(now.getTime() + PERIOD_MS).toISOString(),
         provider: "paymob",
         providerRef: String(obj.id ?? ""),
+        access: "active", // unblock immediately on payment; the sweep keeps it honest
       },
     },
     { merge: true },
