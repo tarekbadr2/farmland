@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { verifyBearer, adminDb } from "@/lib/server/firebase-admin";
-import { resolveUserFarmId } from "@/lib/server/resolve-farm";
+import { resolveUserFarmId, canManageBilling } from "@/lib/server/resolve-farm";
 import type { Farm } from "@/core/domain/types";
 
 /**
@@ -50,6 +50,10 @@ export async function POST(req: Request) {
   const userSnap = await db.doc(`users/${caller.uid}`).get();
   const farmId = userSnap.exists ? resolveUserFarmId(userSnap.data()) : null;
   if (!farmId) return json({ error: "no-farm" }, { status: 400 });
+
+  // Billing is an owner/settings action — a worker can't cancel the plan.
+  const memberSnap = await db.doc(`farms/${farmId}/members/${caller.uid}`).get();
+  if (!canManageBilling(memberSnap.data())) return json({ error: "forbidden" }, { status: 403 });
 
   const farmRef = db.doc(`farms/${farmId}`);
   const farmSnap = await farmRef.get();

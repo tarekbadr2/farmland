@@ -17,3 +17,15 @@ export function resolveUserFarmId(data: Record<string, unknown> | undefined | nu
       : null;
   return scalar ?? preferred ?? first ?? null;
 }
+
+/**
+ * May this member change billing (checkout / cancel / plan change)? Owner or a
+ * settings-admin only — a plain worker must not be able to cancel the farm's
+ * subscription or downgrade its plan through the admin-credentialed routes.
+ */
+export function canManageBilling(memberData: Record<string, unknown> | undefined | null): boolean {
+  if (!memberData) return false;
+  if (memberData.role === "owner") return true;
+  const perms = Array.isArray(memberData.permissions) ? (memberData.permissions as string[]) : [];
+  return perms.includes("*") || perms.includes("org.settings") || perms.includes("org.*");
+}
