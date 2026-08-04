@@ -99,11 +99,15 @@ export function JournalEntryDialog({ trigger }: { trigger: React.ReactNode }) {
       const msg = e instanceof Error ? e.message : String(e);
       const detail = msg.slice(0, 300);
       toast.error(
-        msg === "year-closed"
-          ? ar ? "السنة المالية مغلقة." : "That fiscal year is closed."
-          : msg === "unbalanced"
-            ? ar ? "القيد غير متوازن." : "The entry doesn't balance."
-            : ar ? `تعذّر الحفظ: ${detail}` : `Couldn't save that: ${detail}`,
+        msg === "offline-needs-connection"
+          ? ar
+            ? "أنت غير متصل — أعد الاتصال لتسجيل هذا القيد. تُحفظ بقية التغييرات دون اتصال."
+            : "You're offline — reconnect to post this entry. Everything else saves offline."
+          : msg === "year-closed"
+            ? ar ? "السنة المالية مغلقة." : "That fiscal year is closed."
+            : msg === "unbalanced"
+              ? ar ? "القيد غير متوازن." : "The entry doesn't balance."
+              : ar ? `تعذّر الحفظ: ${detail}` : `Couldn't save that: ${detail}`,
       );
     }
   };

@@ -125,9 +125,13 @@ export function VoucherDialog({ kind, trigger }: { kind: VoucherKind; trigger: R
       const msg = e instanceof Error ? e.message : String(e);
       const detail = msg.slice(0, 300);
       toast.error(
-        msg === "year-closed"
-          ? ar ? "السنة المالية مغلقة." : "That fiscal year is closed."
-          : ar ? `تعذّر حفظ السند: ${detail}` : `Couldn't save the voucher: ${detail}`,
+        msg === "offline-needs-connection"
+          ? ar
+            ? "أنت غير متصل — أعد الاتصال لتسجيل هذا السند. تُحفظ بقية التغييرات دون اتصال."
+            : "You're offline — reconnect to record this voucher. Everything else saves offline."
+          : msg === "year-closed"
+            ? ar ? "السنة المالية مغلقة." : "That fiscal year is closed."
+            : ar ? `تعذّر حفظ السند: ${detail}` : `Couldn't save the voucher: ${detail}`,
       );
     }
   };

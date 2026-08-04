@@ -635,7 +635,7 @@ export class FirebaseFarmRepository implements FarmRepository {
           })
         : {};
     const ref = doc(this.db, paths.animals(this.farmId), id);
-    await setDoc(ref, { ...patch, ...searchable, farmId: this.farmId }, { merge: true });
+    await trackWrite(setDoc(ref, { ...patch, ...searchable, farmId: this.farmId }, { merge: true }));
     const saved = (await this.getAnimal(id))!;
 
     // An animal bought for money is capital — mirror its purchase price into
@@ -974,7 +974,7 @@ export class FirebaseFarmRepository implements FarmRepository {
     if (!Number.isFinite(txn.amount)) throw new Error("invalid-amount");
     const id = txn.id ?? doc(this.col(paths.transactions(this.farmId))).id;
     const record = { ...txn, id, farmId: this.farmId } as Transaction;
-    await setDoc(doc(this.db, paths.transactions(this.farmId), id), omitUndefined(record));
+    await trackWrite(setDoc(doc(this.db, paths.transactions(this.farmId), id), omitUndefined(record)));
     await this.autoPost(record);
     this.audit({
       category: "finance",
@@ -1066,9 +1066,9 @@ export class FirebaseFarmRepository implements FarmRepository {
       ...normalized,
       costPerHead: rationCostPerHead(normalized, feeds),
     };
-    await setDoc(doc(this.db, paths.rations(this.farmId), id), omitUndefined(record), {
-      merge: true,
-    });
+    await trackWrite(
+      setDoc(doc(this.db, paths.rations(this.farmId), id), omitUndefined(record), { merge: true }),
+    );
     this.audit({
       category: "feeding",
       action: ration.id ? "ration.edit" : "ration.create",
@@ -1080,7 +1080,7 @@ export class FirebaseFarmRepository implements FarmRepository {
   }
 
   async deleteRation(id: ID): Promise<void> {
-    await deleteDoc(doc(this.db, paths.rations(this.farmId), id));
+    await trackWrite(deleteDoc(doc(this.db, paths.rations(this.farmId), id)));
     this.audit({
       category: "feeding",
       action: "ration.delete",
@@ -1195,7 +1195,7 @@ export class FirebaseFarmRepository implements FarmRepository {
   async saveEmployee(employee: EventWrite<Omit<Employee, "id" | "farmId">>): Promise<Employee> {
     const id = employee.id ?? doc(this.col(paths.employees(this.farmId))).id;
     const record = { ...employee, id, farmId: this.farmId } as Employee;
-    await setDoc(doc(this.db, paths.employees(this.farmId), id), omitUndefined(record));
+    await trackWrite(setDoc(doc(this.db, paths.employees(this.farmId), id), omitUndefined(record)));
     this.audit({
       category: "employees",
       action: employee.id ? "employee.update" : "employee.create",
@@ -1214,9 +1214,9 @@ export class FirebaseFarmRepository implements FarmRepository {
     // event correct the first rather than stack a duplicate shift.
     const id = `${input.date}_${input.employeeId}`;
     const record = attendanceFromClock(input, this.farmId, id);
-    await setDoc(doc(this.db, paths.attendance(this.farmId), id), omitUndefined(record), {
-      merge: true,
-    });
+    await trackWrite(
+      setDoc(doc(this.db, paths.attendance(this.farmId), id), omitUndefined(record), { merge: true }),
+    );
     return record;
   }
 
@@ -1226,7 +1226,7 @@ export class FirebaseFarmRepository implements FarmRepository {
     this.all<FarmTask>(paths.tasks(this.farmId), orderBy("dueAt", "desc"), fsLimit(500));
 
   async updateTask(id: ID, patch: Partial<FarmTask>): Promise<FarmTask> {
-    await updateDoc(doc(this.db, paths.tasks(this.farmId), id), patch as DocumentData);
+    await trackWrite(updateDoc(doc(this.db, paths.tasks(this.farmId), id), patch as DocumentData));
     const snap = await getDoc(doc(this.db, paths.tasks(this.farmId), id));
     const task = { id: snap.id, ...snap.data() } as FarmTask;
     if (patch.status === "done") {
@@ -1244,7 +1244,7 @@ export class FirebaseFarmRepository implements FarmRepository {
   async saveTask(task: EventWrite<Omit<FarmTask, "id" | "farmId">>): Promise<FarmTask> {
     const id = task.id ?? doc(this.col(paths.tasks(this.farmId))).id;
     const record = { ...task, id, farmId: this.farmId } as FarmTask;
-    await setDoc(doc(this.db, paths.tasks(this.farmId), id), omitUndefined(record));
+    await trackWrite(setDoc(doc(this.db, paths.tasks(this.farmId), id), omitUndefined(record)));
     return record;
   }
 
@@ -1301,7 +1301,7 @@ export class FirebaseFarmRepository implements FarmRepository {
   }
 
   async setInvoiceStatus(id: ID, status: Invoice["status"]): Promise<Invoice> {
-    await updateDoc(doc(this.db, paths.invoices(this.farmId), id), { status });
+    await trackWrite(updateDoc(doc(this.db, paths.invoices(this.farmId), id), { status }));
     const snap = await getDoc(doc(this.db, paths.invoices(this.farmId), id));
     return { id: snap.id, ...snap.data() } as Invoice;
   }
@@ -1428,12 +1428,12 @@ export class FirebaseFarmRepository implements FarmRepository {
   async saveAsset(asset: EventWrite<Omit<Asset, "id" | "farmId">>): Promise<Asset> {
     const id = asset.id ?? doc(this.col(paths.assets(this.farmId))).id;
     const record = { ...asset, id, farmId: this.farmId } as Asset;
-    await setDoc(doc(this.db, paths.assets(this.farmId), id), omitUndefined(record));
+    await trackWrite(setDoc(doc(this.db, paths.assets(this.farmId), id), omitUndefined(record)));
     return record;
   }
 
   async deleteAsset(id: ID): Promise<void> {
-    await deleteDoc(doc(this.db, paths.assets(this.farmId), id));
+    await trackWrite(deleteDoc(doc(this.db, paths.assets(this.farmId), id)));
   }
 
   /* ------------------------------- Automation ------------------------------- */
@@ -1579,9 +1579,9 @@ export class FirebaseFarmRepository implements FarmRepository {
   async saveBranch(branch: EventWrite<Omit<Branch, "id" | "farmId">>): Promise<Branch> {
     const id = branch.id ?? doc(this.col(paths.branches(this.farmId))).id;
     const record = { ...branch, id, farmId: this.farmId } as Branch;
-    await setDoc(doc(this.db, paths.branches(this.farmId), id), omitUndefined(record), {
-      merge: true,
-    });
+    await trackWrite(
+      setDoc(doc(this.db, paths.branches(this.farmId), id), omitUndefined(record), { merge: true }),
+    );
     return record;
   }
 
@@ -1618,9 +1618,9 @@ export class FirebaseFarmRepository implements FarmRepository {
       rateToBase: isBase ? 1 : currency.rateToBase,
       updatedAt: new Date().toISOString(),
     } as Currency;
-    await setDoc(doc(this.db, paths.currencies(this.farmId), id), omitUndefined(record), {
-      merge: true,
-    });
+    await trackWrite(
+      setDoc(doc(this.db, paths.currencies(this.farmId), id), omitUndefined(record), { merge: true }),
+    );
     return record;
   }
 
@@ -2144,6 +2144,14 @@ export class FirebaseFarmRepository implements FarmRepository {
     year: string,
     computeFloor: () => Promise<number>,
   ): Promise<number> {
+    // A numbered document needs a unique, gapless number from the transactional
+    // counter, which requires a live server round-trip. Offline we can't
+    // guarantee that (two devices could mint the same invoice number), so fail
+    // fast with a clear message instead of hanging — everything non-numbered
+    // still saves offline via trackWrite.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      throw new Error("offline-needs-connection");
+    }
     const ref = doc(this.db, paths.docCounters(this.farmId), `${prefix}-${year}`);
     // The floor (derived by scanning existing documents) only matters on the
     // very FIRST allocation for this series+year — once the counter exists,

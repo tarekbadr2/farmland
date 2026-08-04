@@ -69,8 +69,18 @@ export function ChequeDialog({ kind, trigger }: { kind: ChequeKind; trigger: Rea
       setOpen(false);
     } catch (e) {
       console.error("[cheque-save]", e);
-      const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
-      toast.error(ar ? `تعذّر تسجيل الشيك: ${detail}` : `Couldn't record that cheque: ${detail}`);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === "offline-needs-connection") {
+        toast.error(
+          ar
+            ? "أنت غير متصل — أعد الاتصال لتسجيل هذا الشيك. تُحفظ بقية التغييرات دون اتصال."
+            : "You're offline — reconnect to record this cheque. Everything else saves offline.",
+        );
+      } else {
+        toast.error(
+          ar ? `تعذّر تسجيل الشيك: ${msg.slice(0, 300)}` : `Couldn't record that cheque: ${msg.slice(0, 300)}`,
+        );
+      }
     }
   };
 
