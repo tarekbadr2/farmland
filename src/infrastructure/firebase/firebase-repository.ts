@@ -690,6 +690,17 @@ export class FirebaseFarmRepository implements FarmRepository {
     }
     await trackWrite(batch.commit());
     const disposed = (await this.getAnimal(id))!;
+    // Re-sync the mirrored livestock asset so a sold/culled/dead animal's cost
+    // stops being counted as an active asset (otherwise assets & equity are
+    // permanently overstated as the herd turns over).
+    const assetPatch = livestockAssetFor(disposed);
+    if (assetPatch) {
+      await setDoc(
+        doc(this.db, paths.assets(this.farmId), assetPatch.id),
+        omitUndefined({ ...assetPatch, farmId: this.farmId }),
+        { merge: true },
+      );
+    }
     this.audit({
       category: "animals",
       action: `animal.${disposal.type}`,
@@ -958,6 +969,9 @@ export class FirebaseFarmRepository implements FarmRepository {
   async saveTransaction(
     txn: EventWrite<Omit<Transaction, "id" | "farmId">>,
   ): Promise<Transaction> {
+    // A non-finite amount (e.g. parseFloat("") → NaN from a form) would flow
+    // through autoPost into the ledger and NaN-out every balance. Refuse it here.
+    if (!Number.isFinite(txn.amount)) throw new Error("invalid-amount");
     const id = txn.id ?? doc(this.col(paths.transactions(this.farmId))).id;
     const record = { ...txn, id, farmId: this.farmId } as Transaction;
     await setDoc(doc(this.db, paths.transactions(this.farmId), id), omitUndefined(record));

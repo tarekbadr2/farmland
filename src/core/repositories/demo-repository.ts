@@ -529,6 +529,13 @@ export class DemoFarmRepository implements FarmRepository {
     const status: Animal["status"] =
       disposal.type === "sold" ? "sold" : disposal.type === "culled" ? "culled" : "dead";
     this.db.animals[idx] = { ...this.db.animals[idx], status, disposal };
+    // Re-sync the mirrored livestock asset to disposed so its cost stops being
+    // counted as an active asset (parity with the Firebase adapter).
+    const assetPatch = livestockAssetFor(this.db.animals[idx]);
+    if (assetPatch) {
+      const ai = this.db.assets.findIndex((a) => a.id === assetPatch.id);
+      if (ai >= 0) this.db.assets[ai] = { ...this.db.assets[ai], status: assetPatch.status };
+    }
     if (disposal.type === "sold" && (disposal.proceeds ?? 0) > 0) {
       this.db.transactions.unshift({
         id: `tx_${Date.now()}`,
@@ -770,6 +777,7 @@ export class DemoFarmRepository implements FarmRepository {
   }
 
   async saveTransaction(txn: EventWrite<Omit<Transaction, "id" | "farmId">>) {
+    if (!Number.isFinite(txn.amount)) throw new Error("invalid-amount");
     const saved = {
       ...txn,
       id: txn.id ?? `tx_${Date.now()}`,

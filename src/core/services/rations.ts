@@ -112,7 +112,9 @@ export function rationCostPerHead(
 
 /** Blended cost of one kilogram of the mix — the number to compare blends by. */
 export function rationCostPerKg(ration: FeedRation, feeds: FeedItem[]): number {
-  const perHead = rationCostPerHead(ration, feeds);
-  const kg = ration.kgPerHead || 0;
-  return kg > 0 ? round(perHead / kg, 2) : 0;
+  // Divide cost by the kg actually drawn, not the nominal kgPerHead: if a mix's
+  // percentages don't sum to 100 (bad import / legacy / override), only that
+  // fraction is drawn, and dividing by the full kgPerHead understated cost/kg.
+  const { totalKg, totalCost } = resolveFeeding(ration, 1, feeds);
+  return totalKg > 0 ? round(totalCost / totalKg, 2) : 0;
 }

@@ -103,7 +103,10 @@ export function livestockAssetFor(animal: Animal): Omit<Asset, "farmId"> | null 
     cost,
     // Livestock isn't straight-line depreciated here; its cost is recovered
     // through the per-animal cost-of-production model instead.
-    status: animal.status === "sold" || animal.status === "dead" ? "disposed" : "active",
+    status:
+      animal.status === "sold" || animal.status === "dead" || animal.status === "culled"
+        ? "disposed"
+        : "active",
     notes: "Auto-created from the animal's purchase price.",
   };
 }

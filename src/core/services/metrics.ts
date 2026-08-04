@@ -5,6 +5,7 @@
  */
 
 import { addDays, diffDays, monthKey } from "@/lib/date";
+import { kgPerUnit } from "@/core/domain/rules";
 import { average, groupBy, pct, round, sum } from "@/lib/utils";
 import type {
   Alert,
@@ -306,9 +307,10 @@ export function feedMetrics(
     stockValue,
     lowStock,
     lowStockCount: lowStock.length,
+    // Convert every item to kg — bales and kg-denominated feed are stock too;
+    // counting only tons understated cover (and read 0 for a bale-only store).
     daysCover: round(
-      sum(items.filter((i) => i.unit === "ton").map((i) => i.stock * 1000)) /
-        Math.max(1, dailyBurn),
+      sum(items.map((i) => i.stock * kgPerUnit(i.unit))) / Math.max(1, dailyBurn),
       0,
     ),
     /** kg of feed (as fed) per litre of milk — the number the nutritionist quotes. */

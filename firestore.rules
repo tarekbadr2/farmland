@@ -85,6 +85,15 @@ service cloud.firestore {
         .data.get('subscription', {}).get('access', 'active') != 'blocked';
     }
 
+    // Guards privilege grants on member docs: only an owner may hand out the
+    // owner role or the '*' superperm. Everyone else (incl. org.members holders
+    // like a farm_manager) can manage members but can't mint an owner.
+    function grantOk(farmId) {
+      return isOwner(farmId)
+        || (request.resource.data.get('role', '') != 'owner'
+            && !request.resource.data.get('permissions', []).hasAny(['*']));
+    }
+
     // The org a user belongs to (top-level mapping written server-side).
     function myOrg() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('orgId', '');
@@ -112,7 +121,13 @@ service cloud.firestore {
       // credentials, which bypass these rules.
       allow update: if hasPerm(farmId, 'org.settings', 'org.*')
         && request.resource.data.subscription == resource.data.subscription
-        && request.resource.data.aiUsage == resource.data.aiUsage;
+        && request.resource.data.aiUsage == resource.data.aiUsage
+        // Billing/structural fields are server-only too: a client must not be
+        // able to raise its own herd cap or plan, or re-parent the farm.
+        && request.resource.data.get('plan', '') == resource.data.get('plan', '')
+        && request.resource.data.get('animalLimit', 0) == resource.data.get('animalLimit', 0)
+        && request.resource.data.get('ownerId', '') == resource.data.get('ownerId', '')
+        && request.resource.data.get('orgId', '') == resource.data.get('orgId', '');
       allow create, delete: if false;   // provisioned server-side only
 
       // ------------------------- Membership --------------------------
@@ -123,7 +138,15 @@ service cloud.firestore {
       // rights.
       match /members/{uid} {
         allow read: if isMember(farmId) || request.auth.uid == uid;
-        allow write: if hasPerm(farmId, 'org.members', 'org.*');
+        // Managing members needs org.members, but you can never mint an owner
+        // unless you are one (grantOk), and you can never change your OWN role or
+        // permissions (no self-promotion — the stated guarantee, now enforced).
+        allow create: if hasPerm(farmId, 'org.members', 'org.*') && grantOk(farmId);
+        allow update: if hasPerm(farmId, 'org.members', 'org.*') && grantOk(farmId)
+                      && (request.auth.uid != uid
+                          || (request.resource.data.get('role', '') == resource.data.get('role', '')
+                              && request.resource.data.get('permissions', []) == resource.data.get('permissions', [])));
+        allow delete: if hasPerm(farmId, 'org.members', 'org.*') && request.auth.uid != uid;
       }
 
       // Legacy per-farm invites (email-keyed). New invites live at org level and
