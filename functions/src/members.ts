@@ -129,6 +129,7 @@ export const createFarm = onCall({ region: REGION }, async (req) => {
   });
   batch.set(db.doc(`users/${uid}`), {
     orgId,
+    farmId, // scalar too, so billing/AI routes that read `.farmId` resolve for owners
     farmIds: [farmId],
     defaultFarmId: farmId,
     role: "owner",

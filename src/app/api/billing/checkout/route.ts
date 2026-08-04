@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { verifyBearer, adminDb } from "@/lib/server/firebase-admin";
+import { resolveUserFarmId } from "@/lib/server/resolve-farm";
 import { isConfigured, createCheckoutUrl } from "@/lib/billing/paymob";
 import { PLANS, getPlan, type PlanTier } from "@/lib/billing/plans";
 import { changeKind, proratedCharge } from "@/lib/billing/proration";
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
   // Resolve the caller's farm and its current subscription.
   const db = await adminDb();
   const userSnap = await db.doc(`users/${caller.uid}`).get();
-  const farmId = userSnap.exists ? (userSnap.data()!.farmId as string) : null;
+  const farmId = userSnap.exists ? resolveUserFarmId(userSnap.data()) : null;
   if (!farmId) return json({ error: "no-farm" }, { status: 400 });
 
   const farmRef = db.doc(`farms/${farmId}`);

@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { DocumentReference } from "firebase-admin/firestore";
 
 import { verifyBearer, adminDb } from "@/lib/server/firebase-admin";
+import { resolveUserFarmId } from "@/lib/server/resolve-farm";
 import { resolveEntitlement, isBillingEnforced, isoMonth } from "@/lib/billing/status";
 import type { Farm } from "@/core/domain/types";
 
@@ -109,7 +110,7 @@ export async function POST(req: Request) {
   try {
     const db = await adminDb();
     const userSnap = await db.doc(`users/${caller.uid}`).get();
-    const farmId = userSnap.exists ? (userSnap.data()!.farmId as string) : null;
+    const farmId = userSnap.exists ? resolveUserFarmId(userSnap.data()) : null;
     if (farmId) {
       farmRef = db.doc(`farms/${farmId}`);
       const farmSnap = await farmRef.get();
