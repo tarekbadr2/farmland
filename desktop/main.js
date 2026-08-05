@@ -23,10 +23,9 @@ const fs = require("fs");
 const http = require("http");
 const handler = require("serve-handler");
 const { autoUpdater } = require("electron-updater");
-
-// Custom URL scheme for deep links (herdos://invite/<token>, herdos://record/<id>,
-// …). Registering it makes the OS route those links back into this app.
-const PROTOCOL = "herdos";
+// Deep-link scheme + parser (herdos://invite/<token> …). Split into its own
+// module so the parsing is unit-testable without launching Electron.
+const { PROTOCOL, deepLinkFromArgv } = require("./deep-link");
 
 // ------------------------------- Single instance -------------------------------
 // A desktop app should be ONE running process. A second launch (or a deep link
@@ -496,18 +495,8 @@ function boundsOnSomeDisplay(b) {
 }
 
 // ------------------------------- Deep links -------------------------------
-// herdos://invite/<token> -> /invite/<token> ; herdos://animal?id=5 -> /animal?id=5
+// deepLinkFromArgv lives in ./deep-link (imported above) so it's unit-testable.
 let pendingNavigate = null;
-function deepLinkFromArgv(argv) {
-  const arg = (argv || []).find((a) => typeof a === "string" && a.startsWith(`${PROTOCOL}://`));
-  if (!arg) return null;
-  try {
-    const u = new URL(arg);
-    return `/${u.hostname}${u.pathname}${u.search}`.replace(/\/{2,}/g, "/");
-  } catch {
-    return null;
-  }
-}
 function navigateRenderer(routePath) {
   if (!routePath) return;
   showWindow();
