@@ -5,6 +5,7 @@ import { trialBalance } from "@/core/services/accounting";
 import { resolveFeeding } from "@/core/services/rations";
 import { TODAY } from "@/core/data/seed";
 import { DEFAULT_WAREHOUSE_ID, stockInWarehouse } from "@/core/services/warehouse";
+import type { Animal, AnimalDisposal } from "@/core/domain/types";
 
 /**
  * Integration cover for the document → ledger wiring.
@@ -635,5 +636,47 @@ describe("demo repository — duplicate same-day payments", () => {
     expect(settlements.length).toBe(before + 2); // two distinct settlement entries
     const updated = (await repo.getInvoices()).find((i) => i.id === sale.id)!;
     expect(updated.status).toBe("paid"); // 1000 + 1000 = 2000
+  });
+});
+
+describe("demo repository — audit-fix regressions", () => {
+  it("rejects a non-finite transaction amount before it can poison the ledger", async () => {
+    await expect(
+      repo.saveTransaction({
+        date: TODAY,
+        kind: "expense",
+        category: "other_expense",
+        amount: Number.NaN,
+        description: "NaN guard",
+        paymentMethod: "cash",
+      }),
+    ).rejects.toThrow();
+    expect(await booksBalance()).toBe(true); // nothing written → still balanced
+  });
+
+  it("marks a purchased animal's mirrored asset disposed when it's sold", async () => {
+    const saved = await repo.saveAnimal({
+      tag: "DISP-REG",
+      name: "Disposable",
+      sex: "female",
+      breed: "buffalo",
+      dateOfBirth: TODAY,
+      acquiredAt: TODAY,
+      acquisitionCost: 5000,
+      weightKg: 400,
+    } as unknown as Partial<Animal> & { id?: string });
+
+    const assetId = `asset_animal_${saved.id}`;
+    const before = (await repo.getAssets()).find((a) => a.id === assetId);
+    expect(before?.status).toBe("active"); // purchase mirrored into the asset register
+
+    await repo.disposeAnimal(saved.id, {
+      type: "sold",
+      date: TODAY,
+      proceeds: 6000,
+    } as AnimalDisposal);
+
+    const after = (await repo.getAssets()).find((a) => a.id === assetId);
+    expect(after?.status).toBe("disposed"); // no longer double-counted as an active asset
   });
 });

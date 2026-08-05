@@ -123,4 +123,17 @@ describe("rationCostPerHead / rationCostPerKg", () => {
     expect(rationCostPerHead(ration(), feeds)).toBe(64);
     expect(rationCostPerKg(ration(), feeds)).toBe(6.4);
   });
+
+  it("prices per-kg by the kg actually drawn, not the nominal kg (mix ≠ 100%)", () => {
+    // Components sum to 50%, so only 5 of the 10 kg/head is drawn.
+    const half = ration({
+      components: [
+        { feedItemId: "a", percent: 20 },
+        { feedItemId: "b", percent: 30 },
+      ],
+    });
+    // a: 2kg@10=20; b: 3kg@4=12 → 32 over 5kg drawn → 6.4/kg.
+    // Dividing by the nominal 10kg would understate cost to 3.2 (the bug).
+    expect(rationCostPerKg(half, feeds)).toBe(6.4);
+  });
 });

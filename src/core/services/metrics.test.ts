@@ -6,10 +6,12 @@ import {
   assetsSummary,
   utilityCostSummary,
   enterprisePnl,
+  feedMetrics,
 } from "./metrics";
 import type {
   Animal,
   Asset,
+  FeedItem,
   HealthEvent,
   FeedConsumption,
   Transaction,
@@ -190,5 +192,33 @@ describe("enterprisePnl", () => {
     expect(p.dairy.grossMargin).toBe(120000); // 180k - 60k
     expect(p.meat.grossMargin).toBe(50000); // 90k - 40k
     expect(p.net).toBe(120000); // 120k + 50k - 50k overhead
+  });
+});
+
+describe("feedMetrics daysCover", () => {
+  const feedItem = (over: Partial<FeedItem>): FeedItem =>
+    ({
+      id: "f",
+      farmId: "x",
+      name: "f",
+      nameAr: "f",
+      category: "concentrate",
+      unit: "kg",
+      stock: 0,
+      reorderLevel: 0,
+      costPerUnit: 1,
+      supplierId: "s",
+      ...over,
+    }) as FeedItem;
+
+  it("counts feed of every unit toward days-of-cover, not only tons", () => {
+    // 300 kg on hand, burning 10 kg/day (300 kg over the last 30 days) → 30 days.
+    // The old bug summed only ton-denominated stock, so a kg-only store read 0.
+    const items = [feedItem({ unit: "kg", stock: 300 })];
+    const consumption = [
+      { date: "2026-08-01", kg: 300, cost: 300, rationId: "r" },
+    ] as unknown as FeedConsumption[];
+    const m = feedMetrics(items, consumption, [], "2026-08-01");
+    expect(m.daysCover).toBe(30);
   });
 });
