@@ -679,4 +679,20 @@ describe("demo repository — audit-fix regressions", () => {
     const after = (await repo.getAssets()).find((a) => a.id === assetId);
     expect(after?.status).toBe("disposed"); // no longer double-counted as an active asset
   });
+
+  it("lets a corrected (lower) milking head count take effect", async () => {
+    const date = "2027-03-01"; // clean date, clear of the seeded range
+    const entries = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ animalId: `mc${i}`, volumeL: 10 }));
+
+    await repo.recordMilkSession({ date, session: "morning", entries: entries(100), fatPct: 4, proteinPct: 3 });
+    let day = (await repo.getMilkDaily()).find((d) => d.date === date)!;
+    expect(day.milkingCows).toBe(100);
+
+    // Re-record the same session with fewer head — must correct DOWN, not stay
+    // pinned at 100 (the Math.max bug).
+    await repo.recordMilkSession({ date, session: "morning", entries: entries(80), fatPct: 4, proteinPct: 3 });
+    day = (await repo.getMilkDaily()).find((d) => d.date === date)!;
+    expect(day.milkingCows).toBe(80);
+  });
 });

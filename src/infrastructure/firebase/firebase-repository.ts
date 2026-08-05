@@ -721,9 +721,18 @@ export class FirebaseFarmRepository implements FarmRepository {
       where("date", ">=", from),
       orderBy("date", "asc"),
     );
-    // Derive totalL from the session fields so it's always correct even when the
-    // morning and evening sessions were written by different (offline) devices.
-    return list.map((p) => ({ ...p, totalL: round((p.morningL ?? 0) + (p.eveningL ?? 0), 1) }));
+    // Derive totalL + milkingCows from the per-session fields so they're always
+    // correct even when morning/evening were written by different (offline)
+    // devices, and so a corrected (lower) session count actually takes effect.
+    // Falls back to the stored milkingCows for pre-split records.
+    return list.map((p) => {
+      const cows = Math.max(p.morningCows ?? 0, p.eveningCows ?? 0);
+      return {
+        ...p,
+        totalL: round((p.morningL ?? 0) + (p.eveningL ?? 0), 1),
+        milkingCows: cows > 0 ? cows : (p.milkingCows ?? 0),
+      };
+    });
   }
 
   getMilkRecords = (date: string) =>
@@ -790,10 +799,12 @@ export class FirebaseFarmRepository implements FarmRepository {
         farmId: this.farmId,
         date,
         [sessionField]: round(sessionTotal, 1),
+        // This session's own head count — so re-recording it with fewer head
+        // corrects downward (a max would pin it). milkingCows is derived on read.
+        [session === "morning" ? "morningCows" : "eveningCows"]: entries.length,
         rejectedL: round((prev.rejectedL ?? 0) + rejected, 1),
         avgFat: input.fatPct ?? prev.avgFat ?? 0,
         avgProtein: input.proteinPct ?? prev.avgProtein ?? 0,
-        milkingCows: Math.max(entries.length, prev.milkingCows ?? 0),
       },
       { merge: true },
     );

@@ -334,6 +334,11 @@ export interface DailyMilkPoint {
   avgFat: number;
   avgProtein: number;
   milkingCows: number;
+  /** Per-session head counts, so a corrected (lower) count for one session
+   *  replaces rather than being pinned by a max. milkingCows is derived from
+   *  these on read (falling back to the stored value for pre-split records). */
+  morningCows?: number;
+  eveningCows?: number;
 }
 
 /* --------------------------------- Breeding -------------------------------- */

@@ -555,9 +555,14 @@ export class DemoFarmRepository implements FarmRepository {
 
   getMilkDaily = (days = 730) =>
     tick(
-      this.db.milkDaily
-        .slice(-days)
-        .map((p) => ({ ...p, totalL: round((p.morningL ?? 0) + (p.eveningL ?? 0), 1) })),
+      this.db.milkDaily.slice(-days).map((p) => {
+        const cows = Math.max(p.morningCows ?? 0, p.eveningCows ?? 0);
+        return {
+          ...p,
+          totalL: round((p.morningL ?? 0) + (p.eveningL ?? 0), 1),
+          milkingCows: cows > 0 ? cows : (p.milkingCows ?? 0),
+        };
+      }),
     );
 
   async getMilkRecords(date: string) {
@@ -851,12 +856,18 @@ export class DemoFarmRepository implements FarmRepository {
       this.db.milkDaily.sort((a, b) => a.date.localeCompare(b.date));
     }
 
-    // Assign rather than accumulate, so re-recording a session corrects it.
-    if (session === "morning") daily.morningL = total;
-    else daily.eveningL = total;
+    // Assign rather than accumulate, so re-recording a session corrects it —
+    // including a lower head count (per-session cows, not a pinning max).
+    if (session === "morning") {
+      daily.morningL = total;
+      daily.morningCows = entries.length;
+    } else {
+      daily.eveningL = total;
+      daily.eveningCows = entries.length;
+    }
     daily.totalL = round(daily.morningL + daily.eveningL, 1);
     daily.rejectedL = rejected;
-    daily.milkingCows = Math.max(entries.length, daily.milkingCows);
+    daily.milkingCows = Math.max(daily.morningCows ?? 0, daily.eveningCows ?? 0) || daily.milkingCows;
     if (input.fatPct) daily.avgFat = input.fatPct;
     if (input.proteinPct) daily.avgProtein = input.proteinPct;
 
