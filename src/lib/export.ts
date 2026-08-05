@@ -32,15 +32,69 @@ export function toCsv(rows: Row[]): string {
 
 export function downloadCsv(filename: string, rows: Row[]) {
   const blob = new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8;" });
-  triggerDownload(blob, filename);
+  void triggerDownload(blob, filename);
 }
 
 export function downloadJson(filename: string, data: unknown) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-  triggerDownload(blob, filename);
+  void triggerDownload(blob, filename);
 }
 
-function triggerDownload(blob: Blob, filename: string) {
+/** The Electron shell's native file bridge (absent on the web). */
+interface DesktopFiles {
+  save: (p: {
+    name: string;
+    base64: string;
+    filters?: { name: string; extensions: string[] }[];
+  }) => Promise<{ ok: boolean; path?: string; canceled?: boolean }>;
+  openPath: (p: string) => Promise<{ ok: boolean }>;
+}
+function desktopFiles(): DesktopFiles | null {
+  if (typeof window === "undefined") return null;
+  return (window as unknown as { desktopFiles?: DesktopFiles }).desktopFiles ?? null;
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const s = String(reader.result);
+      resolve(s.slice(s.indexOf(",") + 1)); // strip the data: URL prefix
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+function saveFilters(filename: string): { name: string; extensions: string[] }[] | undefined {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  const named: Record<string, string> = { xlsx: "Excel Workbook", csv: "CSV", pdf: "PDF", json: "JSON" };
+  if (!ext || !named[ext]) return undefined;
+  return [
+    { name: named[ext], extensions: [ext] },
+    { name: "All Files", extensions: ["*"] },
+  ];
+}
+
+async function triggerDownload(blob: Blob, filename: string) {
+  // Desktop: pop a native Save dialog to a location the user picks, then open
+  // the file. Falls back to a normal browser download on the web (or if the
+  // native save is cancelled/fails).
+  const files = desktopFiles();
+  if (files) {
+    try {
+      const base64 = await blobToBase64(blob);
+      const res = await files.save({ name: filename, base64, filters: saveFilters(filename) });
+      if (res?.ok && res.path) {
+        files.openPath(res.path).catch(() => {});
+        return;
+      }
+      if (res?.canceled) return; // user chose not to save — don't also web-download
+    } catch {
+      // fall through to the browser download
+    }
+  }
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -213,7 +267,7 @@ export async function downloadXlsx(doc: ReportDoc) {
   });
 
   const buf = await wb.xlsx.writeBuffer();
-  triggerDownload(
+  void triggerDownload(
     new Blob([buf], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }),
