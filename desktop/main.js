@@ -188,6 +188,8 @@ function createWindow(hidden = false) {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      devTools: !app.isPackaged, // no dev tools in the shipped app
+      spellcheck: true,
       preload: path.join(__dirname, "preload.js"),
     },
   });

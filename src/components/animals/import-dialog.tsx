@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n/provider";
+import { cn } from "@/lib/utils";
 import { useAnimals, useZones } from "@/hooks/use-farm-data";
 import { getRepository } from "@/core/repositories";
 import { TODAY } from "@/core/data/seed";
@@ -77,6 +78,7 @@ export function ImportAnimalsDialog() {
   const [fileName, setFileName] = React.useState("");
   const [progress, setProgress] = React.useState(0);
   const [failed, setFailed] = React.useState(0);
+  const [dragging, setDragging] = React.useState(false);
   const fileInput = React.useRef<HTMLInputElement>(null);
 
   const valid = rows.filter((r) => r.draft);
@@ -196,14 +198,40 @@ export function ImportAnimalsDialog() {
         {/* ---- Upload ---- */}
         {(stage === "idle" || stage === "preview") && (
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" onClick={downloadTemplate}>
-                <Download className="size-4" /> {ar ? "تنزيل القالب" : "Download template"}
-              </Button>
-              <Button size="sm" onClick={() => fileInput.current?.click()}>
-                <Upload className="size-4" /> {ar ? "اختر ملفًا" : "Choose file"}
-              </Button>
-              {fileName && <span className="truncate text-[12.5px] text-muted-foreground">{fileName}</span>}
+            {/* Drag-and-drop a spreadsheet, or pick one — both feed the same
+                parser. onDragOver must preventDefault for a drop to fire. */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (!dragging) setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file) void onFile(file);
+              }}
+              className={cn(
+                "rounded-xl border-2 border-dashed p-5 text-center transition-colors",
+                dragging ? "border-primary bg-primary/5" : "border-border",
+              )}
+            >
+              <Upload className="mx-auto mb-2 size-6 text-muted-foreground" />
+              <p className="text-[13px] text-muted-foreground">
+                {ar ? "اسحب ملف CSV أو Excel هنا، أو" : "Drag a CSV or Excel file here, or"}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                <Button size="sm" onClick={() => fileInput.current?.click()}>
+                  <Upload className="size-4" /> {ar ? "اختر ملفًا" : "Choose file"}
+                </Button>
+                <Button variant="outline" size="sm" onClick={downloadTemplate}>
+                  <Download className="size-4" /> {ar ? "تنزيل القالب" : "Download template"}
+                </Button>
+              </div>
+              {fileName && (
+                <p className="mt-2 truncate text-[12.5px] text-muted-foreground">{fileName}</p>
+              )}
               <input
                 ref={fileInput}
                 type="file"
