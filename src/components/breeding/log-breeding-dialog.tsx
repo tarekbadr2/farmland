@@ -167,8 +167,9 @@ export function LogBreedingDialog({
 
         <form onSubmit={form.handleSubmit((v) => save.mutate(v))} className="space-y-3.5">
           <div className="space-y-1.5">
-            <Label>{t("animals.title")}</Label>
+            <Label htmlFor="breeding-animal">{t("animals.title")}</Label>
             <AnimalPicker
+              id="breeding-animal"
               value={form.watch("animalId")}
               onChange={(id, a) => {
                 form.setValue("animalId", id, { shouldValidate: true });

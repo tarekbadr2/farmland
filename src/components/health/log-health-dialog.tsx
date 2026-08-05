@@ -163,8 +163,9 @@ export function LogHealthDialog({
           className="space-y-3.5"
         >
           <div className="space-y-1.5">
-            <Label>{t("animals.title")}</Label>
+            <Label htmlFor="health-animal">{t("animals.title")}</Label>
             <AnimalPicker
+              id="health-animal"
               value={form.watch("animalId")}
               onChange={(id) => form.setValue("animalId", id, { shouldValidate: true })}
               filter={(a) => a.status !== "dead" && a.status !== "sold"}

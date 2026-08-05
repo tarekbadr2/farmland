@@ -324,10 +324,18 @@ function Field({
   error?: string;
   children: React.ReactNode;
 }) {
+  // Auto-associate the label with its control (a11y): generate a stable id and
+  // hand it to the single child (Input / SelectField / Textarea, all of which
+  // forward id to the focusable element).
+  const id = React.useId();
   return (
     <div className="space-y-1.5">
-      <Label className="text-[12px]">{label}</Label>
-      {children}
+      <Label htmlFor={id} className="text-[12px]">
+        {label}
+      </Label>
+      {React.isValidElement(children)
+        ? React.cloneElement(children as React.ReactElement<{ id?: string }>, { id })
+        : children}
       {error && <p className="text-[11px] text-destructive">{error}</p>}
     </div>
   );
@@ -338,15 +346,17 @@ function SelectField({
   onChange,
   options,
   placeholder,
+  id,
 }: {
   value?: string;
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
   placeholder?: string;
+  id?: string;
 }) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger size="sm">
+      <SelectTrigger id={id} size="sm">
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>

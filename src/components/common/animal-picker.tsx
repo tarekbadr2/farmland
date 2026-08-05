@@ -22,12 +22,15 @@ export function AnimalPicker({
   onChange,
   filter,
   placeholder,
+  id,
 }: {
   value?: ID;
   onChange: (id: ID, animal: Animal) => void;
   /** Narrows the list, e.g. to females for a breeding event. */
   filter?: (animal: Animal) => boolean;
   placeholder?: string;
+  /** Ties this combobox to a <Label htmlFor> for screen readers. */
+  id?: string;
 }) {
   const { t, ln } = useI18n();
   const [open, setOpen] = React.useState(false);
@@ -52,6 +55,7 @@ export function AnimalPicker({
       <PopoverTrigger asChild>
         <Button
           type="button"
+          id={id}
           variant="outline"
           role="combobox"
           className="w-full justify-between font-normal"
