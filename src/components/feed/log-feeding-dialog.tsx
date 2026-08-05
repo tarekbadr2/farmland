@@ -121,12 +121,12 @@ export function LogFeedingDialog({ trigger }: { trigger?: React.ReactNode }) {
 
         <form onSubmit={form.handleSubmit((v) => save.mutate(v))} className="space-y-3.5">
           <div className="space-y-1.5">
-            <Label>{t("feed.ration")}</Label>
+            <Label htmlFor="feeding-ration">{t("feed.ration")}</Label>
             <Select
               value={rationId}
               onValueChange={(v) => form.setValue("rationId", v, { shouldValidate: true })}
             >
-              <SelectTrigger size="sm">
+              <SelectTrigger id="feeding-ration" size="sm">
                 <SelectValue placeholder={t("common.select")} />
               </SelectTrigger>
               <SelectContent>
@@ -146,12 +146,12 @@ export function LogFeedingDialog({ trigger }: { trigger?: React.ReactNode }) {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>{t("feed.pen")}</Label>
+              <Label htmlFor="feeding-pen">{t("feed.pen")}</Label>
               <Select
                 value={form.watch("zoneId")}
                 onValueChange={(v) => form.setValue("zoneId", v, { shouldValidate: true })}
               >
-                <SelectTrigger size="sm">
+                <SelectTrigger id="feeding-pen" size="sm">
                   <SelectValue placeholder={t("common.select")} />
                 </SelectTrigger>
                 <SelectContent>

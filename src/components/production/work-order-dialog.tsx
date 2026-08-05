@@ -209,21 +209,22 @@ export function WorkOrderDialog({ trigger }: { trigger: React.ReactNode }) {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <Label>{ar ? "الوصف" : "What is being made"}</Label>
+            <Label htmlFor="wo-name">{ar ? "الوصف" : "What is being made"}</Label>
             <Input
+              id="wo-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={ar ? "مثال: خلط علف مركّز" : "e.g. Mix concentrate ration"}
             />
           </div>
           <div>
-            <Label>{ar ? "التاريخ" : "Date"}</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Label htmlFor="wo-date">{ar ? "التاريخ" : "Date"}</Label>
+            <Input id="wo-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div>
-            <Label>{ar ? "المخزن" : "Store"}</Label>
+            <Label htmlFor="wo-store">{ar ? "المخزن" : "Store"}</Label>
             <Select value={warehouseId} onValueChange={setWarehouse}>
-              <SelectTrigger>
+              <SelectTrigger id="wo-store">
                 <SelectValue placeholder={ar ? "اختياري" : "Optional"} />
               </SelectTrigger>
               <SelectContent>
@@ -241,8 +242,9 @@ export function WorkOrderDialog({ trigger }: { trigger: React.ReactNode }) {
         <LineEditor lines={outputs} setLines={setOutputs} label={ar ? "المخرجات" : "Outputs"} />
 
         <div>
-          <Label>{ar ? "تكاليف أخرى (عمالة، طاقة)" : "Overhead (labour, power)"}</Label>
+          <Label htmlFor="wo-overhead">{ar ? "تكاليف أخرى (عمالة، طاقة)" : "Overhead (labour, power)"}</Label>
           <Input
+            id="wo-overhead"
             type="number"
             min={0}
             step="0.01"

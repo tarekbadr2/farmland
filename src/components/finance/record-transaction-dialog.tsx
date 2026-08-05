@@ -167,12 +167,12 @@ export function RecordTransactionDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label>{t("finance.category")}</Label>
+            <Label htmlFor="txn-category">{t("finance.category")}</Label>
             <Select
               value={form.watch("category")}
               onValueChange={(v) => form.setValue("category", v, { shouldValidate: true })}
             >
-              <SelectTrigger size="sm">
+              <SelectTrigger id="txn-category" size="sm">
                 <SelectValue placeholder={t("common.select")} />
               </SelectTrigger>
               <SelectContent>
@@ -214,12 +214,12 @@ export function RecordTransactionDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>{t("finance.counterparty")}</Label>
+              <Label htmlFor="txn-counterparty">{t("finance.counterparty")}</Label>
               <Select
                 value={form.watch("counterpartyId") ?? ""}
                 onValueChange={(v) => form.setValue("counterpartyId", v)}
               >
-                <SelectTrigger size="sm">
+                <SelectTrigger id="txn-counterparty" size="sm">
                   <SelectValue placeholder={t("common.optional")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -232,12 +232,12 @@ export function RecordTransactionDialog({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>{t("finance.paymentMethod")}</Label>
+              <Label htmlFor="txn-payment-method">{t("finance.paymentMethod")}</Label>
               <Select
                 value={form.watch("paymentMethod")}
                 onValueChange={(v) => form.setValue("paymentMethod", v as FormValues["paymentMethod"])}
               >
-                <SelectTrigger size="sm">
+                <SelectTrigger id="txn-payment-method" size="sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

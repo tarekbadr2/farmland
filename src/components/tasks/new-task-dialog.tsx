@@ -146,12 +146,12 @@ export function NewTaskDialog({ trigger }: { trigger?: React.ReactNode }) {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>{t("tasks.category")}</Label>
+              <Label htmlFor="task-category">{t("tasks.category")}</Label>
               <Select
                 value={form.watch("category")}
                 onValueChange={(v) => form.setValue("category", v, { shouldValidate: true })}
               >
-                <SelectTrigger size="sm">
+                <SelectTrigger id="task-category" size="sm">
                   <SelectValue placeholder={t("common.select")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -169,12 +169,12 @@ export function NewTaskDialog({ trigger }: { trigger?: React.ReactNode }) {
               )}
             </div>
             <div className="space-y-1.5">
-              <Label>{t("tasks.priority")}</Label>
+              <Label htmlFor="task-priority">{t("tasks.priority")}</Label>
               <Select
                 value={form.watch("priority")}
                 onValueChange={(v) => form.setValue("priority", v as TaskPriority)}
               >
-                <SelectTrigger size="sm">
+                <SelectTrigger id="task-priority" size="sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -205,12 +205,12 @@ export function NewTaskDialog({ trigger }: { trigger?: React.ReactNode }) {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>{t("tasks.recurring")}</Label>
+              <Label htmlFor="task-recurrence">{t("tasks.recurring")}</Label>
               <Select
                 value={form.watch("recurrence")}
                 onValueChange={(v) => form.setValue("recurrence", v as FormValues["recurrence"])}
               >
-                <SelectTrigger size="sm">
+                <SelectTrigger id="task-recurrence" size="sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -223,12 +223,12 @@ export function NewTaskDialog({ trigger }: { trigger?: React.ReactNode }) {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>{t("tasks.linkZone")}</Label>
+              <Label htmlFor="task-zone">{t("tasks.linkZone")}</Label>
               <Select
                 value={form.watch("zoneId") ?? ""}
                 onValueChange={(v) => form.setValue("zoneId", v)}
               >
-                <SelectTrigger size="sm">
+                <SelectTrigger id="task-zone" size="sm">
                   <SelectValue placeholder={t("common.optional")} />
                 </SelectTrigger>
                 <SelectContent>

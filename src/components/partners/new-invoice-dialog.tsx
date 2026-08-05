@@ -158,12 +158,12 @@ export function NewInvoiceDialog({
         <form onSubmit={form.handleSubmit((v) => save.mutate(v))} className="space-y-3.5">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>{buyingSide ? (ar ? "المورّد" : "Supplier") : t("partners.customer")}</Label>
+              <Label htmlFor="invoice-customer">{buyingSide ? (ar ? "المورّد" : "Supplier") : t("partners.customer")}</Label>
               <Select
                 value={form.watch("customerId")}
                 onValueChange={(v) => form.setValue("customerId", v, { shouldValidate: true })}
               >
-                <SelectTrigger size="sm">
+                <SelectTrigger id="invoice-customer" size="sm">
                   <SelectValue placeholder={t("common.select")} />
                 </SelectTrigger>
                 <SelectContent>

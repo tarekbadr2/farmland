@@ -339,12 +339,12 @@ export function TeamManager() {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>{t("settings.inviteRole")}</Label>
+                  <Label htmlFor="invite-role">{t("settings.inviteRole")}</Label>
                   <Select
                     value={form.watch("role")}
                     onValueChange={(v) => form.setValue("role", v as Role)}
                   >
-                    <SelectTrigger size="sm" className="w-full">
+                    <SelectTrigger id="invite-role" size="sm" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -390,9 +390,9 @@ export function TeamManager() {
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label>{locale === "ar" ? "انتهاء الصلاحية" : "Invitation expires"}</Label>
+                  <Label htmlFor="invite-expiry">{locale === "ar" ? "انتهاء الصلاحية" : "Invitation expires"}</Label>
                   <Select value={expiry} onValueChange={(v) => setExpiry(v as typeof expiry)}>
-                    <SelectTrigger size="sm" className="w-full">
+                    <SelectTrigger id="invite-expiry" size="sm" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -405,8 +405,9 @@ export function TeamManager() {
               </div>
 
               <div className="space-y-1.5">
-                <Label>{locale === "ar" ? "رسالة ترحيب (اختياري)" : "Welcome message (optional)"}</Label>
+                <Label htmlFor="invite-message">{locale === "ar" ? "رسالة ترحيب (اختياري)" : "Welcome message (optional)"}</Label>
                 <Textarea
+                  id="invite-message"
                   rows={2}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}

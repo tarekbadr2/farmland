@@ -108,14 +108,15 @@ export function RecordCostDialog({
 
         <div className="grid gap-3">
           <div>
-            <Label>{ar ? "البيان" : "Description"}</Label>
-            <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+            <Label htmlFor="cost-description">{ar ? "البيان" : "Description"}</Label>
+            <Input id="cost-description" value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <Label>{ar ? "المبلغ" : "Amount"}</Label>
+              <Label htmlFor="cost-amount">{ar ? "المبلغ" : "Amount"}</Label>
               <Input
+                id="cost-amount"
                 type="number"
                 min={0}
                 step="0.01"
@@ -125,16 +126,16 @@ export function RecordCostDialog({
               />
             </div>
             <div>
-              <Label>{ar ? "التاريخ" : "Date"}</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Label htmlFor="cost-date">{ar ? "التاريخ" : "Date"}</Label>
+              <Input id="cost-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
             <div>
-              <Label>{ar ? "طريقة الدفع" : "Payment"}</Label>
+              <Label htmlFor="cost-payment">{ar ? "طريقة الدفع" : "Payment"}</Label>
               <Select
                 value={paymentMethod}
                 onValueChange={(v) => setPaymentMethod(v as Transaction["paymentMethod"])}
               >
-                <SelectTrigger>
+                <SelectTrigger id="cost-payment">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -145,9 +146,9 @@ export function RecordCostDialog({
               </Select>
             </div>
             <div>
-              <Label>{ar ? "الجهة (اختياري)" : "Paid to (optional)"}</Label>
+              <Label htmlFor="cost-partner">{ar ? "الجهة (اختياري)" : "Paid to (optional)"}</Label>
               <Select value={partnerId} onValueChange={setPartnerId}>
-                <SelectTrigger>
+                <SelectTrigger id="cost-partner">
                   <SelectValue placeholder={ar ? "اختر" : "Pick one"} />
                 </SelectTrigger>
                 <SelectContent>

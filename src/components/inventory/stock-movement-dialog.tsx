@@ -151,12 +151,12 @@ export function StockMovementDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label>{t("inventory.item")}</Label>
+            <Label htmlFor="movement-item">{t("inventory.item")}</Label>
             <Select
               value={selectedId}
               onValueChange={(v) => form.setValue("itemId", v, { shouldValidate: true })}
             >
-              <SelectTrigger size="sm">
+              <SelectTrigger id="movement-item" size="sm">
                 <SelectValue placeholder={t("common.select")} />
               </SelectTrigger>
               <SelectContent>

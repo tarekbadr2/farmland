@@ -106,12 +106,13 @@ export function ChequeDialog({ kind, trigger }: { kind: ChequeKind; trigger: Rea
         <div className="grid gap-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <Label>{ar ? "رقم الشيك" : "Cheque number"}</Label>
-              <Input value={chequeNo} onChange={(e) => setChequeNo(e.target.value)} className="tabular-nums" />
+              <Label htmlFor="cheque-number">{ar ? "رقم الشيك" : "Cheque number"}</Label>
+              <Input id="cheque-number" value={chequeNo} onChange={(e) => setChequeNo(e.target.value)} className="tabular-nums" />
             </div>
             <div>
-              <Label>{ar ? "المبلغ" : "Amount"}</Label>
+              <Label htmlFor="cheque-amount">{ar ? "المبلغ" : "Amount"}</Label>
               <Input
+                id="cheque-amount"
                 type="number"
                 min={0}
                 step="0.01"
@@ -121,19 +122,19 @@ export function ChequeDialog({ kind, trigger }: { kind: ChequeKind; trigger: Rea
               />
             </div>
             <div>
-              <Label>{ar ? "تاريخ التحرير" : "Issued"}</Label>
-              <Input type="date" value={issuedDate} onChange={(e) => setIssued(e.target.value)} />
+              <Label htmlFor="cheque-issued">{ar ? "تاريخ التحرير" : "Issued"}</Label>
+              <Input id="cheque-issued" type="date" value={issuedDate} onChange={(e) => setIssued(e.target.value)} />
             </div>
             <div>
-              <Label>{ar ? "تاريخ الاستحقاق" : "Due date"}</Label>
-              <Input type="date" value={dueDate} onChange={(e) => setDue(e.target.value)} />
+              <Label htmlFor="cheque-due">{ar ? "تاريخ الاستحقاق" : "Due date"}</Label>
+              <Input id="cheque-due" type="date" value={dueDate} onChange={(e) => setDue(e.target.value)} />
             </div>
           </div>
 
           <div>
-            <Label>{receivable ? (ar ? "العميل" : "Customer") : ar ? "المورّد" : "Supplier"}</Label>
+            <Label htmlFor="cheque-partner">{receivable ? (ar ? "العميل" : "Customer") : ar ? "المورّد" : "Supplier"}</Label>
             <Select value={partnerId} onValueChange={setPartnerId}>
-              <SelectTrigger>
+              <SelectTrigger id="cheque-partner">
                 <SelectValue placeholder={ar ? "اختر" : "Pick one"} />
               </SelectTrigger>
               <SelectContent>
@@ -147,8 +148,8 @@ export function ChequeDialog({ kind, trigger }: { kind: ChequeKind; trigger: Rea
           </div>
 
           <div>
-            <Label>{ar ? "البنك (اختياري)" : "Bank (optional)"}</Label>
-            <Input value={bankName} onChange={(e) => setBank(e.target.value)} />
+            <Label htmlFor="cheque-bank">{ar ? "البنك (اختياري)" : "Bank (optional)"}</Label>
+            <Input id="cheque-bank" value={bankName} onChange={(e) => setBank(e.target.value)} />
           </div>
 
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
@@ -253,9 +254,9 @@ export function ChequeSettleDialog({
         <div className="grid gap-3">
           {collecting && (
             <div>
-              <Label>{ar ? "إلى الخزينة / البنك" : "Into cash box / bank"}</Label>
+              <Label htmlFor="cheque-settle-treasury">{ar ? "إلى الخزينة / البنك" : "Into cash box / bank"}</Label>
               <Select value={treasuryAccountId} onValueChange={setTreasury}>
-                <SelectTrigger>
+                <SelectTrigger id="cheque-settle-treasury">
                   <SelectValue placeholder={ar ? "اختر" : "Pick one"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -269,8 +270,8 @@ export function ChequeSettleDialog({
             </div>
           )}
           <div>
-            <Label>{ar ? "التاريخ" : "Date"}</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Label htmlFor="cheque-settle-date">{ar ? "التاريخ" : "Date"}</Label>
+            <Input id="cheque-settle-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
         </div>
 

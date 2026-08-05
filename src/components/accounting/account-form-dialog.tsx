@@ -132,13 +132,13 @@ export function AccountFormDialog({
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <Label>{ar ? "الكود" : "Code"}</Label>
-            <Input value={code} onChange={(e) => setCode(e.target.value)} className="tabular-nums" />
+            <Label htmlFor="account-code">{ar ? "الكود" : "Code"}</Label>
+            <Input id="account-code" value={code} onChange={(e) => setCode(e.target.value)} className="tabular-nums" />
           </div>
           <div>
-            <Label>{ar ? "نوع الحساب" : "Account type"}</Label>
+            <Label htmlFor="account-type">{ar ? "نوع الحساب" : "Account type"}</Label>
             <Select value={type} onValueChange={(v) => pickType(v as AccountType)}>
-              <SelectTrigger>
+              <SelectTrigger id="account-type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -151,17 +151,17 @@ export function AccountFormDialog({
             </Select>
           </div>
           <div>
-            <Label>{ar ? "الاسم (إنجليزي)" : "Name (English)"}</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
+            <Label htmlFor="account-name">{ar ? "الاسم (إنجليزي)" : "Name (English)"}</Label>
+            <Input id="account-name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div>
-            <Label>{ar ? "الاسم (عربي)" : "Name (Arabic)"}</Label>
-            <Input value={nameAr} onChange={(e) => setNameAr(e.target.value)} dir="rtl" />
+            <Label htmlFor="account-name-ar">{ar ? "الاسم (عربي)" : "Name (Arabic)"}</Label>
+            <Input id="account-name-ar" value={nameAr} onChange={(e) => setNameAr(e.target.value)} dir="rtl" />
           </div>
           <div>
-            <Label>{ar ? "طبيعة الحساب" : "Nature"}</Label>
+            <Label htmlFor="account-nature">{ar ? "طبيعة الحساب" : "Nature"}</Label>
             <Select value={nature} onValueChange={(v) => setNature(v as AccountNature)}>
-              <SelectTrigger>
+              <SelectTrigger id="account-nature">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -171,8 +171,9 @@ export function AccountFormDialog({
             </Select>
           </div>
           <div>
-            <Label>{ar ? "رصيد افتتاحي" : "Opening balance"}</Label>
+            <Label htmlFor="account-opening">{ar ? "رصيد افتتاحي" : "Opening balance"}</Label>
             <Input
+              id="account-opening"
               type="number"
               step="0.01"
               value={opening}

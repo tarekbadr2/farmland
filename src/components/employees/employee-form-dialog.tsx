@@ -104,17 +104,17 @@ export function EmployeeFormDialog({ employee, trigger }: { employee?: Employee;
         >
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "الاسم" : "Name"}</Label>
-              <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+              <Label htmlFor="emp-name" className="text-[12.5px]">{ar ? "الاسم" : "Name"}</Label>
+              <Input id="emp-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "الاسم بالعربية" : "Arabic name"}</Label>
-              <Input dir="rtl" value={nameAr} onChange={(e) => setNameAr(e.target.value)} />
+              <Label htmlFor="emp-name-ar" className="text-[12.5px]">{ar ? "الاسم بالعربية" : "Arabic name"}</Label>
+              <Input id="emp-name-ar" dir="rtl" value={nameAr} onChange={(e) => setNameAr(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "الوظيفة" : "Role"}</Label>
+              <Label htmlFor="emp-role" className="text-[12.5px]">{ar ? "الوظيفة" : "Role"}</Label>
               <Select value={role} onValueChange={(v) => setRole(v as EmployeeRole)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="emp-role"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {EMPLOYEE_ROLES.map((r) => (
                     <SelectItem key={r.value} value={r.value}>{ar ? r.ar : r.en}</SelectItem>
@@ -123,9 +123,9 @@ export function EmployeeFormDialog({ employee, trigger }: { employee?: Employee;
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "الوردية" : "Shift"}</Label>
+              <Label htmlFor="emp-shift" className="text-[12.5px]">{ar ? "الوردية" : "Shift"}</Label>
               <Select value={shift} onValueChange={(v) => setShift(v as Employee["shift"])}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="emp-shift"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {SHIFTS.map((s) => (
                     <SelectItem key={s.value} value={s.value}>{ar ? s.ar : s.en}</SelectItem>
@@ -134,20 +134,20 @@ export function EmployeeFormDialog({ employee, trigger }: { employee?: Employee;
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "الراتب الشهري (ج.م)" : "Monthly salary (EGP)"}</Label>
-              <Input type="number" inputMode="decimal" value={salary} onChange={(e) => setSalary(e.target.value)} placeholder="0" />
+              <Label htmlFor="emp-salary" className="text-[12.5px]">{ar ? "الراتب الشهري (ج.م)" : "Monthly salary (EGP)"}</Label>
+              <Input id="emp-salary" type="number" inputMode="decimal" value={salary} onChange={(e) => setSalary(e.target.value)} placeholder="0" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "الهاتف" : "Phone"}</Label>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <Label htmlFor="emp-phone" className="text-[12.5px]">{ar ? "الهاتف" : "Phone"}</Label>
+              <Input id="emp-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "تاريخ التعيين" : "Hired"}</Label>
-              <Input type="date" value={hiredAt} onChange={(e) => setHiredAt(e.target.value)} />
+              <Label htmlFor="emp-hired" className="text-[12.5px]">{ar ? "تاريخ التعيين" : "Hired"}</Label>
+              <Input id="emp-hired" type="date" value={hiredAt} onChange={(e) => setHiredAt(e.target.value)} />
             </div>
             <div className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2">
-              <Label className="text-[12.5px]">{ar ? "نشط" : "Active"}</Label>
-              <Switch checked={active} onCheckedChange={setActive} />
+              <Label htmlFor="emp-active" className="text-[12.5px]">{ar ? "نشط" : "Active"}</Label>
+              <Switch id="emp-active" checked={active} onCheckedChange={setActive} />
             </div>
           </div>
 

@@ -169,9 +169,9 @@ export function TransferAnimalsDialog({
 
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
-            <Label>{ar ? "إلى" : "To pen"}</Label>
+            <Label htmlFor="transfer-animals-to-zone">{ar ? "إلى" : "To pen"}</Label>
             <Select value={toZoneId} onValueChange={setToZone}>
-              <SelectTrigger>
+              <SelectTrigger id="transfer-animals-to-zone">
                 <SelectValue placeholder={ar ? "اختر" : "Pick one"} />
               </SelectTrigger>
               <SelectContent>
@@ -184,9 +184,9 @@ export function TransferAnimalsDialog({
             </Select>
           </div>
           <div>
-            <Label>{ar ? "السبب" : "Reason"}</Label>
+            <Label htmlFor="transfer-animals-reason">{ar ? "السبب" : "Reason"}</Label>
             <Select value={reason} onValueChange={(v) => setReason(v as TransferReason)}>
-              <SelectTrigger>
+              <SelectTrigger id="transfer-animals-reason">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -199,8 +199,8 @@ export function TransferAnimalsDialog({
             </Select>
           </div>
           <div>
-            <Label>{ar ? "التاريخ" : "Date"}</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Label htmlFor="transfer-animals-date">{ar ? "التاريخ" : "Date"}</Label>
+            <Input id="transfer-animals-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
         </div>
 
@@ -252,8 +252,8 @@ export function TransferAnimalsDialog({
         </div>
 
         <div>
-          <Label>{ar ? "ملاحظات (اختياري)" : "Notes (optional)"}</Label>
-          <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <Label htmlFor="transfer-animals-notes">{ar ? "ملاحظات (اختياري)" : "Notes (optional)"}</Label>
+          <Input id="transfer-animals-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
 
         {/* Capacity is advisory — shown plainly, never a blocker. */}

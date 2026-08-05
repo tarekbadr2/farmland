@@ -124,12 +124,12 @@ export function OrganisationSettings() {
 
           <div className="grid gap-2 sm:grid-cols-2">
             <div>
-              <Label>{ar ? "اسم الفرع" : "Branch name"}</Label>
-              <Input value={branchName} onChange={(e) => setBranchName(e.target.value)} />
+              <Label htmlFor="org-branch-name">{ar ? "اسم الفرع" : "Branch name"}</Label>
+              <Input id="org-branch-name" value={branchName} onChange={(e) => setBranchName(e.target.value)} />
             </div>
             <div>
-              <Label>{ar ? "الاسم بالعربية" : "Arabic name"}</Label>
-              <Input value={branchNameAr} onChange={(e) => setBranchNameAr(e.target.value)} dir="rtl" />
+              <Label htmlFor="org-branch-name-ar">{ar ? "الاسم بالعربية" : "Arabic name"}</Label>
+              <Input id="org-branch-name-ar" value={branchNameAr} onChange={(e) => setBranchNameAr(e.target.value)} dir="rtl" />
             </div>
           </div>
           <Button
@@ -206,8 +206,9 @@ export function OrganisationSettings() {
 
           <div className="grid grid-cols-[5rem_1fr_auto] items-end gap-2">
             <div>
-              <Label>{ar ? "الرمز" : "Code"}</Label>
+              <Label htmlFor="org-currency-code">{ar ? "الرمز" : "Code"}</Label>
               <Input
+                id="org-currency-code"
                 value={newCode}
                 onChange={(e) => setNewCode(e.target.value.toUpperCase())}
                 placeholder="USD"
@@ -215,8 +216,9 @@ export function OrganisationSettings() {
               />
             </div>
             <div>
-              <Label>{ar ? `السعر مقابل ${base?.code ?? ""}` : `Rate to ${base?.code ?? "base"}`}</Label>
+              <Label htmlFor="org-currency-rate">{ar ? `السعر مقابل ${base?.code ?? ""}` : `Rate to ${base?.code ?? "base"}`}</Label>
               <Input
+                id="org-currency-rate"
                 type="number"
                 step="0.0001"
                 min={0}

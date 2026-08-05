@@ -138,9 +138,9 @@ export function PurchaseDialog({
         <div className="grid gap-3">
           {!fixedItemId && (
             <div>
-              <Label>{ar ? "الصنف" : "Item"}</Label>
+              <Label htmlFor="purchase-item">{ar ? "الصنف" : "Item"}</Label>
               <Select value={itemId} onValueChange={setItemId}>
-                <SelectTrigger>
+                <SelectTrigger id="purchase-item">
                   <SelectValue placeholder={ar ? "اختر صنفًا" : "Pick an item"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -156,10 +156,11 @@ export function PurchaseDialog({
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <Label>
+              <Label htmlFor="purchase-quantity">
                 {ar ? "الكمية" : "Quantity"} {unit ? `(${unit})` : ""}
               </Label>
               <Input
+                id="purchase-quantity"
                 type="number"
                 min={0}
                 step="0.01"
@@ -169,8 +170,9 @@ export function PurchaseDialog({
               />
             </div>
             <div>
-              <Label>{ar ? "سعر الوحدة" : "Price per unit"}</Label>
+              <Label htmlFor="purchase-unit-cost">{ar ? "سعر الوحدة" : "Price per unit"}</Label>
               <Input
+                id="purchase-unit-cost"
                 type="number"
                 min={0}
                 step="0.01"
@@ -180,16 +182,16 @@ export function PurchaseDialog({
               />
             </div>
             <div>
-              <Label>{ar ? "التاريخ" : "Date"}</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Label htmlFor="purchase-date">{ar ? "التاريخ" : "Date"}</Label>
+              <Input id="purchase-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
             <div>
-              <Label>{ar ? "طريقة الدفع" : "Payment"}</Label>
+              <Label htmlFor="purchase-payment">{ar ? "طريقة الدفع" : "Payment"}</Label>
               <Select
                 value={paymentMethod}
                 onValueChange={(v) => setPaymentMethod(v as Transaction["paymentMethod"])}
               >
-                <SelectTrigger>
+                <SelectTrigger id="purchase-payment">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -203,9 +205,9 @@ export function PurchaseDialog({
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <Label>{ar ? "المورّد (اختياري)" : "Supplier (optional)"}</Label>
+              <Label htmlFor="purchase-supplier">{ar ? "المورّد (اختياري)" : "Supplier (optional)"}</Label>
               <Select value={supplierId} onValueChange={setSupplierId}>
-                <SelectTrigger>
+                <SelectTrigger id="purchase-supplier">
                   <SelectValue placeholder={ar ? "اختر مورّدًا" : "Pick a supplier"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -220,9 +222,9 @@ export function PurchaseDialog({
             {/* Which store the goods land in — only worth asking with >1 store. */}
             {warehouses.length > 1 && (
               <div>
-                <Label>{ar ? "المخزن" : "Store"}</Label>
+                <Label htmlFor="purchase-store">{ar ? "المخزن" : "Store"}</Label>
                 <Select value={warehouseId} onValueChange={setWarehouseId}>
-                  <SelectTrigger>
+                  <SelectTrigger id="purchase-store">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

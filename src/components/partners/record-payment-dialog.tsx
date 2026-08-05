@@ -105,9 +105,9 @@ export function RecordPaymentDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>{t("finance.paymentMethod")}</Label>
+            <Label htmlFor="payment-method">{t("finance.paymentMethod")}</Label>
             <Select value={method} onValueChange={(v) => setMethod(v as typeof method)}>
-              <SelectTrigger size="sm">
+              <SelectTrigger id="payment-method" size="sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

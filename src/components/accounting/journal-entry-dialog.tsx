@@ -127,12 +127,13 @@ export function JournalEntryDialog({ trigger }: { trigger: React.ReactNode }) {
 
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
-            <Label>{ar ? "التاريخ" : "Date"}</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Label htmlFor="journal-date">{ar ? "التاريخ" : "Date"}</Label>
+            <Input id="journal-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div className="sm:col-span-2">
-            <Label>{ar ? "البيان" : "Description"}</Label>
+            <Label htmlFor="journal-description">{ar ? "البيان" : "Description"}</Label>
             <Input
+              id="journal-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={ar ? "مثال: سداد فاتورة أعلاف" : "e.g. Paid feed supplier invoice"}
@@ -141,8 +142,8 @@ export function JournalEntryDialog({ trigger }: { trigger: React.ReactNode }) {
         </div>
 
         <div className="mt-1">
-          <Label>{ar ? "المرجع (اختياري)" : "Reference (optional)"}</Label>
-          <Input value={reference} onChange={(e) => setReference(e.target.value)} />
+          <Label htmlFor="journal-reference">{ar ? "المرجع (اختياري)" : "Reference (optional)"}</Label>
+          <Input id="journal-reference" value={reference} onChange={(e) => setReference(e.target.value)} />
         </div>
 
         {/* ------------------------------- Lines -------------------------------- */}

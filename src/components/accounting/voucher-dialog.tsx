@@ -153,8 +153,9 @@ export function VoucherDialog({ kind, trigger }: { kind: VoucherKind; trigger: R
 
         <div className="grid gap-3">
           <div>
-            <Label>{ar ? "البيان" : "Description"}</Label>
+            <Label htmlFor="voucher-description">{ar ? "البيان" : "Description"}</Label>
             <Input
+              id="voucher-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={
@@ -167,8 +168,9 @@ export function VoucherDialog({ kind, trigger }: { kind: VoucherKind; trigger: R
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <Label>{ar ? "المبلغ" : "Amount"}</Label>
+              <Label htmlFor="voucher-amount">{ar ? "المبلغ" : "Amount"}</Label>
               <Input
+                id="voucher-amount"
                 type="number"
                 min={0}
                 step="0.01"
@@ -178,15 +180,15 @@ export function VoucherDialog({ kind, trigger }: { kind: VoucherKind; trigger: R
               />
             </div>
             <div>
-              <Label>{ar ? "التاريخ" : "Date"}</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Label htmlFor="voucher-date">{ar ? "التاريخ" : "Date"}</Label>
+              <Input id="voucher-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
           </div>
 
           <div>
-            <Label>{ar ? "الخزينة / البنك" : "Cash box / bank"}</Label>
+            <Label htmlFor="voucher-treasury">{ar ? "الخزينة / البنك" : "Cash box / bank"}</Label>
             <Select value={treasuryAccountId} onValueChange={setTreasury}>
-              <SelectTrigger>
+              <SelectTrigger id="voucher-treasury">
                 <SelectValue placeholder={ar ? "اختر" : "Pick one"} />
               </SelectTrigger>
               <SelectContent>
@@ -200,9 +202,9 @@ export function VoucherDialog({ kind, trigger }: { kind: VoucherKind; trigger: R
           </div>
 
           <div>
-            <Label>{receipt ? (ar ? "مقابل (الإيراد/العميل)" : "For (income / customer)") : ar ? "مقابل (المصروف/المورّد)" : "For (expense / supplier)"}</Label>
+            <Label htmlFor="voucher-counter">{receipt ? (ar ? "مقابل (الإيراد/العميل)" : "For (income / customer)") : ar ? "مقابل (المصروف/المورّد)" : "For (expense / supplier)"}</Label>
             <Select value={counterAccountId} onValueChange={setCounter}>
-              <SelectTrigger>
+              <SelectTrigger id="voucher-counter">
                 <SelectValue placeholder={ar ? "اختر حسابًا" : "Pick an account"} />
               </SelectTrigger>
               <SelectContent>
@@ -216,9 +218,9 @@ export function VoucherDialog({ kind, trigger }: { kind: VoucherKind; trigger: R
           </div>
 
           <div>
-            <Label>{ar ? "الطرف (اختياري)" : "Party (optional)"}</Label>
+            <Label htmlFor="voucher-partner">{ar ? "الطرف (اختياري)" : "Party (optional)"}</Label>
             <Select value={partnerId} onValueChange={setPartnerId}>
-              <SelectTrigger>
+              <SelectTrigger id="voucher-partner">
                 <SelectValue placeholder={ar ? "اختر" : "Pick one"} />
               </SelectTrigger>
               <SelectContent>

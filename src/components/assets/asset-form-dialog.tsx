@@ -109,17 +109,17 @@ export function AssetFormDialog({ asset, trigger }: { asset?: Asset; trigger: Re
         >
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "الاسم" : "Name"}</Label>
-              <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+              <Label htmlFor="asset-name" className="text-[12.5px]">{ar ? "الاسم" : "Name"}</Label>
+              <Input id="asset-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "الاسم بالعربية" : "Arabic name"}</Label>
-              <Input dir="rtl" value={nameAr} onChange={(e) => setNameAr(e.target.value)} />
+              <Label htmlFor="asset-name-ar" className="text-[12.5px]">{ar ? "الاسم بالعربية" : "Arabic name"}</Label>
+              <Input id="asset-name-ar" dir="rtl" value={nameAr} onChange={(e) => setNameAr(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "الفئة" : "Category"}</Label>
+              <Label htmlFor="asset-category" className="text-[12.5px]">{ar ? "الفئة" : "Category"}</Label>
               <Select value={category} onValueChange={(v) => setCategory(v as AssetCategory)}>
-                <SelectTrigger>
+                <SelectTrigger id="asset-category">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -132,32 +132,32 @@ export function AssetFormDialog({ asset, trigger }: { asset?: Asset; trigger: Re
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "تاريخ الشراء" : "Acquired"}</Label>
-              <Input type="date" value={acquiredDate} onChange={(e) => setAcquiredDate(e.target.value)} />
+              <Label htmlFor="asset-acquired" className="text-[12.5px]">{ar ? "تاريخ الشراء" : "Acquired"}</Label>
+              <Input id="asset-acquired" type="date" value={acquiredDate} onChange={(e) => setAcquiredDate(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "التكلفة (ج.م)" : "Cost (EGP)"}</Label>
-              <Input type="number" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0" />
+              <Label htmlFor="asset-cost" className="text-[12.5px]">{ar ? "التكلفة (ج.م)" : "Cost (EGP)"}</Label>
+              <Input id="asset-cost" type="number" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "القيمة المتبقية (ج.م)" : "Salvage value (EGP)"}</Label>
-              <Input type="number" inputMode="decimal" value={salvage} onChange={(e) => setSalvage(e.target.value)} placeholder="0" />
+              <Label htmlFor="asset-salvage" className="text-[12.5px]">{ar ? "القيمة المتبقية (ج.م)" : "Salvage value (EGP)"}</Label>
+              <Input id="asset-salvage" type="number" inputMode="decimal" value={salvage} onChange={(e) => setSalvage(e.target.value)} placeholder="0" />
             </div>
             {category !== "land" && (
               <div className="space-y-1.5">
-                <Label className="text-[12.5px]">{ar ? "العمر الإنتاجي (سنوات)" : "Useful life (years)"}</Label>
-                <Input type="number" inputMode="numeric" value={life} onChange={(e) => setLife(e.target.value)} placeholder="10" />
+                <Label htmlFor="asset-life" className="text-[12.5px]">{ar ? "العمر الإنتاجي (سنوات)" : "Useful life (years)"}</Label>
+                <Input id="asset-life" type="number" inputMode="numeric" value={life} onChange={(e) => setLife(e.target.value)} placeholder="10" />
               </div>
             )}
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "الموقع (اختياري)" : "Location (optional)"}</Label>
-              <Input value={location} onChange={(e) => setLocation(e.target.value)} />
+              <Label htmlFor="asset-location" className="text-[12.5px]">{ar ? "الموقع (اختياري)" : "Location (optional)"}</Label>
+              <Input id="asset-location" value={location} onChange={(e) => setLocation(e.target.value)} />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-[12.5px]">{ar ? "ملاحظات" : "Notes"}</Label>
-            <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <Label htmlFor="asset-notes" className="text-[12.5px]">{ar ? "ملاحظات" : "Notes"}</Label>
+            <Textarea id="asset-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
 
           <DialogFooter className="sm:justify-between">

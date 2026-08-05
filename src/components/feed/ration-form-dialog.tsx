@@ -156,17 +156,17 @@ export function RationFormDialog({
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <Label>{ar ? "الاسم (إنجليزي)" : "Name (English)"}</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
+            <Label htmlFor="ration-name">{ar ? "الاسم (إنجليزي)" : "Name (English)"}</Label>
+            <Input id="ration-name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div>
-            <Label>{ar ? "الاسم (عربي)" : "Name (Arabic)"}</Label>
-            <Input value={nameAr} onChange={(e) => setNameAr(e.target.value)} dir="rtl" />
+            <Label htmlFor="ration-name-ar">{ar ? "الاسم (عربي)" : "Name (Arabic)"}</Label>
+            <Input id="ration-name-ar" value={nameAr} onChange={(e) => setNameAr(e.target.value)} dir="rtl" />
           </div>
           <div>
-            <Label>{ar ? "الفئة المستهدفة" : "Target group"}</Label>
+            <Label htmlFor="ration-group">{ar ? "الفئة المستهدفة" : "Target group"}</Label>
             <Select value={group} onValueChange={(v) => setGroup(v as TargetGroup)}>
-              <SelectTrigger>
+              <SelectTrigger id="ration-group">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -179,8 +179,9 @@ export function RationFormDialog({
             </Select>
           </div>
           <div>
-            <Label>{ar ? "إجمالي كجم/رأس" : "Total kg per head"}</Label>
+            <Label htmlFor="ration-kg-per-head">{ar ? "إجمالي كجم/رأس" : "Total kg per head"}</Label>
             <Input
+              id="ration-kg-per-head"
               type="number"
               min={0}
               step="0.1"

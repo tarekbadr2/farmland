@@ -186,12 +186,12 @@ export function LogBreedingDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>{t("common.type")}</Label>
+              <Label htmlFor="breeding-type">{t("common.type")}</Label>
               <Select
                 value={type}
                 onValueChange={(v) => form.setValue("type", v as FormValues["type"])}
               >
-                <SelectTrigger size="sm">
+                <SelectTrigger id="breeding-type" size="sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -212,9 +212,9 @@ export function LogBreedingDialog({
           {(type === "ai" || type === "natural_mating") && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>{t("breeding.semenBatch")}</Label>
+                <Label htmlFor="breeding-semen-batch">{t("breeding.semenBatch")}</Label>
                 <Select onValueChange={(v) => form.setValue("semenBatch", v)}>
-                  <SelectTrigger size="sm">
+                  <SelectTrigger id="breeding-semen-batch" size="sm">
                     <SelectValue placeholder={t("common.select")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -235,9 +235,9 @@ export function LogBreedingDialog({
 
           {type === "pregnancy_check" && (
             <div className="space-y-1.5">
-              <Label>{t("breeding.result")}</Label>
+              <Label htmlFor="breeding-result">{t("breeding.result")}</Label>
               <Select onValueChange={(v) => form.setValue("result", v as FormValues["result"])}>
-                <SelectTrigger size="sm">
+                <SelectTrigger id="breeding-result" size="sm">
                   <SelectValue placeholder={t("common.select")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -253,9 +253,9 @@ export function LogBreedingDialog({
 
           {type === "calving" && (
             <div className="space-y-1.5">
-              <Label>{t("breeding.outcome")}</Label>
+              <Label htmlFor="breeding-outcome">{t("breeding.outcome")}</Label>
               <Select onValueChange={(v) => form.setValue("outcome", v as FormValues["outcome"])}>
-                <SelectTrigger size="sm">
+                <SelectTrigger id="breeding-outcome" size="sm">
                   <SelectValue placeholder={t("common.select")} />
                 </SelectTrigger>
                 <SelectContent>

@@ -102,9 +102,9 @@ export function TransferStockDialog({ trigger }: { trigger: React.ReactNode }) {
 
         <div className="grid gap-3">
           <div>
-            <Label>{ar ? "الصنف" : "Item"}</Label>
+            <Label htmlFor="transfer-item">{ar ? "الصنف" : "Item"}</Label>
             <Select value={itemId} onValueChange={setItemId}>
-              <SelectTrigger>
+              <SelectTrigger id="transfer-item">
                 <SelectValue placeholder={ar ? "اختر صنفًا" : "Pick an item"} />
               </SelectTrigger>
               <SelectContent>
@@ -119,9 +119,9 @@ export function TransferStockDialog({ trigger }: { trigger: React.ReactNode }) {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <Label>{ar ? "من مخزن" : "From store"}</Label>
+              <Label htmlFor="transfer-from">{ar ? "من مخزن" : "From store"}</Label>
               <Select value={fromId} onValueChange={setFrom}>
-                <SelectTrigger>
+                <SelectTrigger id="transfer-from">
                   <SelectValue placeholder={ar ? "اختر" : "Pick one"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -134,9 +134,9 @@ export function TransferStockDialog({ trigger }: { trigger: React.ReactNode }) {
               </Select>
             </div>
             <div>
-              <Label>{ar ? "إلى مخزن" : "To store"}</Label>
+              <Label htmlFor="transfer-to">{ar ? "إلى مخزن" : "To store"}</Label>
               <Select value={toId} onValueChange={setTo}>
-                <SelectTrigger>
+                <SelectTrigger id="transfer-to">
                   <SelectValue placeholder={ar ? "اختر" : "Pick one"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -151,10 +151,11 @@ export function TransferStockDialog({ trigger }: { trigger: React.ReactNode }) {
               </Select>
             </div>
             <div>
-              <Label>
+              <Label htmlFor="transfer-quantity">
                 {ar ? "الكمية" : "Quantity"} {item ? `(${item.unit})` : ""}
               </Label>
               <Input
+                id="transfer-quantity"
                 type="number"
                 min={0}
                 step="0.01"
@@ -164,8 +165,8 @@ export function TransferStockDialog({ trigger }: { trigger: React.ReactNode }) {
               />
             </div>
             <div>
-              <Label>{ar ? "التاريخ" : "Date"}</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Label htmlFor="transfer-date">{ar ? "التاريخ" : "Date"}</Label>
+              <Input id="transfer-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
           </div>
 
@@ -266,9 +267,9 @@ export function StocktakeDialog({ trigger }: { trigger: React.ReactNode }) {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <Label>{ar ? "المخزن" : "Store"}</Label>
+            <Label htmlFor="stocktake-store">{ar ? "المخزن" : "Store"}</Label>
             <Select value={warehouseId} onValueChange={setWarehouse}>
-              <SelectTrigger>
+              <SelectTrigger id="stocktake-store">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -281,8 +282,8 @@ export function StocktakeDialog({ trigger }: { trigger: React.ReactNode }) {
             </Select>
           </div>
           <div>
-            <Label>{ar ? "التاريخ" : "Date"}</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Label htmlFor="stocktake-date">{ar ? "التاريخ" : "Date"}</Label>
+            <Input id="stocktake-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
         </div>
 

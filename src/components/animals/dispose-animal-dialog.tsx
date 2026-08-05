@@ -95,9 +95,9 @@ export function DisposeAnimalDialog({ animal, trigger }: { animal: Animal; trigg
         <form onSubmit={submit} className="space-y-4" dir={ar ? "rtl" : "ltr"}>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "النوع" : "Type"}</Label>
+              <Label htmlFor="dispose-type" className="text-[12.5px]">{ar ? "النوع" : "Type"}</Label>
               <Select value={type} onValueChange={(v) => setType(v as DisposeType)}>
-                <SelectTrigger>
+                <SelectTrigger id="dispose-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -110,15 +110,16 @@ export function DisposeAnimalDialog({ animal, trigger }: { animal: Animal; trigg
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "التاريخ" : "Date"}</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Label htmlFor="dispose-date" className="text-[12.5px]">{ar ? "التاريخ" : "Date"}</Label>
+              <Input id="dispose-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">{ar ? "الوزن (كجم)" : "Weight (kg)"}</Label>
+              <Label htmlFor="dispose-weight" className="text-[12.5px]">{ar ? "الوزن (كجم)" : "Weight (kg)"}</Label>
               <Input
+                id="dispose-weight"
                 type="number"
                 inputMode="decimal"
                 value={weight}
@@ -128,8 +129,9 @@ export function DisposeAnimalDialog({ animal, trigger }: { animal: Animal; trigg
             </div>
             {type === "sold" && (
               <div className="space-y-1.5">
-                <Label className="text-[12.5px]">{ar ? "قيمة البيع (ج.م)" : "Sale price (EGP)"}</Label>
+                <Label htmlFor="dispose-proceeds" className="text-[12.5px]">{ar ? "قيمة البيع (ج.م)" : "Sale price (EGP)"}</Label>
                 <Input
+                  id="dispose-proceeds"
                   type="number"
                   inputMode="decimal"
                   value={proceeds}
@@ -142,8 +144,8 @@ export function DisposeAnimalDialog({ animal, trigger }: { animal: Animal; trigg
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-[12.5px]">{ar ? "ملاحظة (اختياري)" : "Note (optional)"}</Label>
-            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder={ar ? "المشتري، السبب…" : "Buyer, reason…"} />
+            <Label htmlFor="dispose-note" className="text-[12.5px]">{ar ? "ملاحظة (اختياري)" : "Note (optional)"}</Label>
+            <Input id="dispose-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder={ar ? "المشتري، السبب…" : "Buyer, reason…"} />
           </div>
 
           <DialogFooter>

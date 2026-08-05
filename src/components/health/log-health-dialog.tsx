@@ -178,12 +178,12 @@ export function LogHealthDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>{t("common.type")}</Label>
+              <Label htmlFor="health-type">{t("common.type")}</Label>
               <Select
                 value={type}
                 onValueChange={(v) => form.setValue("type", v as FormValues["type"])}
               >
-                <SelectTrigger size="sm">
+                <SelectTrigger id="health-type" size="sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -205,9 +205,9 @@ export function LogHealthDialog({
               field for every type is how forms become unanswerable. */}
           {type === "diagnosis" && (
             <div className="space-y-1.5">
-              <Label>{t("health.disease")}</Label>
+              <Label htmlFor="health-disease">{t("health.disease")}</Label>
               <Select onValueChange={(v) => form.setValue("disease", v)}>
-                <SelectTrigger size="sm">
+                <SelectTrigger id="health-disease" size="sm">
                   <SelectValue placeholder={t("common.select")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -279,11 +279,11 @@ export function LogHealthDialog({
               <Input id="withdrawal" type="number" {...form.register("withdrawalDays")} />
             </div>
             <div className="space-y-1.5">
-              <Label>{t("health.outcomeLabel")}</Label>
+              <Label htmlFor="health-outcome">{t("health.outcomeLabel")}</Label>
               <Select
                 onValueChange={(v) => form.setValue("outcome", v as FormValues["outcome"])}
               >
-                <SelectTrigger size="sm">
+                <SelectTrigger id="health-outcome" size="sm">
                   <SelectValue placeholder={t("common.select")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -310,10 +310,11 @@ export function LogHealthDialog({
 
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
             <div>
-              <Label className="text-[13px]">{t("health.isolate")}</Label>
+              <Label htmlFor="health-isolation" className="text-[13px]">{t("health.isolate")}</Label>
               <p className="text-[11px] text-muted-foreground">{t("health.isolateHint")}</p>
             </div>
             <Switch
+              id="health-isolation"
               checked={form.watch("isolation")}
               onCheckedChange={(v) => form.setValue("isolation", v)}
             />
