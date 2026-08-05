@@ -13,6 +13,8 @@ import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  terminate,
+  clearIndexedDbPersistence,
   type Firestore,
 } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
@@ -61,6 +63,23 @@ export function getFirebase() {
     functions = getFunctions(app, FUNCTIONS_REGION);
   }
   return { app: app!, db: db!, auth: auth!, storage: storage!, functions: functions! };
+}
+
+/**
+ * Secure-logout cleanup: wipe the on-disk Firestore cache so no sensitive farm
+ * data is left behind on a shared machine. Terminating the client is required
+ * before clearing persistence; callers hard-reload afterwards so a fresh client
+ * initializes on the next page. Best-effort — never throws.
+ */
+export async function clearLocalData(): Promise<void> {
+  try {
+    if (db) {
+      await terminate(db);
+      await clearIndexedDbPersistence(db);
+    }
+  } catch {
+    /* best-effort — a locked/absent cache must not block logout */
+  }
 }
 
 /**

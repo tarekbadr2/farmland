@@ -15,7 +15,7 @@ import {
   type User,
 } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { claimMembership, getFirebase } from "@/infrastructure/firebase/client";
+import { claimMembership, getFirebase, clearLocalData } from "@/infrastructure/firebase/client";
 import { paths } from "@/infrastructure/firebase/paths";
 import {
   getActiveFarm,
@@ -277,7 +277,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       signOut: async () => {
         if (!enabled) return;
+        // Sign out first (the part that must succeed), then wipe sensitive farm
+        // data cached on the device — important on shared desktops — and hard-
+        // reload to a clean login. Clearing is best-effort and time-boxed so it
+        // can never block or break the logout itself.
         await fbSignOut(getFirebase().auth);
+        const goToLogin = () => {
+          if (typeof window !== "undefined") window.location.assign("/login");
+        };
+        Promise.race([
+          clearLocalData(),
+          new Promise((resolve) => setTimeout(resolve, 1500)),
+        ]).finally(goToLogin);
       },
       // Permission-first: delegates to the shared catalog check (supports `*`
       // and `module.*`). Auth-off demo builds and the owner are always allowed.
