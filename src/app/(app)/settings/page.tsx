@@ -11,6 +11,7 @@ import {
   CreditCard,
   Database,
   Globe,
+  Monitor,
   Moon,
   Palette,
   Plug,
@@ -36,7 +37,8 @@ import { TeamManager } from "@/components/settings/team-manager";
 import { BillingSettings } from "@/components/settings/billing-settings";
 import { OrganisationSettings } from "@/components/settings/organisation-settings";
 import { NotificationPreferences } from "@/components/settings/notification-preferences";
-import { UpdateChecker } from "@/components/settings/update-checker";
+import { DesktopSettings } from "@/components/settings/desktop-settings";
+import { IS_DESKTOP } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import {
   ASSIGNABLE_ROLES,
@@ -101,6 +103,11 @@ export default function SettingsPage() {
           <TabsTrigger value="integrations">
             <Plug /> {t("settings.integrations")}
           </TabsTrigger>
+          {IS_DESKTOP && (
+            <TabsTrigger value="desktop">
+              <Monitor /> {ar ? "سطح المكتب" : "Desktop"}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* ---------------------------------- Farm -------------------------------- */}
@@ -258,13 +265,17 @@ export default function SettingsPage() {
               </Card>
             </motion.div>
 
-            <motion.div variants={cardIn} className="lg:col-span-2">
-              <UpdateChecker />
-            </motion.div>
           </motion.div>
         </TabsContent>
 
-        {/* ---------------------------------- Roles -------------------------------- */}
+        {/* --------------------------------- Desktop ------------------------------- */}
+        {IS_DESKTOP && (
+          <TabsContent value="desktop">
+            <DesktopSettings />
+          </TabsContent>
+        )}
+
+        {/* -------------------------------- Branches ------------------------------- */}
         <TabsContent value="org">
           <OrganisationSettings />
         </TabsContent>
