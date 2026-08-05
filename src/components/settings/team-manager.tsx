@@ -224,6 +224,7 @@ export function TeamManager() {
                   className="size-9 shrink-0 text-muted-foreground hover:text-destructive"
                   disabled={locked || isYou || remove.isPending}
                   title={isLastOwner(m) ? t("settings.lastOwner") : t("settings.removeMember")}
+                  aria-label={t("settings.removeMember")}
                   onClick={() => {
                     if (confirm(t("settings.removeMemberConfirm"))) remove.mutate(m.id);
                   }}

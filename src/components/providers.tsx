@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MotionConfig } from "framer-motion";
 import { ThemeProvider } from "next-themes";
 import { Toaster, toast } from "sonner";
 import { I18nProvider } from "@/lib/i18n/provider";
@@ -51,7 +52,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <I18nProvider>
           <AuthProvider>
             <TooltipProvider delayDuration={200}>
-              {children}
+              {/* Respect the OS "reduce motion" setting across every framer-motion
+                  animation — page/card transitions become instant for users who
+                  ask for less motion (vestibular accessibility). */}
+              <MotionConfig reducedMotion="user">{children}</MotionConfig>
               <Toaster
                 position="top-center"
                 toastOptions={{

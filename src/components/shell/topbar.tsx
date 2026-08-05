@@ -114,7 +114,12 @@ export function Topbar() {
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="ms-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="ms-1"
+                  aria-label={locale === "ar" ? "قائمة الحساب" : "Account menu"}
+                >
                   <Avatar className="size-7">
                     {user?.photoURL && <AvatarImage src={user.photoURL} alt="" />}
                     <AvatarFallback className="bg-primary/15 text-primary">

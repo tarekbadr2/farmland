@@ -232,6 +232,7 @@ export function NewInvoiceDialog({
                   className="size-9 shrink-0 text-muted-foreground hover:text-destructive"
                   disabled={fields.length === 1}
                   onClick={() => remove(i)}
+                  aria-label={locale === "ar" ? "حذف السطر" : "Remove line"}
                 >
                   <Trash2 className="size-3.5" />
                 </Button>
