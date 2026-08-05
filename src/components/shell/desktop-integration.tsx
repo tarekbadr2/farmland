@@ -30,8 +30,19 @@ export function DesktopIntegration() {
   const queryClient = useQueryClient();
 
   React.useEffect(() => {
+    // In-renderer navigation requests (notification clicks) — routed via the SPA
+    // router instead of a full reload. This listener is set up regardless of the
+    // desktop bridge so it also works if a web notification is ever wired up.
+    const onNavEvent = (e: Event) => {
+      const href = (e as CustomEvent<string>).detail;
+      if (typeof href === "string" && href.startsWith("/")) router.push(href);
+    };
+    window.addEventListener("herdos:navigate", onNavEvent);
+
     const b = bridge();
-    if (!b) return;
+    if (!b) {
+      return () => window.removeEventListener("herdos:navigate", onNavEvent);
+    }
 
     const offNavigate = b.onNavigate((routePath) => {
       if (typeof routePath === "string" && routePath.startsWith("/")) router.push(routePath);
@@ -57,6 +68,7 @@ export function DesktopIntegration() {
     });
 
     return () => {
+      window.removeEventListener("herdos:navigate", onNavEvent);
       offNavigate();
       offAction();
     };

@@ -64,3 +64,9 @@ contextBridge.exposeInMainWorld("desktopFiles", {
   showItem: (p) => ipcRenderer.invoke("fs:show-item", p),
   paths: () => ipcRenderer.invoke("app:paths"),
 });
+
+// Window control: bring the app back from the tray and focus it (used when a
+// native notification is clicked while minimized).
+contextBridge.exposeInMainWorld("desktopWindow", {
+  show: () => ipcRenderer.invoke("window:show"),
+});

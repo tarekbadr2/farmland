@@ -35,8 +35,16 @@ export function showDesktopNotification(
   try {
     const n = new Notification(title, { body, silent: opts?.silent });
     n.onclick = () => {
-      window.focus();
-      if (opts?.href) window.location.href = opts.href;
+      // On the desktop shell, restore the window from the tray (a plain
+      // window.focus() can't un-hide it); then navigate within the SPA rather
+      // than a full reload. Falls back to focus + location on the web.
+      const desktopWindow = (window as unknown as { desktopWindow?: { show: () => void } })
+        .desktopWindow;
+      if (desktopWindow?.show) desktopWindow.show();
+      else window.focus();
+      if (opts?.href) {
+        window.dispatchEvent(new CustomEvent("herdos:navigate", { detail: opts.href }));
+      }
     };
   } catch {
     // Best-effort — never let a notification failure break the app.

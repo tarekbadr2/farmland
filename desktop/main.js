@@ -640,6 +640,13 @@ function setupFileIpc() {
     documents: app.getPath("documents"),
     userData: app.getPath("userData"),
   }));
+
+  // Bring the window back from the tray and focus it — used when the user clicks
+  // a native notification while the app is minimized to the tray.
+  ipcMain.handle("window:show", () => {
+    showWindow();
+    return { ok: true };
+  });
 }
 
 app.whenReady().then(async () => {
