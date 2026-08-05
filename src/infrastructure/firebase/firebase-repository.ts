@@ -1446,57 +1446,81 @@ export class FirebaseFarmRepository implements FarmRepository {
     const path = input.kind === "feed" ? paths.feedItems(this.farmId) : paths.inventory(this.farmId);
     const ref = doc(this.db, path, input.itemId);
 
-    // Blend the unit cost and raise stock in one transaction so two people
-    // receiving deliveries at once can't clobber each other's numbers.
-    const meta = await runTransaction(this.db, async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists()) throw new Error("item-not-found");
-      // Feed and inventory docs differ (costPerUnit vs unitCost, and their
-      // category enums don't overlap), so read the common shape structurally.
-      const item = snap.data() as {
-        name: string;
-        nameAr?: string;
-        unit: string;
-        stock?: number;
-        costPerUnit?: number;
-        unitCost?: number;
-        category: FeedItem["category"] | InventoryItem["category"];
-      };
+    // Feed and inventory docs differ (costPerUnit vs unitCost, and their category
+    // enums don't overlap), so read the common shape structurally.
+    type StockItem = {
+      name: string;
+      nameAr?: string;
+      unit: string;
+      stock?: number;
+      costPerUnit?: number;
+      unitCost?: number;
+      category: FeedItem["category"] | InventoryItem["category"];
+    };
+    const metaOf = (item: StockItem) => ({
+      name: item.name,
+      nameAr: item.nameAr,
+      unit: item.unit,
+      category:
+        input.kind === "feed"
+          ? FEED_EXPENSE_CATEGORY
+          : INVENTORY_EXPENSE_CATEGORY[item.category as InventoryItem["category"]],
+    });
+    const blendPatch = (item: StockItem) => {
       const currentCost = input.kind === "feed" ? item.costPerUnit : item.unitCost;
       const blended = blendedUnitCost(item.stock ?? 0, currentCost ?? 0, input.quantity, input.unitCost);
       const nextStock = round((item.stock ?? 0) + input.quantity, 2);
-      tx.update(
-        ref,
-        input.kind === "feed"
-          ? { stock: nextStock, costPerUnit: blended }
-          : { stock: nextStock, unitCost: blended },
-      );
-      return {
-        name: item.name,
-        nameAr: item.nameAr,
-        unit: item.unit,
-        category:
-          input.kind === "feed"
-            ? FEED_EXPENSE_CATEGORY
-            : INVENTORY_EXPENSE_CATEGORY[item.category as InventoryItem["category"]],
-      };
-    });
+      return input.kind === "feed"
+        ? { stock: nextStock, costPerUnit: blended }
+        : { stock: nextStock, unitCost: blended };
+    };
+
+    // Online: blend the unit cost and raise stock in ONE transaction, so two
+    // people receiving deliveries at once can't clobber each other's numbers.
+    // Offline (chosen design): read the cached item, blend, and queue the write
+    // through trackWrite so a barn with no signal can still record a delivery —
+    // it commits locally and syncs on reconnect. The rare offline concurrency
+    // drift is reconciled by a stocktake.
+    const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+    let meta;
+    if (!offline) {
+      meta = await runTransaction(this.db, async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists()) throw new Error("item-not-found");
+        const item = snap.data() as StockItem;
+        tx.update(ref, blendPatch(item));
+        return metaOf(item);
+      });
+    } else {
+      let snap;
+      try {
+        snap = await getDocFromCache(ref);
+      } catch {
+        throw new Error("Open this item once while online — then purchases record offline.");
+      }
+      if (!snap.exists()) throw new Error("item-not-found");
+      const item = snap.data() as StockItem;
+      await trackWrite(setDoc(ref, blendPatch(item), { merge: true }));
+      meta = metaOf(item);
+    }
 
     const moveId = doc(this.col(paths.stockMovements(this.farmId))).id;
-    await setDoc(
-      doc(this.db, paths.stockMovements(this.farmId), moveId),
-      omitUndefined({
-        id: moveId,
-        farmId: this.farmId,
-        itemId: input.itemId,
-        date: input.date,
-        kind: "in",
-        quantity: input.quantity,
-        // Land the goods in the chosen store so the per-warehouse balances stay
-        // right; undefined falls to the default store (matches legacy behaviour).
-        warehouseId: input.warehouseId,
-        reference: input.note ?? `Purchase @ ${input.unitCost}/${meta.unit}`,
-      }),
+    await trackWrite(
+      setDoc(
+        doc(this.db, paths.stockMovements(this.farmId), moveId),
+        omitUndefined({
+          id: moveId,
+          farmId: this.farmId,
+          itemId: input.itemId,
+          date: input.date,
+          kind: "in",
+          quantity: input.quantity,
+          // Land the goods in the chosen store so the per-warehouse balances stay
+          // right; undefined falls to the default store (matches legacy behaviour).
+          warehouseId: input.warehouseId,
+          reference: input.note ?? `Purchase @ ${input.unitCost}/${meta.unit}`,
+        }),
+      ),
     );
 
     // The itemised purchase log — what was bought, from whom, and what it cost.
