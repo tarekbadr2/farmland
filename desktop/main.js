@@ -6,11 +6,37 @@
 // no internet needed to open it. Firebase (client SDK) still talks to the cloud
 // directly for data, exactly as it does on the web.
 
-const { app, BrowserWindow, shell, Menu, ipcMain, dialog, Tray, nativeImage } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  shell,
+  Menu,
+  MenuItem,
+  ipcMain,
+  dialog,
+  Tray,
+  nativeImage,
+  screen,
+} = require("electron");
 const path = require("path");
+const fs = require("fs");
 const http = require("http");
 const handler = require("serve-handler");
 const { autoUpdater } = require("electron-updater");
+
+// Custom URL scheme for deep links (herdos://invite/<token>, herdos://record/<id>,
+// …). Registering it makes the OS route those links back into this app.
+const PROTOCOL = "herdos";
+
+// ------------------------------- Single instance -------------------------------
+// A desktop app should be ONE running process. A second launch (or a deep link
+// opened while we're already running) must focus the existing window, not spin
+// up a duplicate that fights over the fixed auth port. If we don't hold the
+// lock, we're the second instance — hand our arguments to the first and exit.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
 
 // Background mode: when on, closing the window hides it to a system-tray icon
 // instead of quitting, so the app keeps running and can raise desktop
@@ -145,16 +171,20 @@ function startServer() {
 }
 
 function createWindow(hidden = false) {
+  const saved = loadWindowState();
+  const useSaved = saved && boundsOnSomeDisplay(saved);
   const win = new BrowserWindow({
-    width: 1440,
-    height: 900,
+    width: useSaved ? saved.width : 1440,
+    height: useSaved ? saved.height : 900,
+    x: useSaved ? saved.x : undefined,
+    y: useSaved ? saved.y : undefined,
     minWidth: 1024,
     minHeight: 700,
     backgroundColor: "#0f1319",
     icon: path.join(__dirname, "app-icon.png"),
     title: "Herd OS",
     autoHideMenuBar: true,
-    show: !hidden,
+    show: false, // shown after restoring state, to avoid a flash at the wrong size
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -162,8 +192,37 @@ function createWindow(hidden = false) {
     },
   });
 
-  mainWin = win;
+  // The first live window is the "primary" that the tray / background mode and
+  // notifications target; extra windows (New Window) are secondary.
+  if (!mainWin || mainWin.isDestroyed()) mainWin = win;
+
+  if (useSaved && saved.maximized) win.maximize();
+  if (useSaved && saved.fullScreen) win.setFullScreen(true);
+  if (!hidden) win.show();
+
   win.loadURL(appUrl, { userAgent: CHROME_UA });
+
+  // Remember size / position / state between launches (debounced).
+  for (const ev of ["resize", "move", "maximize", "unmaximize", "enter-full-screen", "leave-full-screen"]) {
+    win.on(ev, () => persistWindowState(win));
+  }
+
+  // Route a deep link that launched us cold, once the app is interactive.
+  win.webContents.on("did-finish-load", () => {
+    if (win === mainWin && pendingNavigate) {
+      win.webContents.send("desktop:navigate", pendingNavigate);
+      pendingNavigate = null;
+    }
+  });
+
+  // Crash recovery: reload a dead renderer instead of leaving a blank window.
+  win.webContents.on("render-process-gone", (_e, details) => {
+    logError("render-process-gone", details && details.reason);
+    if (!win.isDestroyed()) win.reload();
+  });
+  win.webContents.on("unresponsive", () => logError("unresponsive", "renderer"));
+
+  attachContextMenu(win);
 
   // Launched straight into the tray: there must be a tray to get back from, and
   // the process must survive having no visible window, so force background mode
@@ -175,7 +234,19 @@ function createWindow(hidden = false) {
 
   // In background mode, the close button hides to tray instead of quitting.
   win.on("close", (event) => {
-    if (backgroundEnabled && !isQuitting) {
+    // Save state before we hide/close, synchronously (the debounce may not fire
+    // during a quit).
+    clearTimeout(saveStateTimer);
+    try {
+      const bounds = win.getNormalBounds ? win.getNormalBounds() : win.getBounds();
+      fs.writeFileSync(
+        statePath(),
+        JSON.stringify({ ...bounds, maximized: win.isMaximized(), fullScreen: win.isFullScreen() }),
+      );
+    } catch (e) {
+      logError("saveStateOnClose", e);
+    }
+    if (win === mainWin && backgroundEnabled && !isQuitting) {
       event.preventDefault();
       win.hide();
     }
@@ -195,8 +266,6 @@ function createWindow(hidden = false) {
       shell.openExternal(url);
     }
   });
-
-  setupAutoUpdates(win);
 }
 
 // ------------------------------ Auto-update -------------------------------
@@ -204,7 +273,7 @@ function createWindow(hidden = false) {
 // app checks GitHub Releases on launch, downloads any newer version quietly in
 // the background, and offers a one-click restart to apply it. Runs only in the
 // packaged app — dev builds have no update feed (app-update.yml).
-function setupAutoUpdates(win) {
+function setupAutoUpdates() {
   // The current version is always answerable, packaged or not, so Settings can
   // show it in dev too.
   ipcMain.handle("app-version", () => app.getVersion());
@@ -218,9 +287,10 @@ function setupAutoUpdates(win) {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  // Push each step to the renderer so a Settings button can show live status.
+  // Push each step to the renderer (primary window) so a Settings button can
+  // show live status.
   const send = (status, extra) => {
-    if (!win.isDestroyed()) win.webContents.send("update-status", { status, ...extra });
+    if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send("update-status", { status, ...extra });
   };
 
   autoUpdater.on("checking-for-update", () => send("checking"));
@@ -230,7 +300,8 @@ function setupAutoUpdates(win) {
 
   autoUpdater.on("update-downloaded", async (info) => {
     send("ready", { version: info.version });
-    const { response } = await dialog.showMessageBox(win, {
+    const parent = mainWin && !mainWin.isDestroyed() ? mainWin : null;
+    const { response } = await dialog.showMessageBox(parent, {
       type: "info",
       buttons: ["Restart now", "Later"],
       defaultId: 0,
@@ -285,6 +356,20 @@ function ensureTray() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Open Herd OS", click: showWindow },
+      { label: "Show Dashboard", click: () => navigateRenderer("/dashboard") },
+      { type: "separator" },
+      {
+        label: "Check for Updates…",
+        click: () => {
+          try {
+            autoUpdater.checkForUpdates();
+          } catch {
+            /* offline / dev */
+          }
+          showWindow();
+        },
+      },
+      { label: "Settings", click: () => navigateRenderer("/settings") },
       { type: "separator" },
       {
         label: "Quit Herd OS",
@@ -352,9 +437,227 @@ function setupLaunchSettings() {
   });
 }
 
+// ------------------------------ Error logging -----------------------------
+// A desktop app has no server logs, so crashes vanish unless we write them. Keep
+// a rolling main-process log in userData for support/diagnostics.
+function logPath() {
+  return path.join(app.getPath("userData"), "logs", "main.log");
+}
+function logError(scope, err) {
+  try {
+    fs.mkdirSync(path.dirname(logPath()), { recursive: true });
+    const line = `[${new Date().toISOString()}] ${scope}: ${(err && err.stack) || err}\n`;
+    fs.appendFileSync(logPath(), line);
+  } catch {
+    /* logging must never throw */
+  }
+}
+process.on("uncaughtException", (e) => logError("uncaughtException", e));
+process.on("unhandledRejection", (e) => logError("unhandledRejection", e));
+
+// ---------------------------- Window state --------------------------------
+// Remember size, position and maximized/fullscreen state between launches, and
+// only restore a saved position if it still lands on a connected display (so a
+// window saved on a now-unplugged monitor doesn't open off-screen).
+function statePath() {
+  return path.join(app.getPath("userData"), "window-state.json");
+}
+function loadWindowState() {
+  try {
+    return JSON.parse(fs.readFileSync(statePath(), "utf8"));
+  } catch {
+    return null;
+  }
+}
+let saveStateTimer = null;
+function persistWindowState(win) {
+  if (!win || win.isDestroyed()) return;
+  clearTimeout(saveStateTimer);
+  saveStateTimer = setTimeout(() => {
+    try {
+      const bounds = win.getNormalBounds ? win.getNormalBounds() : win.getBounds();
+      fs.writeFileSync(
+        statePath(),
+        JSON.stringify({ ...bounds, maximized: win.isMaximized(), fullScreen: win.isFullScreen() }),
+      );
+    } catch (e) {
+      logError("persistWindowState", e);
+    }
+  }, 400);
+}
+function boundsOnSomeDisplay(b) {
+  if (!b || typeof b.x !== "number" || typeof b.width !== "number") return false;
+  return screen.getAllDisplays().some((d) => {
+    const a = d.workArea;
+    return b.x < a.x + a.width && b.x + b.width > a.x && b.y < a.y + a.height && b.y + b.height > a.y;
+  });
+}
+
+// ------------------------------- Deep links -------------------------------
+// herdos://invite/<token> -> /invite/<token> ; herdos://animal?id=5 -> /animal?id=5
+let pendingNavigate = null;
+function deepLinkFromArgv(argv) {
+  const arg = (argv || []).find((a) => typeof a === "string" && a.startsWith(`${PROTOCOL}://`));
+  if (!arg) return null;
+  try {
+    const u = new URL(arg);
+    return `/${u.hostname}${u.pathname}${u.search}`.replace(/\/{2,}/g, "/");
+  } catch {
+    return null;
+  }
+}
+function navigateRenderer(routePath) {
+  if (!routePath) return;
+  showWindow();
+  if (mainWin && !mainWin.isDestroyed() && !mainWin.webContents.isLoading()) {
+    mainWin.webContents.send("desktop:navigate", routePath);
+  } else {
+    pendingNavigate = routePath; // flushed on did-finish-load
+  }
+}
+// Forward a menu/keyboard action (New, Save, Find, Refresh…) to the renderer,
+// which knows what "new" means on the current page.
+function sendAction(name) {
+  if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send("desktop:action", name);
+}
+
+// ------------------------- Native application menu ------------------------
+// Hidden by default (autoHideMenuBar) but its accelerators still fire, giving
+// the expected desktop shortcuts. Editing/zoom/reload use built-in roles;
+// New/Save/Find/Refresh are forwarded to the renderer.
+function buildAppMenu() {
+  const isMac = process.platform === "darwin";
+  return Menu.buildFromTemplate([
+    ...(isMac ? [{ role: "appMenu" }] : []),
+    {
+      label: "File",
+      submenu: [
+        { label: "New", accelerator: "CmdOrCtrl+N", click: () => sendAction("new") },
+        { label: "Quick Add", accelerator: "CmdOrCtrl+Shift+N", click: () => sendAction("new-alt") },
+        { label: "New Window", accelerator: "CmdOrCtrl+Shift+W", click: () => createWindow() },
+        { type: "separator" },
+        { label: "Save", accelerator: "CmdOrCtrl+S", click: () => sendAction("save") },
+        {
+          label: "Print…",
+          accelerator: "CmdOrCtrl+P",
+          click: () => {
+            const w = BrowserWindow.getFocusedWindow() || mainWin;
+            if (w && !w.isDestroyed()) w.webContents.print({});
+          },
+        },
+        { type: "separator" },
+        isMac ? { role: "close" } : { role: "quit" },
+      ],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" },
+        { type: "separator" },
+        { label: "Find", accelerator: "CmdOrCtrl+F", click: () => sendAction("find") },
+      ],
+    },
+    {
+      label: "View",
+      submenu: [
+        { label: "Refresh", accelerator: "CmdOrCtrl+R", click: () => sendAction("refresh") },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+        ...(app.isPackaged ? [] : [{ role: "toggleDevTools" }]),
+      ],
+    },
+    {
+      label: "Window",
+      submenu: [{ role: "minimize" }, { role: "zoom" }, ...(isMac ? [{ role: "front" }] : [{ role: "close" }])],
+    },
+  ]);
+}
+
+// ---------------------- Native right-click context menu -------------------
+function attachContextMenu(win) {
+  win.webContents.on("context-menu", (_e, props) => {
+    const canEdit = props.isEditable;
+    const hasText = props.selectionText && props.selectionText.trim().length > 0;
+    const items = [];
+    for (const s of (props.dictionarySuggestions || []).slice(0, 5)) {
+      items.push({ label: s, click: () => win.webContents.replaceMisspelling(s) });
+    }
+    if (items.length) items.push({ type: "separator" });
+    if (canEdit) items.push({ role: "cut", enabled: props.editFlags.canCut });
+    if (canEdit || hasText) items.push({ role: "copy", enabled: props.editFlags.canCopy });
+    if (canEdit) items.push({ role: "paste", enabled: props.editFlags.canPaste });
+    items.push({ type: "separator" }, { role: "selectAll" });
+    if (!app.isPackaged) {
+      items.push({ type: "separator" }, {
+        label: "Inspect Element",
+        click: () => win.webContents.inspectElement(props.x, props.y),
+      });
+    }
+    Menu.buildFromTemplate(items).popup({ window: win });
+  });
+}
+
+// ------------------------- File-system integration ------------------------
+// Native save dialog + open-file/open-folder, so exports (PDF/Excel/CSV) go to a
+// location the user picks and can be opened straight away.
+function setupFileIpc() {
+  ipcMain.handle("fs:save", async (_e, payload) => {
+    try {
+      const win = BrowserWindow.getFocusedWindow() || mainWin;
+      const { canceled, filePath } = await dialog.showSaveDialog(win, {
+        defaultPath: payload && payload.name ? payload.name : "export",
+        filters: (payload && payload.filters) || undefined,
+      });
+      if (canceled || !filePath) return { ok: false, canceled: true };
+      const buf = Buffer.from(String((payload && payload.base64) || ""), "base64");
+      await fs.promises.writeFile(filePath, buf);
+      return { ok: true, path: filePath };
+    } catch (e) {
+      logError("fs:save", e);
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  });
+  ipcMain.handle("fs:open-path", async (_e, p) => {
+    const err = await shell.openPath(String(p || ""));
+    return { ok: !err, error: err || undefined };
+  });
+  ipcMain.handle("fs:show-item", (_e, p) => {
+    shell.showItemInFolder(String(p || ""));
+    return { ok: true };
+  });
+  ipcMain.handle("app:paths", () => ({
+    downloads: app.getPath("downloads"),
+    documents: app.getPath("documents"),
+    userData: app.getPath("userData"),
+  }));
+}
+
 app.whenReady().then(async () => {
+  // A second instance quits during startup; don't let its whenReady build a
+  // duplicate window/tray or grab the port.
+  if (!app.hasSingleInstanceLock()) return;
+
   app.userAgentFallback = CHROME_UA;
-  Menu.setApplicationMenu(null);
+  app.setAppUserModelId("farm.herdos.desktop"); // Windows: groups taskbar + toast attribution
+  Menu.setApplicationMenu(buildAppMenu());
+
+  // Register the deep-link scheme (dev needs the exec path + args).
+  if (process.defaultApp && process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+  } else {
+    app.setAsDefaultProtocolClient(PROTOCOL);
+  }
+
   try {
     await startServer();
   } catch {
@@ -362,10 +665,29 @@ app.whenReady().then(async () => {
   }
   setupBackgroundMode();
   setupLaunchSettings();
+  setupFileIpc();
   createWindow(launchedHidden());
+  setupAutoUpdates();
+
+  // A deep link may have launched us cold — route it once the window is up.
+  const initialLink = deepLinkFromArgv(process.argv);
+  if (initialLink) pendingNavigate = initialLink;
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+// Windows/Linux deliver deep links + duplicate launches here; macOS via open-url.
+app.on("second-instance", (_event, argv) => {
+  const link = deepLinkFromArgv(argv);
+  if (link) navigateRenderer(link);
+  else showWindow();
+});
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  const link = deepLinkFromArgv([url]);
+  if (link) navigateRenderer(link);
 });
 
 app.on("window-all-closed", () => {

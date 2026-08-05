@@ -10,6 +10,7 @@ import { WebGate } from "@/components/shell/web-gate";
 import { WebDownloadBanner } from "@/components/shell/web-download-banner";
 import { TrialBanner } from "@/components/billing/trial-banner";
 import { DesktopAlerts } from "@/components/shell/desktop-alerts";
+import { DesktopIntegration } from "@/components/shell/desktop-integration";
 import { RouteGuard } from "@/lib/auth/guard";
 import type { Metadata } from "next";
 
@@ -40,6 +41,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <MobileTabBar />
             <ServiceWorkerRegistrar />
             <DesktopAlerts />
+            <DesktopIntegration />
           </div>
         </TourProvider>
       </BillingGate>

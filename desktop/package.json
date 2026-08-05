@@ -23,6 +23,14 @@
       "output": "dist"
     },
     "artifactName": "Herd-OS-Setup.exe",
+    "protocols": [
+      {
+        "name": "Herd OS",
+        "schemes": [
+          "herdos"
+        ]
+      }
+    ],
     "publish": [
       {
         "provider": "github",

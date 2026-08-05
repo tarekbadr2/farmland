@@ -35,3 +35,32 @@ contextBridge.exposeInMainWorld("desktopUpdater", {
     return () => ipcRenderer.removeListener("update-status", handler);
   },
 });
+
+// Navigation + menu/keyboard actions pushed from the main process: the tray
+// ("Show Dashboard"/"Settings"), deep links (herdos://…), and menu accelerators
+// (New, Save, Find, Refresh, Quick Add). onNavigate → route to a path;
+// onAction → run the matching command on the current page. Both return an
+// unsubscribe fn.
+contextBridge.exposeInMainWorld("desktopNav", {
+  onNavigate: (cb) => {
+    const handler = (_e, routePath) => cb(routePath);
+    ipcRenderer.on("desktop:navigate", handler);
+    return () => ipcRenderer.removeListener("desktop:navigate", handler);
+  },
+  onAction: (cb) => {
+    const handler = (_e, name) => cb(name);
+    ipcRenderer.on("desktop:action", handler);
+    return () => ipcRenderer.removeListener("desktop:action", handler);
+  },
+});
+
+// Native file-system integration for exports: save() pops a native Save dialog
+// and writes the base64 payload to the chosen location (returns its path);
+// openPath() opens a saved file in its default app; showItem() reveals it in the
+// file manager; paths() returns common OS folders (downloads/documents).
+contextBridge.exposeInMainWorld("desktopFiles", {
+  save: (payload) => ipcRenderer.invoke("fs:save", payload),
+  openPath: (p) => ipcRenderer.invoke("fs:open-path", p),
+  showItem: (p) => ipcRenderer.invoke("fs:show-item", p),
+  paths: () => ipcRenderer.invoke("app:paths"),
+});

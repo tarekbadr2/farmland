@@ -54,8 +54,14 @@ export function Topbar() {
         setPaletteOpen((o) => !o);
       }
     };
+    // The desktop shell's Find / New menu accelerators open the palette too.
+    const openPalette = () => setPaletteOpen(true);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("herdos:command-palette", openPalette);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("herdos:command-palette", openPalette);
+    };
   }, []);
 
 
