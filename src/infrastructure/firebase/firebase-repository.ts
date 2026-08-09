@@ -625,6 +625,20 @@ export class FirebaseFarmRepository implements FarmRepository {
 
   async saveAnimal(patch: Partial<Animal> & { id?: ID }): Promise<Animal> {
     const id = patch.id ?? doc(this.col(paths.animals(this.farmId))).id;
+    // The tag IS the animal's identity — reject a duplicate so search, the
+    // parlor, timelines and per-animal economics can't be mis-attributed.
+    // (Firestore can't enforce uniqueness in rules; this is the practical guard.
+    // Offline it checks the cached herd — best-effort, matching offline-first.)
+    if (patch.tag) {
+      const dup = await getDocs(
+        query(
+          this.col(paths.animals(this.farmId)),
+          where("tagLower", "==", patch.tag.toLowerCase()),
+          fsLimit(2),
+        ),
+      );
+      if (dup.docs.some((d) => d.id !== id)) throw new Error("duplicate-tag");
+    }
     const searchable =
       patch.tag && patch.name
         ? animalSearchFields({
@@ -659,36 +673,53 @@ export class FirebaseFarmRepository implements FarmRepository {
   }
 
   async disposeAnimal(id: ID, disposal: AnimalDisposal): Promise<Animal> {
+    const animal = await this.getAnimal(id);
+    if (!animal) throw new Error("Animal not found");
+    // Idempotency: an animal that has already left the herd cannot be disposed
+    // again — otherwise re-disposal double-posts sale income and rewrites the
+    // herd-exit history.
+    if (animal.status === "sold" || animal.status === "culled" || animal.status === "dead") {
+      throw new Error("already-disposed");
+    }
     const status: Animal["status"] =
       disposal.type === "sold" ? "sold" : disposal.type === "culled" ? "culled" : "dead";
     const batch = writeBatch(this.db);
     batch.set(
       doc(this.db, paths.animals(this.farmId), id),
-      { status, disposal: omitUndefined(disposal), farmId: this.farmId },
+      // Leaving the herd ends lactation and any pregnancy — otherwise a sold cow
+      // stays in the milking list and can still be milked, skewing milk-per-cow.
+      {
+        status,
+        milkStatus: "not_applicable",
+        reproStatus: "not_applicable",
+        disposal: omitUndefined(disposal),
+        farmId: this.farmId,
+      },
       { merge: true },
     );
-    // A sale is money in — post the linked animal-sale income in the same batch
-    // so the herd and the ledger never disagree.
+    // A sale is money in — record the linked animal-sale income in the same
+    // atomic batch so the herd and cash never disagree.
+    let saleTxn: Transaction | null = null;
     if (disposal.type === "sold" && (disposal.proceeds ?? 0) > 0) {
-      const tag = (await this.getAnimal(id))?.tag ?? id;
       const txId = doc(this.col(paths.transactions(this.farmId))).id;
-      batch.set(
-        doc(this.db, paths.transactions(this.farmId), txId),
-        omitUndefined({
-          id: txId,
-          farmId: this.farmId,
-          date: disposal.date,
-          kind: "income",
-          category: "animal_sales",
-          amount: disposal.proceeds,
-          description: `Sale of ${tag}`,
-          animalId: id,
-          counterpartyId: disposal.buyerId,
-          paymentMethod: "cash",
-        }),
-      );
+      saleTxn = {
+        id: txId,
+        farmId: this.farmId,
+        date: disposal.date,
+        kind: "income",
+        category: "animal_sales",
+        amount: disposal.proceeds!,
+        description: `Sale of ${animal.tag}`,
+        animalId: id,
+        counterpartyId: disposal.buyerId,
+        paymentMethod: "cash",
+      } as Transaction;
+      batch.set(doc(this.db, paths.transactions(this.farmId), txId), omitUndefined(saleTxn));
     }
     await trackWrite(batch.commit());
+    // Post the sale to the general ledger like every other income (best-effort;
+    // flags postingFailed on error). Without this the sale never hit the books.
+    if (saleTxn) await this.autoPost(saleTxn);
     const disposed = (await this.getAnimal(id))!;
     // Re-sync the mirrored livestock asset so a sold/culled/dead animal's cost
     // stops being counted as an active asset (otherwise assets & equity are

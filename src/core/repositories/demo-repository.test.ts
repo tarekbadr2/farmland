@@ -611,6 +611,77 @@ describe("demo repository — overpayment can't drive receivables negative", () 
   });
 });
 
+describe("demo repository — animal tag uniqueness", () => {
+  const base = {
+    name: "Dup test",
+    sex: "female" as const,
+    breed: "murrah" as const,
+    dateOfBirth: "2022-01-01",
+    milkStatus: "lactating" as const,
+    reproStatus: "open" as const,
+    weightKg: 400,
+    penId: "pen_a1",
+  };
+
+  it("rejects a duplicate tag on create (case-insensitive) but allows editing the same animal", async () => {
+    const a = await repo.saveAnimal({ tag: "UNIQ-1", ...base } as Partial<Animal>);
+
+    // A second create with the same tag (any case) is refused.
+    await expect(repo.saveAnimal({ tag: "UNIQ-1", ...base } as Partial<Animal>)).rejects.toThrow(
+      /duplicate-tag/,
+    );
+    await expect(repo.saveAnimal({ tag: "uniq-1", ...base } as Partial<Animal>)).rejects.toThrow(
+      /duplicate-tag/,
+    );
+
+    // Editing the SAME animal (same id) keeping its tag must NOT be a false positive.
+    await expect(
+      repo.saveAnimal({ id: a.id, tag: "UNIQ-1", name: "Renamed" } as Partial<Animal>),
+    ).resolves.toBeTruthy();
+  });
+});
+
+describe("demo repository — animal disposal side effects", () => {
+  it("posts sale income to the ledger, ends lactation, and can't be re-disposed", async () => {
+    const a = await repo.saveAnimal({
+      tag: "SELL-1",
+      name: "Sale test",
+      sex: "female",
+      breed: "murrah",
+      dateOfBirth: "2022-01-01",
+      milkStatus: "lactating",
+      reproStatus: "open",
+      weightKg: 500,
+      penId: "pen_a1",
+    } as Partial<Animal>);
+    expect(a.milkStatus).toBe("lactating");
+
+    const jeBefore = (await repo.getJournalEntries()).length;
+    const disposal: AnimalDisposal = { type: "sold", date: TODAY, proceeds: 40_000 };
+    await repo.disposeAnimal(a.id, disposal);
+
+    // (C2) leaving the herd ends lactation + pregnancy → can't be milked
+    const sold = await repo.getAnimal(a.id);
+    expect(sold?.status).toBe("sold");
+    expect(sold?.milkStatus).toBe("not_applicable");
+    expect(sold?.reproStatus).toBe("not_applicable");
+
+    // (C1) the sale reached the general ledger, and the books still balance
+    const jeAfter = await repo.getJournalEntries();
+    expect(jeAfter.length).toBeGreaterThan(jeBefore);
+    expect(await booksBalance()).toBe(true);
+
+    // (H6) idempotent: a second disposal is refused, so income isn't double-posted
+    const salesFor = async () =>
+      (await repo.getTransactions()).filter(
+        (t) => t.animalId === a.id && t.category === "animal_sales",
+      ).length;
+    expect(await salesFor()).toBe(1);
+    await expect(repo.disposeAnimal(a.id, disposal)).rejects.toThrow(/already-disposed/);
+    expect(await salesFor()).toBe(1);
+  });
+});
+
 describe("demo repository — duplicate same-day payments", () => {
   it("two equal payments on one day both reach the ledger (no id collision)", async () => {
     const sale = await repo.saveInvoice({

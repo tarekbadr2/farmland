@@ -483,6 +483,13 @@ export class DemoFarmRepository implements FarmRepository {
   }
 
   async saveAnimal(patch: Partial<Animal> & { id?: ID }) {
+    // The tag is the animal's identity — reject a duplicate (parity with Firebase).
+    if (patch.tag) {
+      const tag = patch.tag.toLowerCase();
+      if (this.db.animals.some((a) => a.id !== patch.id && a.tag.toLowerCase() === tag)) {
+        throw new Error("duplicate-tag");
+      }
+    }
     const idx = this.db.animals.findIndex((a) => a.id === patch.id);
     if (idx >= 0) {
       this.db.animals[idx] = { ...this.db.animals[idx], ...patch };
@@ -526,9 +533,22 @@ export class DemoFarmRepository implements FarmRepository {
   async disposeAnimal(id: ID, disposal: AnimalDisposal) {
     const idx = this.db.animals.findIndex((a) => a.id === id);
     if (idx < 0) throw new Error("Animal not found");
+    const current = this.db.animals[idx];
+    // Idempotency (parity with Firebase): can't re-dispose an animal that has
+    // already left the herd — prevents double sale income.
+    if (current.status === "sold" || current.status === "culled" || current.status === "dead") {
+      throw new Error("already-disposed");
+    }
     const status: Animal["status"] =
       disposal.type === "sold" ? "sold" : disposal.type === "culled" ? "culled" : "dead";
-    this.db.animals[idx] = { ...this.db.animals[idx], status, disposal };
+    // Leaving the herd ends lactation and pregnancy so a sold cow can't be milked.
+    this.db.animals[idx] = {
+      ...current,
+      status,
+      milkStatus: "not_applicable",
+      reproStatus: "not_applicable",
+      disposal,
+    };
     // Re-sync the mirrored livestock asset to disposed so its cost stops being
     // counted as an active asset (parity with the Firebase adapter).
     const assetPatch = livestockAssetFor(this.db.animals[idx]);
@@ -537,7 +557,7 @@ export class DemoFarmRepository implements FarmRepository {
       if (ai >= 0) this.db.assets[ai] = { ...this.db.assets[ai], status: assetPatch.status };
     }
     if (disposal.type === "sold" && (disposal.proceeds ?? 0) > 0) {
-      this.db.transactions.unshift({
+      const saleTxn = {
         id: `tx_${Date.now()}`,
         farmId: this.db.farm.id,
         date: disposal.date,
@@ -548,7 +568,10 @@ export class DemoFarmRepository implements FarmRepository {
         animalId: id,
         counterpartyId: disposal.buyerId,
         paymentMethod: "cash",
-      } as Transaction);
+      } as Transaction;
+      this.db.transactions.unshift(saleTxn);
+      // Post the sale to the general ledger like every other income.
+      this.autoPost(saleTxn);
     }
     return tick(this.db.animals[idx]);
   }
