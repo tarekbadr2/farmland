@@ -641,6 +641,54 @@ describe("demo repository — animal tag uniqueness", () => {
   });
 });
 
+describe("demo repository — impossible-state guards", () => {
+  const female = {
+    name: "Guard test",
+    sex: "female" as const,
+    breed: "murrah" as const,
+    dateOfBirth: "2021-01-01",
+    milkStatus: "lactating" as const,
+    reproStatus: "open" as const,
+    weightKg: 500,
+    penId: "pen_a1",
+  };
+
+  it("rejects breeding on a male and any event after the animal leaves the herd", async () => {
+    const bull = await repo.saveAnimal({
+      ...female,
+      tag: "BULL-G1",
+      sex: "male",
+      milkStatus: "not_applicable",
+      reproStatus: "not_applicable",
+    } as Partial<Animal>);
+    await expect(
+      repo.saveBreedingEvent({
+        animalId: bull.id,
+        type: "pregnancy_check",
+        result: "pregnant",
+        date: TODAY,
+      } as Parameters<typeof repo.saveBreedingEvent>[0]),
+    ).rejects.toThrow(/breeding-female-only/);
+
+    const cow = await repo.saveAnimal({ ...female, tag: "EXIT-G1" } as Partial<Animal>);
+    await repo.disposeAnimal(cow.id, { type: "culled", date: TODAY });
+    await expect(
+      repo.saveHealthEvent({
+        animalId: cow.id,
+        type: "vaccination",
+        date: TODAY,
+      } as Parameters<typeof repo.saveHealthEvent>[0]),
+    ).rejects.toThrow(/animal-not-on-farm/);
+    await expect(
+      repo.saveBreedingEvent({
+        animalId: cow.id,
+        type: "ai",
+        date: TODAY,
+      } as Parameters<typeof repo.saveBreedingEvent>[0]),
+    ).rejects.toThrow(/animal-not-on-farm/);
+  });
+});
+
 describe("demo repository — animal disposal side effects", () => {
   it("posts sale income to the ledger, ends lactation, and can't be re-disposed", async () => {
     const a = await repo.saveAnimal({

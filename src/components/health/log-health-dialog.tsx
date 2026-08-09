@@ -168,7 +168,7 @@ export function LogHealthDialog({
               id="health-animal"
               value={form.watch("animalId")}
               onChange={(id) => form.setValue("animalId", id, { shouldValidate: true })}
-              filter={(a) => a.status !== "dead" && a.status !== "sold"}
+              filter={(a) => !["dead", "sold", "culled"].includes(a.status)}
             />
             {form.formState.errors.animalId && (
               <p className="text-[11.5px] text-destructive">

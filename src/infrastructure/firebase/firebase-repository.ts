@@ -105,6 +105,8 @@ import { trackWrite } from "@/lib/sync/offline-store";
 import {
   applyBreedingEvent,
   applyHealthEvent,
+  assertBreedingAllowed,
+  assertHealthAllowed,
   attendanceFromClock,
   kgPerUnit,
 } from "@/core/domain/rules";
@@ -930,15 +932,18 @@ export class FirebaseFarmRepository implements FarmRepository {
     const saved = await this.writeEventWithAnimalPatch(
       paths.health(this.farmId),
       event,
-      (animal) => ({
-        ...applyHealthEvent(animal, event),
-        // Withdrawal only ever extends — a second treatment can't shorten the
-        // period the first one started.
-        ...(event.withdrawalUntil &&
-        (!animal.withdrawalUntil || event.withdrawalUntil > animal.withdrawalUntil)
-          ? { withdrawalUntil: event.withdrawalUntil }
-          : {}),
-      }),
+      (animal) => {
+        assertHealthAllowed(animal); // no clinical events on an animal that left the herd
+        return {
+          ...applyHealthEvent(animal, event),
+          // Withdrawal only ever extends — a second treatment can't shorten the
+          // period the first one started.
+          ...(event.withdrawalUntil &&
+          (!animal.withdrawalUntil || event.withdrawalUntil > animal.withdrawalUntil)
+            ? { withdrawalUntil: event.withdrawalUntil }
+            : {}),
+        };
+      },
     );
     const h = saved as HealthEvent;
     this.audit({
@@ -957,7 +962,10 @@ export class FirebaseFarmRepository implements FarmRepository {
     const saved = await this.writeEventWithAnimalPatch(
       paths.breeding(this.farmId),
       event,
-      (animal) => applyBreedingEvent(animal, event),
+      (animal) => {
+        assertBreedingAllowed(animal); // female + on-farm only
+        return applyBreedingEvent(animal, event);
+      },
     );
     const b = saved as BreedingEvent;
     this.audit({

@@ -21,6 +21,29 @@ export const VOLUNTARY_WAIT_DAYS = 60;
 /** Typical oestrous cycle — used to schedule the next heat check. */
 export const HEAT_CYCLE_DAYS = 21;
 
+/** Statuses that mean the animal has left the herd. */
+const TERMINAL_STATUSES: Animal["status"][] = ["sold", "culled", "dead"];
+
+/**
+ * Guard herd events against business-impossible states. The dialogs already
+ * prevent these, but the write layer must too — a breeding/health event on a
+ * male, or on an animal that has left the herd, is nonsense that would corrupt
+ * KPIs (e.g. a "pregnant" bull). Throws a stable code the callers surface.
+ * (Firestore rules can't express sex/status predicates cheaply, so this pure
+ * guard, called by both repository adapters, is the enforcement point.)
+ */
+export function assertBreedingAllowed(animal: Animal): void {
+  if (TERMINAL_STATUSES.includes(animal.status)) throw new Error("animal-not-on-farm");
+  if (animal.sex !== "female") throw new Error("breeding-female-only");
+}
+
+/** Health/clinical events may target any live animal (recording a death is how
+ *  an animal becomes 'dead', so that transition is allowed); once terminal, no
+ *  further clinical events. */
+export function assertHealthAllowed(animal: Animal): void {
+  if (TERMINAL_STATUSES.includes(animal.status)) throw new Error("animal-not-on-farm");
+}
+
 /**
  * How a breeding event changes the animal.
  *

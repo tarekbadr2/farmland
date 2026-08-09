@@ -47,6 +47,8 @@ import {
 import {
   applyBreedingEvent,
   applyHealthEvent,
+  assertBreedingAllowed,
+  assertHealthAllowed,
   attendanceFromClock,
   kgPerUnit,
 } from "@/core/domain/rules";
@@ -741,6 +743,9 @@ export class DemoFarmRepository implements FarmRepository {
   // here tells you what it will do for real.
 
   async saveHealthEvent(event: EventWrite<Omit<HealthEvent, "id" | "farmId">>) {
+    const idx = this.db.animals.findIndex((a) => a.id === event.animalId);
+    if (idx >= 0) assertHealthAllowed(this.db.animals[idx]); // no clinical events after herd exit
+
     const saved = {
       ...event,
       id: event.id ?? `he_${Date.now()}`,
@@ -749,7 +754,6 @@ export class DemoFarmRepository implements FarmRepository {
 
     this.db.health.unshift(saved);
 
-    const idx = this.db.animals.findIndex((a) => a.id === event.animalId);
     if (idx >= 0) {
       const animal = this.db.animals[idx];
       this.db.animals[idx] = {
@@ -766,6 +770,9 @@ export class DemoFarmRepository implements FarmRepository {
   }
 
   async saveBreedingEvent(event: EventWrite<Omit<BreedingEvent, "id" | "farmId">>) {
+    const idx = this.db.animals.findIndex((a) => a.id === event.animalId);
+    if (idx >= 0) assertBreedingAllowed(this.db.animals[idx]); // female + on-farm only
+
     const saved = {
       ...event,
       id: event.id ?? `be_${Date.now()}`,
@@ -774,7 +781,6 @@ export class DemoFarmRepository implements FarmRepository {
 
     this.db.breeding.unshift(saved);
 
-    const idx = this.db.animals.findIndex((a) => a.id === event.animalId);
     if (idx >= 0) {
       const animal = this.db.animals[idx];
       this.db.animals[idx] = { ...animal, ...applyBreedingEvent(animal, event) };

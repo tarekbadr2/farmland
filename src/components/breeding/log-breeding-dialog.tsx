@@ -175,8 +175,8 @@ export function LogBreedingDialog({
                 form.setValue("animalId", id, { shouldValidate: true });
                 setAnimal(a);
               }}
-              // Reproduction events only apply to living females.
-              filter={(a) => a.sex === "female" && a.status !== "dead" && a.status !== "sold"}
+              // Reproduction events only apply to living, on-farm females.
+              filter={(a) => a.sex === "female" && !["dead", "sold", "culled"].includes(a.status)}
             />
             {form.formState.errors.animalId && (
               <p className="text-[11.5px] text-destructive">
