@@ -27,7 +27,7 @@ import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/c
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Label, Separator, Switch, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/primitives";
+import { Label, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/primitives";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/menu";
 import { useI18n } from "@/lib/i18n/provider";
 import { useFarm } from "@/hooks/use-farm-data";

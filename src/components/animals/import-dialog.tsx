@@ -58,7 +58,7 @@ async function pool<T>(
 }
 
 export function ImportAnimalsDialog() {
-  const { t, locale } = useI18n();
+  const { locale } = useI18n();
   const ar = locale === "ar";
   const queryClient = useQueryClient();
   const { data: zones = [] } = useZones();
