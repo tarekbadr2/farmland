@@ -312,9 +312,17 @@ export class FirebaseFarmRepository implements FarmRepository {
     await setDoc(doc(this.db, paths.auditLog(this.farmId), id), entry);
   }
 
-  /** Fire-and-forget log — a failed audit write must never fail the action. */
+  /** Fire-and-forget log — a failed audit write must never fail the action, but
+   *  it must not vanish silently either: a swallowed failure is indistinguishable
+   *  from "nobody did this". Surface it so a gap in the trail is at least visible
+   *  in logs. (A durable retry queue alongside the offline write queue is the
+   *  fuller fix.) */
   private audit(input: AuditInput): void {
-    void this.logActivity(input).catch(() => {});
+    void this.logActivity(input).catch((err) => {
+      if (typeof console !== "undefined") {
+        console.warn("[audit] failed to record action", input.action, err);
+      }
+    });
   }
 
   listActivity = (max = 200) =>

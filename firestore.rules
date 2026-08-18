@@ -80,6 +80,17 @@ service cloud.firestore {
     // never wrongly locked out of paying; only an explicit "blocked" stops writes).
     // Reads are never gated on billing — a lapsed farm stays read-only, able to
     // view and export its own data.
+    //
+    // This flag is the SINGLE source of truth for write access, on purpose. It is
+    // eventually consistent: payment/signup set it immediately, but a trial that
+    // simply runs out is only flipped by the daily billingSweep, so a lapse can
+    // take up to ~24h to bite — a deliberate day of grace, not a bug. Do NOT try
+    // to make this immediate by comparing subscription dates here: the graced
+    // entitlement logic (trial/past-due/cancel windows) lives in one place,
+    // src/lib/billing/status.ts resolveEntitlement, which is for UI display;
+    // duplicating a subset of it in rules would create a second, divergent
+    // source of truth. If immediacy is ever required, have the webhook/sweep set
+    // the flag on the exact transition instead.
     function farmActive(farmId) {
       return get(/databases/$(database)/documents/farms/$(farmId))
         .data.get('subscription', {}).get('access', 'active') != 'blocked';
