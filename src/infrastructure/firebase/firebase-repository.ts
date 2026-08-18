@@ -1491,7 +1491,19 @@ export class FirebaseFarmRepository implements FarmRepository {
   }
 
   async deleteAsset(id: ID): Promise<void> {
+    // Name it before it's gone, so the audit entry is legible. (Depreciation is
+    // currently derived, not posted to the journal, so there are no ledger
+    // entries to orphan; if a depreciation-posting run is ever added, guard this
+    // on sourceId === id the way deleteAccount guards on postings.)
+    const asset = (await this.getAssets()).find((a) => a.id === id);
     await trackWrite(deleteDoc(doc(this.db, paths.assets(this.farmId), id)));
+    this.audit({
+      category: "finance",
+      action: "asset.delete",
+      summary: `Deleted asset ${asset?.name ?? id}`,
+      summaryAr: `حذف أصل ${asset?.name ?? id}`,
+      target: id,
+    });
   }
 
   /* ------------------------------- Automation ------------------------------- */

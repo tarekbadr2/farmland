@@ -54,6 +54,7 @@ import {
   type QueryAnswer,
 } from "@/core/services/advisor";
 import { getFirebase } from "@/infrastructure/firebase/client";
+import { getActiveFarm, hasActiveFarm } from "@/infrastructure/firebase/tenant";
 import { isFirebaseBackend } from "@/core/repositories";
 import { cn } from "@/lib/utils";
 
@@ -132,7 +133,7 @@ export default function AssistantPage() {
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ question, brief: buildAdvisorBrief(ctx), locale }),
+          body: JSON.stringify({ question, brief: buildAdvisorBrief(ctx), locale, farmId: hasActiveFarm() ? getActiveFarm() : undefined }),
         });
         const data = (await res.json().catch(() => null)) as
           | { answer?: string; error?: string }

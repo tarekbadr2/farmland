@@ -93,7 +93,7 @@ export async function POST(req: Request) {
     return json({ fallback: true, reason: "no-key" });
   }
 
-  let body: { question?: unknown; brief?: unknown };
+  let body: { question?: unknown; brief?: unknown; farmId?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -102,6 +102,7 @@ export async function POST(req: Request) {
 
   const question = typeof body.question === "string" ? body.question.trim() : "";
   const brief = typeof body.brief === "string" ? body.brief : "";
+  const requestedFarmId = typeof body.farmId === "string" ? body.farmId : null;
   if (!question) {
     return json({ error: "missing-question" }, { status: 400 });
   }
@@ -126,8 +127,21 @@ export async function POST(req: Request) {
   let farm: Farm | undefined;
   try {
     const db = await adminDb();
-    const userSnap = await db.doc(`users/${caller.uid}`).get();
-    const farmId = userSnap.exists ? resolveUserFarmId(userSnap.data()) : null;
+    // Meter against the farm the question is actually about — the caller's
+    // ACTIVE farm — not merely their default mapping. A multi-farm member
+    // (consultant, group owner) would otherwise burn Farm A's quota while
+    // looking at Farm B. The requested farm is honoured only after verifying
+    // membership, so it can't be used to meter (or probe) a farm they don't
+    // belong to; otherwise fall back to their default mapping.
+    let farmId: string | null = null;
+    if (requestedFarmId) {
+      const memberSnap = await db.doc(`farms/${requestedFarmId}/members/${caller.uid}`).get();
+      if (memberSnap.exists) farmId = requestedFarmId;
+    }
+    if (!farmId) {
+      const userSnap = await db.doc(`users/${caller.uid}`).get();
+      farmId = userSnap.exists ? resolveUserFarmId(userSnap.data()) : null;
+    }
     if (farmId) {
       farmRef = db.doc(`farms/${farmId}`);
       const farmSnap = await farmRef.get();
@@ -150,7 +164,10 @@ export async function POST(req: Request) {
   // local advisor rather than granting an unmetered paid call.
   const ent = resolveEntitlement(farm);
   const month = isoMonth();
-  const metered = Number.isFinite(ent.aiQuota) && ent.aiQuota > 0;
+  // Metered whenever the quota is finite — INCLUDING zero, which must block
+  // (a free tier with no AI allowance grants none). Only an explicitly infinite
+  // quota is unlimited; inferring "unlimited" from a falsy 0 was the inversion.
+  const metered = Number.isFinite(ent.aiQuota);
   try {
     const db = await adminDb();
     const reserved = await db.runTransaction(async (tx) => {
