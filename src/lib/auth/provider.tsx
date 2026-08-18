@@ -14,7 +14,7 @@ import {
   signOut as fbSignOut,
   type User,
 } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { claimMembership, getFirebase, clearLocalData } from "@/infrastructure/firebase/client";
 import { paths } from "@/infrastructure/firebase/paths";
 import {
@@ -219,6 +219,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     setAuditActor(user ? { uid: user.uid, name: user.name, role: user.role } : null);
   }, [user]);
+
+  // Keep role and permissions LIVE. Membership is read once at sign-in, so a
+  // demotion (or a permission being revoked) otherwise wouldn't reach an open
+  // tab until a reload — leaving manager-only controls visible and clickable
+  // for someone who no longer holds them. Subscribe to the active member
+  // document and fold changes straight into the session; the backend already
+  // re-checks on every request, but this makes the UI honest immediately, on
+  // every open tab. Keyed on the stable ids so a permission change (which keeps
+  // uid/activeFarmId) updates in place without tearing down the listener.
+  React.useEffect(() => {
+    if (!enabled) return;
+    const uid = user?.uid;
+    const farmId = user?.activeFarmId;
+    if (!uid || !farmId) return;
+    const { db } = getFirebase();
+    return onSnapshot(
+      doc(db, `farms/${farmId}/members/${uid}`),
+      (snap) => {
+        if (!snap.exists()) {
+          // Removed from this farm while signed in — revoke access at once.
+          setUser(null);
+          setNeedsOnboarding(false);
+          return;
+        }
+        const data = snap.data();
+        const role = (data.role as Role) ?? "farm_worker";
+        const permissions = [...effectivePermissions(role, data.permissions as string[] | undefined)];
+        setUser((prev) => (prev ? { ...prev, role, permissions } : prev));
+      },
+      () => {
+        /* denied / stream error — keep the last-known session rather than
+           bouncing the user; the next request still enforces server-side. */
+      },
+    );
+  }, [enabled, user?.uid, user?.activeFarmId]);
 
   React.useEffect(() => {
     if (!enabled) return;
