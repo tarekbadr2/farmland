@@ -85,6 +85,19 @@ service cloud.firestore {
         .data.get('subscription', {}).get('access', 'active') != 'blocked';
     }
 
+    // Herd cap: a create is refused once the on-farm count reaches the plan's
+    // animalLimit. counts.total is maintained by the counters trigger and only
+    // counts on-farm animals (disposed ones don't), so this is the plan's real
+    // ceiling. The counter trails a burst of creates by the in-flight batch, so
+    // this is a soft cap — it stops sustained over-provisioning, not a single
+    // racing batch — which is the right trade for a rule that can't COUNT live.
+    function withinHerdCap(farmId) {
+      return get(/databases/$(database)/documents/farms/$(farmId)).data
+               .get('counts', {}).get('total', 0)
+           < get(/databases/$(database)/documents/farms/$(farmId)).data
+               .get('animalLimit', 1000000);
+    }
+
     // Guards privilege grants on member docs: only an owner may hand out the
     // owner role or the '*' superperm. Everyone else (incl. org.members holders
     // like a farm_manager) can manage members but can't mint an owner.
@@ -177,18 +190,34 @@ service cloud.firestore {
       // --------------------------- Herd ------------------------------
       match /animals/{animalId} {
         allow read: if isMember(farmId);
-        allow create, update: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
-        allow delete: if hasPerm(farmId, 'animals.delete', 'animals.*') && farmActive(farmId);
+        allow update: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
+        // A new animal counts against the plan's herd cap (H-3).
+        allow create: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId)
+                      && withinHerdCap(farmId);
+        // An animal is NEVER hard-deleted: milk, health, breeding and journal
+        // records join on animalId, so deletion orphans history silently.
+        // Leaving the herd is a disposal (sold/culled/dead), a soft transition.
+        allow delete: if false;
 
         match /weights/{weightId} {
           allow read: if isMember(farmId);
-          allow write: if isMember(farmId) && farmActive(farmId);   // smart scale writes as the handler
+          // Needs a herd-write permission (not just membership), and a weight is
+          // a positive number within a plausible buffalo range — a scale glitch
+          // or a fat-fingered value must not skew growth curves and ADG banding.
+          allow create, update: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId)
+                        && request.resource.data.weightKg is number
+                        && request.resource.data.weightKg > 0
+                        && request.resource.data.weightKg < 2000;
+          allow delete: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
         }
       }
 
       match /zones/{zoneId} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
+        allow create, update: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
+        // A pen deletion orphans every animal's zoneId. Retire a pen, don't
+        // delete it.
+        allow delete: if false;
       }
 
       // --------------------------- Milk ------------------------------

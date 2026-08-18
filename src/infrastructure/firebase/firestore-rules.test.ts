@@ -196,6 +196,43 @@ describe.skipIf(!RUN)("firestore.rules", () => {
     await assertFails(deleteDoc(doc(as("owner"), `farms/${FARM}/auditLog/ok`)));
   });
 
+  it("H-4: an animal is never hard-deleted, even by a delete-permission holder", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `farms/${FARM}/animals/a1`), { tag: "A1" });
+      await setDoc(doc(ctx.firestore(), `farms/${FARM}/zones/z1`), { name: "Pen 1" });
+    });
+    // mgr's fixture still carries animals.delete; the rule refuses anyway.
+    await assertFails(deleteDoc(doc(as("mgr"), `farms/${FARM}/animals/a1`)));
+    await assertFails(deleteDoc(doc(as("owner"), `farms/${FARM}/animals/a1`)));
+    // Zones the same — a pen deletion would orphan every animal's zoneId.
+    await assertFails(deleteDoc(doc(as("mgr"), `farms/${FARM}/zones/z1`)));
+    await assertFails(deleteDoc(doc(as("owner"), `farms/${FARM}/zones/z1`)));
+  });
+
+  it("H-3: creating an animal is refused once the herd cap is reached", async () => {
+    // Below the cap: allowed.
+    await assertSucceeds(setDoc(doc(as("mgr"), `farms/${FARM}/animals/new1`), { tag: "N1" }));
+    // At/over the cap: refused. animalLimit is 1000 on the seeded farm.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `farms/${FARM}`), { counts: { total: 1000 } }, { merge: true });
+    });
+    await assertFails(setDoc(doc(as("mgr"), `farms/${FARM}/animals/new2`), { tag: "N2" }));
+    // Editing an existing animal is NOT capped (update, not create).
+    await assertSucceeds(
+      setDoc(doc(as("mgr"), `farms/${FARM}/animals/new1`), { name: "renamed" }, { merge: true }),
+    );
+  });
+
+  it("M-4: weights need a herd-write permission and a plausible value", async () => {
+    // A read-only worker can no longer write weights.
+    await assertFails(setDoc(doc(as("worker"), `farms/${FARM}/animals/a1/weights/w1`), { weightKg: 650, date: "2026-08-01" }));
+    // A writer can, with a sane value.
+    await assertSucceeds(setDoc(doc(as("mgr"), `farms/${FARM}/animals/a1/weights/w2`), { weightKg: 650, date: "2026-08-01" }));
+    // Absurd or negative values are rejected even for a writer.
+    await assertFails(setDoc(doc(as("mgr"), `farms/${FARM}/animals/a1/weights/w3`), { weightKg: -5, date: "2026-08-01" }));
+    await assertFails(setDoc(doc(as("mgr"), `farms/${FARM}/animals/a1/weights/w4`), { weightKg: 999999, date: "2026-08-01" }));
+  });
+
   it("makes the ledger rollups readable but never client-writable", async () => {
     // The rollups ARE the books now — statements are composed from them rather
     // than from a scan of the journal. A client that could write one could
