@@ -1,7 +1,7 @@
 # Herd OS — Go-Live Runbook
 
 Step-by-step for the actions only you can do. Work top to bottom. Tick each box.
-Legend: 🔴 blocking/security · 🟠 before charging/public · 🟢 desktop · 🔵 optional (unblocks the last Criticals)
+Legend: 🔴 blocking/security · 🟠 before charging/public · 🟢 desktop · ✅ done this branch
 
 ---
 
@@ -51,7 +51,7 @@ None of this session's security rules, the billing sweep, or the invite/RBAC fun
 3. [ ] Watch the output for `✔ Deploy complete!`. If it fails on **secrets/env** for a function, do §4 (Functions env) first, then re-run.
 4. [ ] Confirm the **new** functions deployed: the console's Functions list should now include `onJournalEntryRollup`, `rebuildLedgerRollups` and `scanUpload` (the Storage upload scanner) alongside `billingSweep`, `createInvite`, `acceptInvite`, `reconcileCounters`, etc. `scanUpload` is a Cloud Storage trigger, so the first deploy may prompt to enable the Eventarc API — accept it and re-run if so.
 
-✅ Done when: `firebase deploy` reports success and the Functions list shows the functions above, including the two new ledger-rollup ones.
+✅ Done when: `firebase deploy` reports success and the Functions list shows the functions above, including the three new ones (`onJournalEntryRollup`, `rebuildLedgerRollups`, `scanUpload`).
 
 ---
 
