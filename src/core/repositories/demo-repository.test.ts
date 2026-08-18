@@ -687,6 +687,49 @@ describe("demo repository — impossible-state guards", () => {
       } as Parameters<typeof repo.saveBreedingEvent>[0]),
     ).rejects.toThrow(/animal-not-on-farm/);
   });
+
+  it("rejects a milk session for a bull or an animal that left the herd", async () => {
+    const bull = await repo.saveAnimal({
+      ...female,
+      tag: "MILKBULL-G1",
+      sex: "male",
+      milkStatus: "not_applicable",
+      reproStatus: "not_applicable",
+    } as Partial<Animal>);
+    await expect(
+      repo.recordMilkSession({
+        date: TODAY,
+        session: "morning",
+        entries: [{ animalId: bull.id, volumeL: 8 }],
+        fatPct: 4,
+        proteinPct: 3,
+      }),
+    ).rejects.toThrow(/milk-animal-ineligible/);
+
+    const cow = await repo.saveAnimal({ ...female, tag: "MILKEXIT-G1" } as Partial<Animal>);
+    await repo.disposeAnimal(cow.id, { type: "sold", date: TODAY, proceeds: 5000 } as AnimalDisposal);
+    await expect(
+      repo.recordMilkSession({
+        date: TODAY,
+        session: "morning",
+        entries: [{ animalId: cow.id, volumeL: 8 }],
+        fatPct: 4,
+        proteinPct: 3,
+      }),
+    ).rejects.toThrow(/milk-animal-ineligible/);
+
+    // A normal lactating cow still records fine.
+    const good = await repo.saveAnimal({ ...female, tag: "MILKOK-G1" } as Partial<Animal>);
+    await expect(
+      repo.recordMilkSession({
+        date: TODAY,
+        session: "morning",
+        entries: [{ animalId: good.id, volumeL: 8 }],
+        fatPct: 4,
+        proteinPct: 3,
+      }),
+    ).resolves.toBeTruthy();
+  });
 });
 
 describe("demo repository — animal disposal side effects", () => {

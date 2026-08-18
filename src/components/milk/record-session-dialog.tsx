@@ -120,7 +120,17 @@ export function RecordSessionDialog({ trigger }: { trigger?: React.ReactNode }) 
       setVolumes({});
       setOpen(false);
     },
-    onError: () => {
+    onError: (err) => {
+      // A stale row for an animal that has since left the herd is the one case
+      // worth its own message — "check your connection" would be misleading.
+      if (err instanceof Error && err.message === "milk-animal-ineligible") {
+        toast.error(
+          locale === "ar"
+            ? "أحد الحيوانات لم يعد ضمن القطيع الحلوب — أعد فتح الجلسة وحدّث القائمة."
+            : "An animal is no longer in the milking herd — reopen the session to refresh the list.",
+        );
+        return;
+      }
       toast.error(
         locale === "ar"
           ? "تعذر الحفظ — تحقق من الاتصال وحاول مرة أخرى."

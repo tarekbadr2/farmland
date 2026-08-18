@@ -50,6 +50,7 @@ import {
   applyHealthEvent,
   assertBreedingAllowed,
   assertHealthAllowed,
+  isMilkAllowed,
   attendanceFromClock,
   kgPerUnit,
 } from "@/core/domain/rules";
@@ -847,6 +848,14 @@ export class DemoFarmRepository implements FarmRepository {
 
   async recordMilkSession(input: MilkSessionInput): Promise<WriteOutcome> {
     const { date, session, entries } = input;
+
+    // A session must not carry an animal that has left the herd or can't
+    // lactate — symmetric with the breeding/health guards. Cheap here (the herd
+    // is in memory); the Firebase adapter does the same against its cache.
+    for (const entry of entries) {
+      const animal = this.db.animals.find((a) => a.id === entry.animalId);
+      if (animal && !isMilkAllowed(animal)) throw new Error("milk-animal-ineligible");
+    }
 
     for (const entry of entries) {
       const id = `${date}_${entry.animalId}_${session}`;

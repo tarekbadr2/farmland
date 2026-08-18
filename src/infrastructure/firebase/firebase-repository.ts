@@ -107,6 +107,7 @@ import {
   applyHealthEvent,
   assertBreedingAllowed,
   assertHealthAllowed,
+  isMilkAllowed,
   attendanceFromClock,
   kgPerUnit,
 } from "@/core/domain/rules";
@@ -834,6 +835,28 @@ export class FirebaseFarmRepository implements FarmRepository {
    */
   async recordMilkSession(input: MilkSessionInput): Promise<WriteOutcome> {
     const { date, session, entries } = input;
+
+    // Reject a session that carries an animal which has left the herd or can't
+    // lactate — the write-layer backstop for the parlor's lactating-only list
+    // (a stale dialog, or a direct SDK write), symmetric with the breeding and
+    // health guards. Read each referenced animal from the LOCAL cache, not the
+    // server: the parlor just loaded the herd, so it's instant, and this stays
+    // offline-safe — an animal we can't resolve offline is left alone rather
+    // than stranding the milker. A malicious writer is bounded by the milk.write
+    // rule regardless; this catches the accidental cases the UI can't.
+    for (const entry of entries) {
+      let animal: Pick<Animal, "status" | "sex"> | undefined;
+      try {
+        const snap = await getDocFromCache(
+          doc(this.db, paths.animals(this.farmId), entry.animalId),
+        );
+        animal = snap.data() as Pick<Animal, "status" | "sex"> | undefined;
+      } catch {
+        continue; // not cached / offline — can't verify, so allow (offline-first)
+      }
+      if (animal && !isMilkAllowed(animal)) throw new Error("milk-animal-ineligible");
+    }
+
     const batch = writeBatch(this.db);
 
     entries.forEach((entry) => {

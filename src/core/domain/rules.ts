@@ -44,6 +44,21 @@ export function assertHealthAllowed(animal: Animal): void {
   if (TERMINAL_STATUSES.includes(animal.status)) throw new Error("animal-not-on-farm");
 }
 
+/** Can this animal be recorded as producing milk? On-farm and female — the same
+ *  shape as the breeding guard. A sold/culled/dead cow, or a bull, in a milk
+ *  session would corrupt milk-per-cow, the forecast and the producer leagues.
+ *  (The parlor UI only lists lactating animals, so this is the write-layer
+ *  backstop for a stale session dialog or a direct SDK write, symmetric with
+ *  breeding/health rather than relying on a UI filter alone.) */
+export function isMilkAllowed(animal: Pick<Animal, "status" | "sex">): boolean {
+  return !TERMINAL_STATUSES.includes(animal.status) && animal.sex === "female";
+}
+
+export function assertMilkAllowed(animal: Animal): void {
+  if (TERMINAL_STATUSES.includes(animal.status)) throw new Error("animal-not-on-farm");
+  if (animal.sex !== "female") throw new Error("milk-female-only");
+}
+
 /**
  * How a breeding event changes the animal.
  *
