@@ -10,6 +10,7 @@ import { addDays, diffDays, rangeDays } from "@/lib/date";
 import { getAuditActor, currentDevice } from "@/lib/audit-actor";
 import { mulberry32, round, clamp, sum } from "@/lib/utils";
 import { isBalanced } from "@/core/services/accounting";
+import { rollupsFromEntries } from "@/core/services/ledger-rollup";
 import {
   chequeNumber,
   invoiceDocNumber,
@@ -1559,6 +1560,19 @@ export class DemoFarmRepository implements FarmRepository {
   }
 
   getJournalEntries = () => tick(this.db.journalEntries);
+
+  /**
+   * Derived on the fly rather than stored. The demo herd has no Cloud Function
+   * behind it, and `rollupsFromEntries` is the same definition the trigger and
+   * the rebuild agree with — so the demo exercises the real composition path
+   * (rollups + edge months) instead of a shortcut that would hide a bug in it.
+   */
+  getLedgerRollups = () => tick(rollupsFromEntries(this.db.journalEntries));
+
+  getJournalEntriesInMonths = (months: string[]) => {
+    const wanted = new Set(months);
+    return tick(this.db.journalEntries.filter((e) => wanted.has(e.date.slice(0, 7))));
+  };
 
   private assertYearOpen(fiscalYearId?: ID) {
     if (!fiscalYearId) return;

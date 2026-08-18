@@ -95,6 +95,33 @@ describe.skipIf(!RUN)("firestore.rules", () => {
     );
   });
 
+  it("makes the ledger rollups readable but never client-writable", async () => {
+    // The rollups ARE the books now — statements are composed from them rather
+    // than from a scan of the journal. A client that could write one could
+    // restate the accounts without leaving a journal entry behind, so the
+    // trigger's admin credentials are the only way in.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `farms/${FARM}/ledgerRollups/2026-03__b1__fy2026`), {
+        period: "2026-03",
+        accounts: { "1000": { debit: 100, credit: 0 } },
+        entryCount: 1,
+      });
+    });
+    // accounting.read (the manager) may read; the worker, who has no accounting
+    // permission at all, may not.
+    await assertSucceeds(getDoc(doc(as("mgr"), `farms/${FARM}/ledgerRollups/2026-03__b1__fy2026`)));
+    await assertFails(getDoc(doc(as("worker"), `farms/${FARM}/ledgerRollups/2026-03__b1__fy2026`)));
+    // Nobody writes them — not even the owner.
+    await assertFails(
+      setDoc(doc(as("owner"), `farms/${FARM}/ledgerRollups/2026-03__b1__fy2026`), {
+        accounts: { "1000": { debit: 999999, credit: 0 } },
+      }),
+    );
+    await assertFails(
+      setDoc(doc(as("owner"), `farms/${FARM}/ledgerRollups/2026-04__b1__fy2026`), { accounts: {} }),
+    );
+  });
+
   it("keeps billing/structural farm fields server-only", async () => {
     // Even the owner can't raise the herd cap or edit the subscription client-side.
     await assertFails(

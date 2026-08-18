@@ -361,6 +361,15 @@ service cloud.firestore {
         allow create, update: if hasPerm(farmId, 'accounting.write', 'accounting.*') && farmActive(farmId);
         allow delete: if false;
       }
+      // Period rollups of the journal. Derived data, maintained exclusively by
+      // the ledger-rollup trigger with admin credentials — a client that could
+      // write these could restate the books without touching a single entry,
+      // which is worse than being able to post a bad one (that at least leaves
+      // an auditable document behind).
+      match /ledgerRollups/{rollupId} {
+        allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*');
+        allow write: if false;
+      }
       match /fiscalYears/{yearId} {
         allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*');
         allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*') && farmActive(farmId);

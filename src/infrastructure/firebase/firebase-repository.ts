@@ -113,6 +113,7 @@ import {
 import { addDays, toISODate } from "@/lib/date";
 import { defaultChartOfAccounts } from "@/core/data/chart-of-accounts";
 import { isBalanced, LEDGER_READ_LIMIT } from "@/core/services/accounting";
+import { monthEnd, type LedgerRollup } from "@/core/services/ledger-rollup";
 import {
   chequeNumber,
   invoiceDocNumber,
@@ -2261,6 +2262,33 @@ export class FirebaseFarmRepository implements FarmRepository {
       orderBy("date", "desc"),
       fsLimit(LEDGER_READ_LIMIT),
     );
+
+  /**
+   * The rollups the accounting screen actually computes from. One document per
+   * (month, branch, fiscal year), so this grows with how long the farm has been
+   * running rather than with how much it posts — which is the whole point.
+   */
+  getLedgerRollups = () => this.all<LedgerRollup>(paths.ledgerRollups(this.farmId));
+
+  /**
+   * Raw entries for specific months, for the months a reporting window only
+   * partly covers (usually just the current one). One range query per month
+   * rather than a single span, so a window whose edges are months apart doesn't
+   * drag everything between them along.
+   */
+  async getJournalEntriesInMonths(months: string[]): Promise<JournalEntry[]> {
+    if (months.length === 0) return [];
+    const pages = await Promise.all(
+      months.map((m) =>
+        this.all<JournalEntry>(
+          paths.journalEntries(this.farmId),
+          where("date", ">=", `${m}-01`),
+          where("date", "<=", monthEnd(m)),
+        ),
+      ),
+    );
+    return pages.flat();
+  }
 
   private async assertYearOpen(fiscalYearId?: ID): Promise<void> {
     if (!fiscalYearId) return;
