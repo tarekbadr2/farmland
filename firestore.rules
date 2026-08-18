@@ -119,9 +119,14 @@ service cloud.firestore {
       // server-only: `subscription` and `aiUsage` can never be changed by a
       // client — the Cloud Functions / API routes write those with admin
       // credentials, which bypass these rules.
+      // NB: use get() with a default on every one of these — a farm doc that
+      // predates the billing fields (or any doc simply missing one) makes a
+      // bare `data.subscription` a "property is undefined" evaluation error,
+      // and an erroring rule denies. That silently locked legitimate settings
+      // writes out of older tenants.
       allow update: if hasPerm(farmId, 'org.settings', 'org.*')
-        && request.resource.data.subscription == resource.data.subscription
-        && request.resource.data.aiUsage == resource.data.aiUsage
+        && request.resource.data.get('subscription', {}) == resource.data.get('subscription', {})
+        && request.resource.data.get('aiUsage', {}) == resource.data.get('aiUsage', {})
         // Billing/structural fields are server-only too: a client must not be
         // able to raise its own herd cap or plan, or re-parent the farm.
         && request.resource.data.get('plan', '') == resource.data.get('plan', '')

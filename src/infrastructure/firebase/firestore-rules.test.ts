@@ -100,12 +100,56 @@ describe.skipIf(!RUN)("firestore.rules", () => {
     await assertFails(
       setDoc(doc(as("owner"), `farms/${FARM}`), { animalLimit: 999999 }, { merge: true }),
     );
+    // Must be a real *change* to prove anything: re-writing the subscription
+    // map byte-for-byte is a no-op the rule has no reason to reject, so a
+    // payload identical to the seeded value tested nothing.
     await assertFails(
-      setDoc(doc(as("owner"), `farms/${FARM}`), { subscription: { access: "active", status: "active" } }, { merge: true }),
+      setDoc(
+        doc(as("owner"), `farms/${FARM}`),
+        { subscription: { status: "active", access: "active", tier: "enterprise" } },
+        { merge: true },
+      ),
+    );
+    // The threat this actually guards: a lapsed tenant unblocking itself.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(
+        doc(ctx.firestore(), `farms/${FARM}`),
+        { subscription: { status: "past_due", access: "blocked" } },
+        { merge: true },
+      );
+    });
+    await assertFails(
+      setDoc(
+        doc(as("owner"), `farms/${FARM}`),
+        { subscription: { status: "active", access: "active" } },
+        { merge: true },
+      ),
     );
     // A pure settings change (name) is allowed.
     await assertSucceeds(
       setDoc(doc(as("owner"), `farms/${FARM}`), { name: "New name" }, { merge: true }),
+    );
+  });
+
+  it("still lets a legacy farm (no billing fields) save settings", async () => {
+    // A farm provisioned before `subscription`/`aiUsage` existed has neither
+    // field. A bare `data.aiUsage` in the rule is an evaluation error on such a
+    // doc, and an erroring rule denies — which locked those tenants out of
+    // their own settings screen. Absence must read as "unchanged", not as a
+    // failure, while the fields stay server-only.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, `farms/${FARM}`), { plan: "starter", animalLimit: 1000, orgId: "orgA", ownerId: "owner" });
+    });
+    await assertSucceeds(
+      setDoc(doc(as("owner"), `farms/${FARM}`), { name: "Legacy farm" }, { merge: true }),
+    );
+    // ...and the client still cannot introduce them itself.
+    await assertFails(
+      setDoc(doc(as("owner"), `farms/${FARM}`), { subscription: { access: "active", status: "active" } }, { merge: true }),
+    );
+    await assertFails(
+      setDoc(doc(as("owner"), `farms/${FARM}`), { aiUsage: { month: "2026-08", count: 0 } }, { merge: true }),
     );
   });
 
