@@ -131,8 +131,10 @@ export type AuditCategory =
 export interface AuditEntry {
   id: ID;
   farmId: ID;
-  /** ISO timestamp of the action. */
+  /** ISO timestamp of the action, for display. */
   at: string;
+  /** Server-set write time; the field the log is ordered by (forgery-proof). */
+  serverAt?: unknown;
   actorUid: ID;
   actorName: string;
   actorRole: Role;

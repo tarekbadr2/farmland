@@ -292,6 +292,10 @@ export class FirebaseFarmRepository implements FarmRepository {
     const entry: Record<string, unknown> = {
       farmId: this.farmId,
       at: new Date().toISOString(),
+      // Server-set, and what the log is ordered by. `at` stays for display, but
+      // a client can't forge or back-date this — the rules require it to equal
+      // request.time, so history can't be buried under future-dated entries.
+      serverAt: serverTimestamp(),
       actorUid: actor.uid,
       actorName: actor.name,
       actorRole: actor.role,
@@ -314,7 +318,7 @@ export class FirebaseFarmRepository implements FarmRepository {
   }
 
   listActivity = (max = 200) =>
-    this.all<AuditEntry>(paths.auditLog(this.farmId), orderBy("at", "desc"), fsLimit(max));
+    this.all<AuditEntry>(paths.auditLog(this.farmId), orderBy("serverAt", "desc"), fsLimit(max));
 
   /* ---------------------------------- Farm -------------------------------- */
 

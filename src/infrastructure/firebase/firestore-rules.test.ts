@@ -7,7 +7,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, serverTimestamp, setDoc, Timestamp } from "firebase/firestore";
 
 /**
  * Security-rule tests for firestore.rules.
@@ -26,9 +26,27 @@ const RUN = !!process.env.FIRESTORE_EMULATOR_HOST;
 const FARM = "farmA";
 const OTHER = "farmB";
 
-// permission sets mirroring src/core/auth/permissions.ts
-const WORKER = ["animals.read", "milk.read", "feeding.*", "tasks.*"];
-const MANAGER = ["animals.*", "milk.*", "feeding.*", "accounting.*", "org.members", "org.settings"];
+// Permission sets mirroring src/core/auth/permissions.ts. These are CONCRETE
+// keys, exactly as the app stores them (owner is the only '*' holder) — the
+// grant-subset rule is token-exact, so fixtures must match reality.
+const WORKER = ["animals.read", "milk.read", "feeding.read", "feeding.write", "tasks.read", "tasks.write"];
+const MANAGER = [
+  "animals.read", "animals.write", "animals.delete",
+  "medical.read", "medical.write",
+  "breeding.read", "breeding.write",
+  "milk.read", "milk.write",
+  "feeding.read", "feeding.write",
+  "inventory.read", "inventory.write",
+  "tasks.read", "tasks.write",
+  "expenses.read", "expenses.write",
+  "accounting.read", "accounting.write",
+  "employees.read", "employees.manage",
+  "reports.read", "audit.read",
+  "org.members", "org.settings",
+];
+// A custom member: can manage members (org.members) but has NO accounting —
+// the C-2 amplification victim shape.
+const MGR_NO_ACCT = ["animals.read", "animals.write", "milk.read", "milk.write", "org.members", "org.settings"];
 
 describe.skipIf(!RUN)("firestore.rules", () => {
   let env: RulesTestEnvironment;
@@ -52,6 +70,7 @@ describe.skipIf(!RUN)("firestore.rules", () => {
       await setDoc(doc(db, `farms/${FARM}/members/owner`), { role: "owner", permissions: ["*"] });
       await setDoc(doc(db, `farms/${FARM}/members/worker`), { role: "farm_worker", permissions: WORKER });
       await setDoc(doc(db, `farms/${FARM}/members/mgr`), { role: "farm_manager", permissions: MANAGER });
+      await setDoc(doc(db, `farms/${FARM}/members/mgrNoAcct`), { role: "custom", permissions: MGR_NO_ACCT });
       await setDoc(doc(db, `farms/${OTHER}/members/stranger`), { role: "owner", permissions: ["*"] });
     });
   });
@@ -93,6 +112,88 @@ describe.skipIf(!RUN)("firestore.rules", () => {
     await assertSucceeds(
       setDoc(doc(as("owner"), `farms/${FARM}/members/newowner`), { role: "owner", permissions: ["*"] }),
     );
+  });
+
+  it("C-2: a member cannot grant permissions it does not hold (no lateral amplification)", async () => {
+    // mgrNoAcct has org.members but NOT accounting. It must not be able to mint a
+    // second account that does, nor hand accounting to an existing colleague.
+    await assertFails(
+      setDoc(doc(as("mgrNoAcct"), `farms/${FARM}/members/mgr_alt`), {
+        role: "custom",
+        permissions: ["accounting.read", "accounting.write", "employees.manage", "org.members"],
+      }),
+    );
+    await assertFails(
+      setDoc(doc(as("mgrNoAcct"), `farms/${FARM}/members/worker`), {
+        role: "farm_worker",
+        permissions: [...WORKER, "accounting.write"],
+      }),
+    );
+    // It CAN still grant within its own set (a subset it actually holds).
+    await assertSucceeds(
+      setDoc(doc(as("mgrNoAcct"), `farms/${FARM}/members/helper`), {
+        role: "custom",
+        permissions: ["animals.read", "milk.read"],
+      }),
+    );
+    // A full manager (a superset of every role) is unaffected — it can still
+    // create any standard role.
+    await assertSucceeds(
+      setDoc(doc(as("mgr"), `farms/${FARM}/members/vet`), {
+        role: "veterinarian",
+        permissions: ["animals.read", "medical.read", "medical.write", "breeding.read", "reports.read"],
+      }),
+    );
+  });
+
+  it("H-1: a lapsed (blocked) farm rejects destructive writes, not just creates", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, `farms/${FARM}`), { subscription: { status: "past_due", access: "blocked" } }, { merge: true });
+      // Records that already exist, to try to destroy.
+      await setDoc(doc(db, `farms/${FARM}/milkRecords/m1`), { volumeL: 10, recordedAt: Timestamp.fromDate(new Date()) });
+      await setDoc(doc(db, `farms/${FARM}/health/h1`), { animalId: "a1" });
+      await setDoc(doc(db, `farms/${FARM}/breeding/b1`), { animalId: "a1" });
+    });
+    // Reads still work (a lapsed farm can view/export its own data).
+    await assertSucceeds(getDoc(doc(as("mgr"), `farms/${FARM}/milkRecords/m1`)));
+    // Every destructive path is now closed.
+    await assertFails(deleteDoc(doc(as("owner"), `farms/${FARM}/milkRecords/m1`)));
+    await assertFails(setDoc(doc(as("owner"), `farms/${FARM}/milkRecords/m1`), { volumeL: 99 }, { merge: true }));
+    await assertFails(deleteDoc(doc(as("owner"), `farms/${FARM}/health/h1`)));
+    await assertFails(deleteDoc(doc(as("owner"), `farms/${FARM}/breeding/b1`)));
+    await assertFails(setDoc(doc(as("owner"), `farms/${FARM}/docCounters/JV-2026`), { next: 500 }));
+    await assertFails(
+      setDoc(doc(as("owner"), `farms/${FARM}/members/newbie`), { role: "farm_worker", permissions: WORKER }),
+    );
+  });
+
+  it("H-2: audit entries must be self-attributed and server-timestamped", async () => {
+    // A worker cannot forge an entry as the owner.
+    await assertFails(
+      setDoc(doc(as("worker"), `farms/${FARM}/auditLog/forged`), {
+        actorUid: "owner", actorName: "Owner", actorRole: "owner",
+        serverAt: serverTimestamp(), category: "animals", action: "delete", summary: "framed",
+      }),
+    );
+    // Even self-attributed, an entry without the server timestamp is refused
+    // (no back-/future-dating to bury history).
+    await assertFails(
+      setDoc(doc(as("worker"), `farms/${FARM}/auditLog/nodate`), {
+        actorUid: "worker", at: "2999-01-01T00:00:00.000Z", category: "animals", action: "update", summary: ".",
+      }),
+    );
+    // A correct entry — own uid, server timestamp — is allowed.
+    await assertSucceeds(
+      setDoc(doc(as("worker"), `farms/${FARM}/auditLog/ok`), {
+        actorUid: "worker", serverAt: serverTimestamp(), category: "animals", action: "update", summary: ".",
+      }),
+    );
+    // And it stays immutable.
+    await assertFails(
+      setDoc(doc(as("worker"), `farms/${FARM}/auditLog/ok`), { summary: "edited" }, { merge: true }),
+    );
+    await assertFails(deleteDoc(doc(as("owner"), `farms/${FARM}/auditLog/ok`)));
   });
 
   it("makes the ledger rollups readable but never client-writable", async () => {
