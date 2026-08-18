@@ -49,7 +49,7 @@ None of this session's security rules, the billing sweep, or the invite/RBAC fun
    ```
    > **`storage:rules` is now required**, not optional — the security-hardening branch rewrote `storage.rules` to gate uploads/deletes by permission (a read-only worker could previously delete every file). Deploying Firestore rules without it leaves that hole open.
 3. [ ] Watch the output for `✔ Deploy complete!`. If it fails on **secrets/env** for a function, do §4 (Functions env) first, then re-run.
-4. [ ] Confirm the two **new** ledger-rollup functions deployed: the console's Functions list should now include `onJournalEntryRollup` and `rebuildLedgerRollups` alongside `billingSweep`, `createInvite`, `acceptInvite`, `reconcileCounters`, etc.
+4. [ ] Confirm the **new** functions deployed: the console's Functions list should now include `onJournalEntryRollup`, `rebuildLedgerRollups` and `scanUpload` (the Storage upload scanner) alongside `billingSweep`, `createInvite`, `acceptInvite`, `reconcileCounters`, etc. `scanUpload` is a Cloud Storage trigger, so the first deploy may prompt to enable the Eventarc API — accept it and re-run if so.
 
 ✅ Done when: `firebase deploy` reports success and the Functions list shows the functions above, including the two new ledger-rollup ones.
 
