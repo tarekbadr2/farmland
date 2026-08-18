@@ -43,14 +43,31 @@ None of this session's security rules, the billing sweep, or the invite/RBAC fun
    ```bash
    cd functions && npm install && cd ..
    ```
-2. [ ] Deploy (the predeploy step compiles the functions with tsc):
+2. [ ] Deploy rules, indexes, **storage rules** and functions (the predeploy step compiles the functions with tsc):
    ```bash
-   firebase deploy --only firestore:rules,firestore:indexes,functions --project studio-5814781224-899ee
+   firebase deploy --only firestore:rules,firestore:indexes,storage:rules,functions --project studio-5814781224-899ee
    ```
+   > **`storage:rules` is now required**, not optional — the security-hardening branch rewrote `storage.rules` to gate uploads/deletes by permission (a read-only worker could previously delete every file). Deploying Firestore rules without it leaves that hole open.
 3. [ ] Watch the output for `✔ Deploy complete!`. If it fails on **secrets/env** for a function, do §4 (Functions env) first, then re-run.
-4. [ ] (Optional) Storage rules are unchanged, but if you ever edit them: add `,storage` to the `--only` list.
+4. [ ] Confirm the two **new** ledger-rollup functions deployed: the console's Functions list should now include `onJournalEntryRollup` and `rebuildLedgerRollups` alongside `billingSweep`, `createInvite`, `acceptInvite`, `reconcileCounters`, etc.
 
-✅ Done when: `firebase deploy` reports success and the Functions list in the console shows `billingSweep`, `createInvite`, `acceptInvite`, `reconcileCounters`, etc.
+✅ Done when: `firebase deploy` reports success and the Functions list shows the functions above, including the two new ledger-rollup ones.
+
+---
+
+## 2b. 🔴 One-time backfills (only after §2 deploys, once per existing farm)
+
+The security/ledger branch added two pieces of derived data that existing farms don't have yet. New farms get them automatically going forward; existing ones need a one-time backfill, or their accounting screen and audit log will look empty until activity accrues.
+
+1. [ ] **Ledger rollups.** Accounting statements now compose from per-month rollup documents instead of a capped read of the whole journal. Existing journal entries predate the rollups, so run the idempotent rebuild once per farm. Easiest from the Firebase console → Functions → `rebuildLedgerRollups` → "Test function" with `{"data":{"farmId":"<farmId>"}}`, or from a signed-in admin client:
+   ```js
+   import { getFunctions, httpsCallable } from "firebase/functions";
+   await httpsCallable(getFunctions(undefined, "us-central1"), "rebuildLedgerRollups")({ farmId: "<farmId>" });
+   ```
+   ✅ Done when: the accounting page's trial balance matches what it showed before, and the truncation banner is gone. Safe to re-run (it derives and overwrites).
+2. [ ] **Audit-log ordering.** The activity log is now ordered by a server-set `serverAt` field (so entries can't be forged or back-dated). Entries written before this deploy have no `serverAt` and won't appear in the newest-first list until a new action is logged. This self-heals as the farm is used — no action needed unless you want the old entries visible, in which case backfill `serverAt` from each entry's `at` with a one-off admin script.
+
+✅ Done when: new actions appear at the top of the activity log.
 
 ---
 
@@ -148,12 +165,13 @@ Do this only when you're ready to charge other farms.
 
 ---
 
-## 8. 🔵 Optional — install JDK 21 (unlocks the last Criticals)
+## 8. ✅ Done — ledger-at-scale Critical shipped, rules tests gated in CI
 
-This is the single biggest lever left. With JDK 21 on the build machine I can run the Firestore rules + offline tests locally (the emulator needs Java 21; no cloud project required) and take the **ledger-at-scale** Critical end-to-end *with proof*.
+This was "install JDK 21 to unlock the last Criticals". It's done. The **ledger-at-scale** Critical is fixed end-to-end with proof: accounting statements now compose from server-maintained per-month rollups instead of the `limit(10000)` read that silently corrupted the books past 10k entries (`src/core/services/ledger-rollup.ts`, `functions/src/ledger-rollup.ts`), proven by generated-ledger equivalence and incremental-vs-recompute convergence tests.
 
-1. [ ] Install a JDK 21 (e.g. Temurin/Adoptium) and ensure `java -version` reports 21+.
-2. [ ] Tell me it's done — I'll run `npm run test:rules` (in the repo) and start the scale rework.
+The Firestore **rules tests now run in CI** (a `rules` job with a Temurin JDK 21 runs `npm run test:rules` and `npm run test:storage-rules`), so a rule that broke tenant isolation, the write-gate, or the audit-log guards would fail the build. To run them yourself: `npm run test:rules` (needs a local JDK 21 for the emulator).
+
+- [ ] Nothing required here — informational. The rollup backfill for existing farms is §2b.
 
 ---
 
@@ -162,4 +180,4 @@ This is the single biggest lever left. With JDK 21 on the build machine I can ru
 - **Use it for your own farm today:** §1–§4.
 - **Sell to other farms:** add §5–§6.
 - **Distribute the desktop app:** §7.
-- **Lift the quality ceiling past ~60/100:** §8.
+- **Ledger-at-scale + CI rule gating:** §8 (done — see §2b for the one-time backfill).
