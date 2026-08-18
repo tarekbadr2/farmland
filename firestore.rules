@@ -223,6 +223,17 @@ service cloud.firestore {
         }
       }
 
+      // A tag uniquely identifies an animal, which Firestore rules can't enforce
+      // by themselves. The app claims farms/{farmId}/tagIndex/{tagLower} in the
+      // same transaction as the animal, so two concurrent creates can't both take
+      // one tag. The claim is immutable (move a tag by delete + re-create), which
+      // is what makes "already claimed by another animal" a reliable signal.
+      match /tagIndex/{tagLower} {
+        allow read: if isMember(farmId);
+        allow create, delete: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
+        allow update: if false;
+      }
+
       match /zones/{zoneId} {
         allow read: if isMember(farmId);
         allow create, update: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);

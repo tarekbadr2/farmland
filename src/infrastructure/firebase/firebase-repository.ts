@@ -638,21 +638,64 @@ export class FirebaseFarmRepository implements FarmRepository {
     return animal ? [{ date: toISODate(new Date()), weightKg: animal.weightKg }] : [];
   }
 
+  /** Best-effort duplicate-tag check against the cached/queried herd — the
+   *  offline fallback for the transactional tagIndex claim. */
+  private async assertTagFreeInCache(id: ID, tagLower: string): Promise<void> {
+    const dup = await getDocs(
+      query(
+        this.col(paths.animals(this.farmId)),
+        where("tagLower", "==", tagLower),
+        fsLimit(2),
+      ),
+    );
+    if (dup.docs.some((d) => d.id !== id)) throw new Error("duplicate-tag");
+  }
+
   async saveAnimal(patch: Partial<Animal> & { id?: ID }): Promise<Animal> {
     const id = patch.id ?? doc(this.col(paths.animals(this.farmId))).id;
     // The tag IS the animal's identity — reject a duplicate so search, the
     // parlor, timelines and per-animal economics can't be mis-attributed.
-    // (Firestore can't enforce uniqueness in rules; this is the practical guard.
-    // Offline it checks the cached herd — best-effort, matching offline-first.)
+    // Firestore can't enforce uniqueness in a rule, so a tagIndex/{tagLower} doc
+    // OWNS each tag: online, we claim it in a transaction, which is the only
+    // thing that stops two concurrent creates (a double-click, two devices) from
+    // both taking one tag. Offline we can't coordinate, so we fall back to the
+    // best-effort cached-herd check — matching the offline-first stance
+    // everywhere else (two offline devices minting the same tag is inherent and
+    // reconciles on sync).
     if (patch.tag) {
-      const dup = await getDocs(
-        query(
-          this.col(paths.animals(this.farmId)),
-          where("tagLower", "==", patch.tag.toLowerCase()),
-          fsLimit(2),
-        ),
-      );
-      if (dup.docs.some((d) => d.id !== id)) throw new Error("duplicate-tag");
+      const tagLower = patch.tag.toLowerCase();
+      const online = !(typeof navigator !== "undefined" && navigator.onLine === false);
+      if (online) {
+        const tagRef = doc(this.db, paths.tagIndex(this.farmId), tagLower);
+        try {
+          await runTransaction(this.db, async (tx) => {
+            const claim = await tx.get(tagRef);
+            if (claim.exists()) {
+              if (claim.data().animalId !== id) throw new Error("duplicate-tag");
+              // Already ours (a re-save/edit keeping the tag) — the claim is
+              // immutable, so don't rewrite it (that would be a forbidden update).
+            } else {
+              tx.set(tagRef, { animalId: id, tag: patch.tag });
+            }
+          });
+        } catch (err) {
+          if (err instanceof Error && err.message === "duplicate-tag") throw err;
+          // The claim couldn't be made for another reason (dropped offline
+          // mid-transaction, say) — fall back to the cached check so the animal
+          // still saves rather than stranding the user.
+          await this.assertTagFreeInCache(id, tagLower);
+        }
+        // On a rename, release the animal's previous tag so it can be reused.
+        if (patch.id) {
+          const prev = await this.getAnimal(patch.id);
+          const prevLower = prev?.tag?.toLowerCase();
+          if (prevLower && prevLower !== tagLower) {
+            await deleteDoc(doc(this.db, paths.tagIndex(this.farmId), prevLower)).catch(() => {});
+          }
+        }
+      } else {
+        await this.assertTagFreeInCache(id, tagLower);
+      }
     }
     const searchable =
       patch.tag && patch.name

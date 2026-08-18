@@ -223,6 +223,18 @@ describe.skipIf(!RUN)("firestore.rules", () => {
     );
   });
 
+  it("M-3: a tag claim is create-once and immutable (uniqueness backing)", async () => {
+    // A writer can claim a free tag...
+    await assertSucceeds(setDoc(doc(as("mgr"), `farms/${FARM}/tagIndex/eg-204`), { animalId: "a1", tag: "EG-204" }));
+    // ...but the claim can't be overwritten to point at another animal (this
+    // immutability is what makes "already claimed" a reliable duplicate signal).
+    await assertFails(setDoc(doc(as("mgr"), `farms/${FARM}/tagIndex/eg-204`), { animalId: "a2", tag: "EG-204" }));
+    // A read-only worker can neither claim nor read-around it.
+    await assertFails(setDoc(doc(as("worker"), `farms/${FARM}/tagIndex/eg-999`), { animalId: "a9", tag: "EG-999" }));
+    // Moving a tag is delete + re-create; a writer may delete a claim.
+    await assertSucceeds(deleteDoc(doc(as("mgr"), `farms/${FARM}/tagIndex/eg-204`)));
+  });
+
   it("M-4: weights need a herd-write permission and a plausible value", async () => {
     // A read-only worker can no longer write weights.
     await assertFails(setDoc(doc(as("worker"), `farms/${FARM}/animals/a1/weights/w1`), { weightKg: 650, date: "2026-08-01" }));

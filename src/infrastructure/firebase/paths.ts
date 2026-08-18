@@ -17,6 +17,7 @@ export const paths = {
   members: (farmId = getActiveFarm()) => `farms/${farmId}/members`,
   pendingMembers: (farmId = getActiveFarm()) => `farms/${farmId}/pendingMembers`,
   animals: (farmId = getActiveFarm()) => `farms/${farmId}/animals`,
+  tagIndex: (farmId = getActiveFarm()) => `farms/${farmId}/tagIndex`,
   zones: (farmId = getActiveFarm()) => `farms/${farmId}/zones`,
   milkRecords: (farmId = getActiveFarm()) => `farms/${farmId}/milkRecords`,
   milkDaily: (farmId = getActiveFarm()) => `farms/${farmId}/milkDaily`,
