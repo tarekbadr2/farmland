@@ -40,6 +40,7 @@ import { getFirebase, listOrgInvites, revokeOrgInvite } from "./client";
 import { PREFIX_END, animalSearchFields, paths } from "./paths";
 import { getActiveFarm } from "./tenant";
 import { getAuditActor, currentDevice } from "@/lib/audit-actor";
+import { captureError } from "@/lib/monitoring";
 import { permissionsForRole } from "@/core/auth/permissions";
 import type {
   Account,
@@ -1119,6 +1120,15 @@ export class FirebaseFarmRepository implements FarmRepository {
     return record;
   }
 
+  /** Re-run the ledger posting for every transaction flagged `postingFailed`.
+   *  autoPost is keyed on the transaction id (so it replaces, never duplicates)
+   *  and clears the flag on success. Returns the number re-posted. */
+  async retryFailedPostings(): Promise<number> {
+    const failed = (await this.getTransactions()).filter((t) => t.postingFailed);
+    for (const txn of failed) await this.autoPost(txn);
+    return failed.length;
+  }
+
   /**
    * Mirrors a transaction into the general ledger. Keyed on the transaction id
    * so re-saving replaces the entry instead of double-posting. Never throws —
@@ -1148,7 +1158,10 @@ export class FirebaseFarmRepository implements FarmRepository {
       // The money row is saved, but it did NOT reach the ledger. Don't swallow
       // it silently — flag the source so a reconcile pass / banner can surface
       // "N transactions not posted" instead of the books drifting invisibly.
-      console.error("[autoPost] ledger posting failed", e);
+      // Silent (autoPost never throws), so this is the only path to telemetry —
+      // route it there, not just the console, or a farm's books can drift with
+      // no server-side signal at all.
+      captureError(e, { source: "autoPost", txnId: txn.id });
       await setDoc(
         doc(this.db, paths.transactions(this.farmId), txn.id),
         { postingFailed: true },

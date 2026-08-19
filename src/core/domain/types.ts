@@ -687,6 +687,11 @@ export interface Transaction {
    *  profitability. */
   animalId?: ID;
   paymentMethod: "cash" | "bank" | "credit";
+  /** Set by the ledger auto-poster when the money row saved but its journal
+   *  entry did NOT (a transient error, a missing account mapping). The transaction
+   *  is real; the books are behind until it's re-posted. Surfaced as a banner and
+   *  cleared automatically once posting succeeds. */
+  postingFailed?: boolean;
 }
 
 /**

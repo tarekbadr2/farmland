@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MotionConfig } from "framer-motion";
 import { ThemeProvider } from "next-themes";
 import { Toaster, toast } from "sonner";
@@ -9,6 +9,7 @@ import { I18nProvider } from "@/lib/i18n/provider";
 import { AuthProvider } from "@/lib/auth/provider";
 import { TooltipProvider } from "@/components/ui/primitives";
 import { initConnectivityWatch } from "@/lib/sync/offline-store";
+import { captureError } from "@/lib/monitoring";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // One place wires browser connectivity into the sync store for the whole app.
@@ -22,7 +23,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
         // failure loudly (one coalesced toast, not N), so a Firestore/network
         // hiccup is never mistaken for "0 animals, EGP 0".
         queryCache: new QueryCache({
-          onError: () => {
+          onError: (error, query) => {
+            // Handled read failures only ever toasted — they never reached
+            // telemetry, so a farm silently failing to load data left no signal.
+            // Sentry's default integrations catch only *uncaught* errors; a
+            // caught query rejection has to be reported explicitly.
+            captureError(error, { source: "query", key: query.queryHash });
             const ar =
               typeof document !== "undefined" && document.documentElement.lang === "ar";
             toast.error(
@@ -31,6 +37,18 @@ export function Providers({ children }: { children: React.ReactNode }) {
                 : "Couldn't load the latest data — check your connection and retry.",
               { id: "query-load-error" },
             );
+          },
+        }),
+        // Mutation failures (a save that didn't stick) are the failures a user
+        // most needs the team to see. Dialogs surface them with their own toast;
+        // this routes the same error to telemetry centrally, without changing
+        // any dialog's own error handling.
+        mutationCache: new MutationCache({
+          onError: (error, _vars, _ctx, mutation) => {
+            captureError(error, {
+              source: "mutation",
+              key: mutation.options.mutationKey?.join("/"),
+            });
           },
         }),
         defaultOptions: {

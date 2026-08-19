@@ -829,6 +829,15 @@ export class DemoFarmRepository implements FarmRepository {
     return tick(saved);
   }
 
+  /** Symmetry with the Firestore adapter. In-memory posting can't fail, so no
+   *  demo transaction ever carries `postingFailed`; re-post any that somehow do
+   *  and report the count. */
+  async retryFailedPostings(): Promise<number> {
+    const failed = this.db.transactions.filter((t) => t.postingFailed);
+    for (const txn of failed) this.autoPost(txn);
+    return tick(failed.length);
+  }
+
   /**
    * Mirrors a transaction into the general ledger so the books never have to be
    * kept by hand. Re-saving the same transaction replaces its entry rather than

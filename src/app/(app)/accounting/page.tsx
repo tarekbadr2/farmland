@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
 import { StatCard } from "@/components/common/stat-card";
+import { UnpostedBanner } from "@/components/finance/unposted-banner";
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -305,6 +306,8 @@ export default function AccountingPage() {
           </>
         }
       />
+
+      <UnpostedBanner />
 
       {ledgerTruncated && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/[0.07] px-4 py-3 text-[13px]">

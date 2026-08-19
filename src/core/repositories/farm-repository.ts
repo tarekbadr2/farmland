@@ -250,6 +250,13 @@ export interface FarmRepository {
 
   getTransactions(): Promise<Transaction[]>;
   saveTransaction(txn: EventWrite<Omit<Transaction, "id" | "farmId">>): Promise<Transaction>;
+  /**
+   * Re-post any transactions whose ledger entry previously failed to write
+   * (`postingFailed`). Idempotent — posting is keyed on the transaction id, so a
+   * re-post replaces rather than duplicates, and the flag clears on success.
+   * Returns how many transactions were re-posted.
+   */
+  retryFailedPostings(): Promise<number>;
   getInvoices(): Promise<Invoice[]>;
   saveInvoice(invoice: EventWrite<Omit<Invoice, "id" | "farmId">>): Promise<Invoice>;
   setInvoiceStatus(id: ID, status: Invoice["status"]): Promise<Invoice>;
