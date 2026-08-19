@@ -58,8 +58,19 @@ export function rangeDays(endISO: string, count: number): string[] {
 
 export function ageFromDOB(dob: string, today: string) {
   const days = diffDays(today, dob);
-  const years = Math.floor(days / 365.25);
-  const months = Math.floor((days - years * 365.25) / 30.44);
+  // Calendar age, not a 365.25-day division — the latter understates age by a
+  // couple of weeks at every anniversary (an animal that turns 2 would read as
+  // "1y 11m"). Derive whole years/months from the date parts instead.
+  const from = parseISODate(dob);
+  const to = parseISODate(today);
+  let years = to.getFullYear() - from.getFullYear();
+  let months = to.getMonth() - from.getMonth();
+  if (to.getDate() < from.getDate()) months -= 1;
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+  if (years < 0) years = months = 0; // future DOB — clamp rather than show negatives
   return { days, years, months };
 }
 
