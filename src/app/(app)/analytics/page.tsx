@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Area,
   AreaChart,
@@ -24,6 +25,7 @@ import { Beef, Download, Droplets, Leaf, Zap } from "lucide-react";
 import { PageHeader, gridStagger } from "@/components/common/page-header";
 import { StatCard } from "@/components/common/stat-card";
 import { ChartCard, ChartTooltip, CHART_COLORS, axisProps, gridProps } from "@/components/common/chart";
+import { QueryErrorState } from "@/components/common/query-error";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/primitives";
 import { useI18n } from "@/lib/i18n/provider";
@@ -59,15 +61,17 @@ import { downloadTableXlsx } from "@/lib/export";
 export default function AnalyticsPage() {
   const { t, locale, formatNumber, formatCompact, formatCurrency } = useI18n();
 
-  const { data: animalPage } = useAnimals({ pageSize: 100000 });
-  const { data: milkDaily = [] } = useMilkDaily();
-  const { data: health = [] } = useHealth();
-  const { data: breeding = [] } = useBreeding();
-  const { data: feedItems = [] } = useFeedItems();
-  const { data: feedCons = [] } = useFeedConsumption();
+  const qc = useQueryClient();
+  const { data: animalPage, isError: e1 } = useAnimals({ pageSize: 100000 });
+  const { data: milkDaily = [], isError: e2 } = useMilkDaily();
+  const { data: health = [], isError: e3 } = useHealth();
+  const { data: breeding = [], isError: e4 } = useBreeding();
+  const { data: feedItems = [], isError: e5 } = useFeedItems();
+  const { data: feedCons = [], isError: e6 } = useFeedConsumption();
   const { data: rations = [] } = useRations();
-  const { data: txns = [] } = useTransactions();
+  const { data: txns = [], isError: e7 } = useTransactions();
   const { data: utilities = [] } = useUtilities();
+  const hasError = e1 || e2 || e3 || e4 || e5 || e6 || e7;
 
   const animals = React.useMemo(() => animalPage?.items ?? [], [animalPage]);
 
@@ -141,6 +145,8 @@ export default function AnalyticsPage() {
         rate: round((byMonth[month].length / Math.max(1, animals.length)) * 100, 2),
       }));
   }, [health, animals.length]);
+
+  if (hasError) return <QueryErrorState onRetry={() => void qc.refetchQueries()} />;
 
   return (
     <>

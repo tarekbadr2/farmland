@@ -92,6 +92,7 @@ Add/confirm these for **Production** (and Preview if you use it). Secrets must *
 - [ ] `RESEND_API_KEY` — for invite/receipt emails.
 - [ ] `EMAIL_FROM` — e.g. `Herd OS <noreply@yourdomain.com>` (domain must be verified in Resend).
 - [ ] `NEXT_PUBLIC_SITE_URL` — your real URL, e.g. `https://app.yourdomain.com` (used for SEO/OG + sitemap).
+- [ ] `NEXT_PUBLIC_SENTRY_DSN` — **strongly recommended.** Error tracking ships wired but no-ops until this is set; without it every client crash and handled data-error goes only to the browser console, so a production incident is invisible to you. Create a free Sentry project (Browser JS), paste its DSN here. Leave unset only if you accept flying blind.
 - [ ] `NEXT_PUBLIC_FARM_ID` = `unassigned` (safe fallback so a pre-login stray query can't touch a real tenant).
 - [ ] The 8 Firebase web-config values (already set, since the app works): `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`, `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`.
 - [ ] Leave `NEXT_PUBLIC_BILLING_ENFORCED` **unset** for now — set it to `1` only when Paymob is wired (§6).

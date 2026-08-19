@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Area,
   AreaChart,
@@ -42,6 +43,7 @@ import {
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
 import { StatCard } from "@/components/common/stat-card";
 import { ChartCard, ChartTooltip, CHART_COLORS, axisProps, gridProps } from "@/components/common/chart";
+import { QueryErrorState } from "@/components/common/query-error";
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -88,6 +90,7 @@ import { RecordSessionDialog } from "@/components/milk/record-session-dialog";
 export default function DashboardPage() {
   const { t, ln, locale, formatNumber, formatCompact, formatCurrency } = useI18n();
   const { user } = useAuth();
+  const qc = useQueryClient();
   // First name only — falls back to the full name, then a neutral greeting.
   const firstName = user?.name?.trim().split(/\s+/)[0] ?? "";
 
@@ -106,6 +109,10 @@ export default function DashboardPage() {
 
   const loading =
     animals.isLoading || milk.isLoading || txns.isLoading || health.isLoading;
+  // A failed read must never render as "0 buffalo / EGP 0" — that reads as data
+  // loss on a system of record. If any core query errored, show the error state.
+  const hasError =
+    animals.isError || milk.isError || txns.isError || health.isError || breeding.isError;
 
   const list = React.useMemo(() => animals.data?.items ?? [], [animals.data]);
   const daily = React.useMemo(() => milk.data ?? [], [milk.data]);
@@ -210,6 +217,14 @@ export default function DashboardPage() {
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 7);
 
+  if (hasError)
+    return (
+      <QueryErrorState
+        onRetry={() => {
+          void qc.refetchQueries();
+        }}
+      />
+    );
   if (loading) return <DashboardSkeleton />;
 
   return (
