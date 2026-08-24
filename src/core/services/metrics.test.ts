@@ -7,10 +7,17 @@ import {
   utilityCostSummary,
   enterprisePnl,
   feedMetrics,
+  milkSummary,
+  forecastMilk,
+  breedingMetrics,
+  financeMetrics,
 } from "./metrics";
+import { addDays } from "@/lib/date";
 import type {
   Animal,
   Asset,
+  BreedingEvent,
+  DailyMilkPoint,
   FeedItem,
   HealthEvent,
   FeedConsumption,
@@ -220,5 +227,155 @@ describe("feedMetrics daysCover", () => {
     ] as unknown as FeedConsumption[];
     const m = feedMetrics(items, consumption, [], "2026-08-01");
     expect(m.daysCover).toBe(30);
+  });
+});
+
+/* ------------------------------------------------------------------------- */
+
+const milkPoint = (over: Partial<DailyMilkPoint>): DailyMilkPoint =>
+  ({
+    date: "2025-06-01",
+    morningL: 0,
+    eveningL: 0,
+    totalL: 0,
+    rejectedL: 0,
+    avgFat: 0,
+    avgProtein: 0,
+    milkingCows: 0,
+    ...over,
+  }) as DailyMilkPoint;
+
+describe("milkSummary", () => {
+  it("reads today's point, per-cow yield and the month total", () => {
+    const daily = [
+      milkPoint({ date: "2025-06-01", totalL: 100, milkingCows: 50 }),
+      milkPoint({ date: "2025-06-02", totalL: 200, milkingCows: 100 }),
+    ];
+    const s = milkSummary(daily, "2025-06-02");
+    expect(s.today).toBe(200);
+    expect(s.perCowToday).toBe(2); // 200 / 100
+    expect(s.monthTotal).toBe(300); // both June points
+    expect(s.avg30).toBe(150); // (100 + 200) / 2
+    expect(s.milkingCows).toBe(100);
+    expect(s.deltaPct).toBe(0); // no prior 30-day window
+  });
+
+  it("falls back to the last point when today isn't recorded", () => {
+    const daily = [milkPoint({ date: "2025-06-01", totalL: 120, milkingCows: 60 })];
+    const s = milkSummary(daily, "2025-06-09"); // no point for today
+    expect(s.today).toBe(120);
+    expect(s.perCowToday).toBe(2);
+  });
+
+  it("guards per-cow division when a day recorded zero milking cows", () => {
+    const daily = [milkPoint({ date: "2025-06-01", totalL: 80, milkingCows: 0 })];
+    expect(milkSummary(daily, "2025-06-01").perCowToday).toBe(80); // /max(1,0)
+  });
+
+  it("computes the 30-vs-prior-30 delta over a 60-day series", () => {
+    // First 30 days at 100 L, next 30 at 110 L → +10%.
+    const daily = Array.from({ length: 60 }, (_, i) =>
+      milkPoint({ date: addDays("2025-01-01", i), totalL: i < 30 ? 100 : 110, milkingCows: 50 }),
+    );
+    const s = milkSummary(daily, addDays("2025-01-01", 59));
+    expect(s.avg30).toBe(110);
+    expect(s.deltaPct).toBe(10); // (110 - 100) / 100 * 100
+  });
+});
+
+describe("forecastMilk", () => {
+  it("returns an empty series with no history", () => {
+    expect(forecastMilk([])).toEqual([]);
+  });
+
+  it("projects a flat series forward at its level for the given horizon", () => {
+    const daily = Array.from({ length: 45 }, (_, i) =>
+      milkPoint({ date: addDays("2025-01-01", i), totalL: 100 }),
+    );
+    const last = addDays("2025-01-01", 44);
+    const f = forecastMilk(daily, 14);
+    expect(f).toHaveLength(14);
+    expect(f[0].date).toBe(addDays(last, 1)); // day after the last actual
+    expect(f[13].date).toBe(addDays(last, 14));
+    expect(f.every((p) => p.forecastL === 100)).toBe(true); // flat in → flat out
+  });
+
+  it("applies the heat penalty as a proportional haircut", () => {
+    const daily = Array.from({ length: 45 }, (_, i) =>
+      milkPoint({ date: addDays("2025-01-01", i), totalL: 100 }),
+    );
+    const f = forecastMilk(daily, 3, 10); // 10% penalty
+    expect(f.every((p) => p.forecastL === 90)).toBe(true);
+  });
+});
+
+const breedingEvent = (over: Partial<BreedingEvent>): BreedingEvent =>
+  ({ id: "b", farmId: "f", animalId: "a", type: "heat", date: "2025-06-01", ...over }) as BreedingEvent;
+
+describe("breedingMetrics", () => {
+  const today = "2025-12-31";
+
+  it("scores conception, services-per-conception and calf survival over the rolling year", () => {
+    const events: BreedingEvent[] = [
+      breedingEvent({ type: "heat", date: "2025-06-01" }),
+      breedingEvent({ type: "ai", date: "2025-06-01" }),
+      breedingEvent({ type: "ai", date: "2025-07-01" }),
+      breedingEvent({ type: "pregnancy_check", date: "2025-08-01", result: "pregnant" }),
+      breedingEvent({ type: "calving", date: "2025-09-01", outcome: "live" }),
+      breedingEvent({ type: "calving", date: "2025-09-15", outcome: "stillbirth" }),
+      breedingEvent({ type: "ai", date: "2020-01-01" }), // outside the 365-day window
+    ];
+    const animals: Animal[] = [
+      animal({ id: "d1", sex: "female", isCalf: false, reproStatus: "pregnant", expectedCalvingDate: "2026-01-05" }),
+      animal({ id: "d2", sex: "female", isCalf: false, reproStatus: "open" }),
+    ];
+    const m = breedingMetrics(events, animals, today);
+
+    expect(m.heats).toBe(1);
+    expect(m.inseminations).toBe(2); // the stale 2020 AI is excluded
+    expect(m.checks).toBe(1);
+    expect(m.conceptionRate).toBe(50); // 1 confirmed / 2 inseminations
+    expect(m.servicesPerConception).toBe(2); // 2 / 1
+    expect(m.calvings).toBe(2);
+    expect(m.stillbirths).toBe(1);
+    expect(m.calfSurvival).toBe(50); // 100 - 50% stillbirth
+    expect(m.dueThisWeek).toBe(1); // due 2026-01-05, 5 days out
+    expect(m.dueThisMonth).toBe(1);
+    expect(m.pregnancyRate).toBe(50); // 1 pregnant / 2 breeding females
+  });
+
+  it("does not divide by zero with no inseminations or calvings", () => {
+    const m = breedingMetrics([breedingEvent({ type: "heat" })], [], today);
+    expect(m.conceptionRate).toBe(0);
+    expect(m.servicesPerConception).toBe(0);
+    expect(m.calfSurvival).toBe(100); // no calvings → no losses
+  });
+});
+
+describe("financeMetrics", () => {
+  const txn = (over: Partial<Transaction>): Transaction =>
+    ({ id: "t", farmId: "f", date: "2025-06-05", kind: "income", category: "milk_sales", amount: 0, description: "", paymentMethod: "cash", ...over }) as Transaction;
+
+  it("separates this month from last, with margin and deltas", () => {
+    const txns: Transaction[] = [
+      txn({ date: "2025-06-05", kind: "income", amount: 100000 }),
+      txn({ date: "2025-06-10", kind: "expense", category: "feed", amount: 40000 }),
+      txn({ date: "2025-05-20", kind: "income", amount: 80000 }),
+      txn({ date: "2025-05-20", kind: "expense", category: "feed", amount: 20000 }),
+    ];
+    const m = financeMetrics(txns, "2025-06-15", 1000);
+    expect(m.revenue).toBe(100000);
+    expect(m.expenses).toBe(40000);
+    expect(m.profit).toBe(60000);
+    expect(m.margin).toBe(60); // 60000 / 100000
+    expect(m.revenueDelta).toBe(25); // (100k - 80k) / 80k
+    expect(m.expenseDelta).toBe(100); // (40k - 20k) / 20k
+    // Cost per litre uses all expenses within 30 days (both rows: 5 and 26 days out).
+    expect(m.costPerLiter).toBe(60); // (40000 + 20000) / 1000
+  });
+
+  it("zeroes deltas and margin when there is no baseline", () => {
+    const m = financeMetrics([], "2025-06-15", 0);
+    expect(m).toMatchObject({ revenue: 0, expenses: 0, profit: 0, margin: 0, revenueDelta: 0, expenseDelta: 0, costPerLiter: 0 });
   });
 });
