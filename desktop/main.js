@@ -11,7 +11,6 @@ const {
   BrowserWindow,
   shell,
   Menu,
-  MenuItem,
   ipcMain,
   dialog,
   Tray,

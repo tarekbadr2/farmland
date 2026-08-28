@@ -86,7 +86,9 @@ export const ROLE_PERMISSIONS: Record<RoleKey, readonly string[]> = {
   // Near-owner: runs the farm end to end, but not org-destructive/ownership
   // actions (those are owner-only and not expressed as permission keys).
   farm_manager: [
-    "animals.read", "animals.write", "animals.delete",
+    // No animals.delete: an animal leaves the herd by disposal (a soft
+    // transition), never by hard-delete, which would orphan its records.
+    "animals.read", "animals.write",
     "medical.read", "medical.write",
     "vaccinations.read", "vaccinations.write",
     "breeding.read", "breeding.write",

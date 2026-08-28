@@ -150,6 +150,38 @@ describe("demo repository — documents reach the ledger", () => {
     expect(await booksBalance()).toBe(true);
   });
 
+  it("a split-payment purchase fans the cost across cash, bank and the supplier", async () => {
+    const feed = (await repo.getFeedItems())[0];
+    const supplier = (await repo.getPartners()).find((p) => p.kind === "supplier")!;
+
+    const beforeFeed = await balanceOf("expense_feed");
+    const beforeCash = await balanceOf("cash");
+    const beforeBank = await balanceOf("bank");
+    const beforePayable = await balanceOf("payable");
+
+    // 2 × 500 = 1,000, paid 600 cash + 300 card (→ bank) + 100 on credit.
+    await repo.recordPurchase({
+      kind: "feed",
+      itemId: feed.id,
+      quantity: 2,
+      unitCost: 500,
+      date: TODAY,
+      supplierId: supplier.id,
+      paymentMethod: "cash",
+      payments: [
+        { method: "cash", amount: 600 },
+        { method: "card", amount: 300 },
+        { method: "credit", amount: 100 },
+      ],
+    });
+
+    expect((await balanceOf("expense_feed")) - beforeFeed).toBe(1_000); // full cost debited
+    expect((await balanceOf("cash")) - beforeCash).toBe(-600); // credit side
+    expect((await balanceOf("bank")) - beforeBank).toBe(-300); // card settles through bank
+    expect((await balanceOf("payable")) - beforePayable).toBe(-100); // owed to the supplier
+    expect(await booksBalance()).toBe(true);
+  });
+
   it("a cheque moves the debt into notes and keeps the books balanced", async () => {
     const beforeNotes = await balanceOf("notes_receivable");
     const cheque = await repo.saveCheque({
@@ -686,6 +718,49 @@ describe("demo repository — impossible-state guards", () => {
         date: TODAY,
       } as Parameters<typeof repo.saveBreedingEvent>[0]),
     ).rejects.toThrow(/animal-not-on-farm/);
+  });
+
+  it("rejects a milk session for a bull or an animal that left the herd", async () => {
+    const bull = await repo.saveAnimal({
+      ...female,
+      tag: "MILKBULL-G1",
+      sex: "male",
+      milkStatus: "not_applicable",
+      reproStatus: "not_applicable",
+    } as Partial<Animal>);
+    await expect(
+      repo.recordMilkSession({
+        date: TODAY,
+        session: "morning",
+        entries: [{ animalId: bull.id, volumeL: 8 }],
+        fatPct: 4,
+        proteinPct: 3,
+      }),
+    ).rejects.toThrow(/milk-animal-ineligible/);
+
+    const cow = await repo.saveAnimal({ ...female, tag: "MILKEXIT-G1" } as Partial<Animal>);
+    await repo.disposeAnimal(cow.id, { type: "sold", date: TODAY, proceeds: 5000 } as AnimalDisposal);
+    await expect(
+      repo.recordMilkSession({
+        date: TODAY,
+        session: "morning",
+        entries: [{ animalId: cow.id, volumeL: 8 }],
+        fatPct: 4,
+        proteinPct: 3,
+      }),
+    ).rejects.toThrow(/milk-animal-ineligible/);
+
+    // A normal lactating cow still records fine.
+    const good = await repo.saveAnimal({ ...female, tag: "MILKOK-G1" } as Partial<Animal>);
+    await expect(
+      repo.recordMilkSession({
+        date: TODAY,
+        session: "morning",
+        entries: [{ animalId: good.id, volumeL: 8 }],
+        fatPct: 4,
+        proteinPct: 3,
+      }),
+    ).resolves.toBeTruthy();
   });
 });
 

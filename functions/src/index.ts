@@ -20,3 +20,5 @@ export { nightlyFirestoreBackup } from "./backup";
 export { trialEndingReminders } from "./reminders";
 export { billingSweep } from "./billing-sweep";
 export { onJournalEntryWritten } from "./ledger";
+export { onJournalEntryRollup, rebuildLedgerRollups } from "./ledger-rollup";
+export { scanUpload } from "./upload-scan";

@@ -10,6 +10,7 @@ import { addDays, diffDays, rangeDays } from "@/lib/date";
 import { getAuditActor, currentDevice } from "@/lib/audit-actor";
 import { mulberry32, round, clamp, sum } from "@/lib/utils";
 import { isBalanced } from "@/core/services/accounting";
+import { rollupsFromEntries } from "@/core/services/ledger-rollup";
 import {
   chequeNumber,
   invoiceDocNumber,
@@ -49,6 +50,7 @@ import {
   applyHealthEvent,
   assertBreedingAllowed,
   assertHealthAllowed,
+  isMilkAllowed,
   attendanceFromClock,
   kgPerUnit,
 } from "@/core/domain/rules";
@@ -827,6 +829,15 @@ export class DemoFarmRepository implements FarmRepository {
     return tick(saved);
   }
 
+  /** Symmetry with the Firestore adapter. In-memory posting can't fail, so no
+   *  demo transaction ever carries `postingFailed`; re-post any that somehow do
+   *  and report the count. */
+  async retryFailedPostings(): Promise<number> {
+    const failed = this.db.transactions.filter((t) => t.postingFailed);
+    for (const txn of failed) this.autoPost(txn);
+    return tick(failed.length);
+  }
+
   /**
    * Mirrors a transaction into the general ledger so the books never have to be
    * kept by hand. Re-saving the same transaction replaces its entry rather than
@@ -846,6 +857,14 @@ export class DemoFarmRepository implements FarmRepository {
 
   async recordMilkSession(input: MilkSessionInput): Promise<WriteOutcome> {
     const { date, session, entries } = input;
+
+    // A session must not carry an animal that has left the herd or can't
+    // lactate — symmetric with the breeding/health guards. Cheap here (the herd
+    // is in memory); the Firebase adapter does the same against its cache.
+    for (const entry of entries) {
+      const animal = this.db.animals.find((a) => a.id === entry.animalId);
+      if (animal && !isMilkAllowed(animal)) throw new Error("milk-animal-ineligible");
+    }
 
     for (const entry of entries) {
       const id = `${date}_${entry.animalId}_${session}`;
@@ -1097,6 +1116,7 @@ export class DemoFarmRepository implements FarmRepository {
       total,
       warehouseId: input.warehouseId,
       paymentMethod: input.paymentMethod,
+      payments: input.payments,
       note: input.note,
     });
 
@@ -1121,6 +1141,7 @@ export class DemoFarmRepository implements FarmRepository {
       description: `${name} — ${input.quantity} ${unit}`,
       counterpartyId: input.supplierId,
       paymentMethod: input.paymentMethod,
+      payments: input.payments,
     });
   }
 
@@ -1559,6 +1580,19 @@ export class DemoFarmRepository implements FarmRepository {
   }
 
   getJournalEntries = () => tick(this.db.journalEntries);
+
+  /**
+   * Derived on the fly rather than stored. The demo herd has no Cloud Function
+   * behind it, and `rollupsFromEntries` is the same definition the trigger and
+   * the rebuild agree with — so the demo exercises the real composition path
+   * (rollups + edge months) instead of a shortcut that would hide a bug in it.
+   */
+  getLedgerRollups = () => tick(rollupsFromEntries(this.db.journalEntries));
+
+  getJournalEntriesInMonths = (months: string[]) => {
+    const wanted = new Set(months);
+    return tick(this.db.journalEntries.filter((e) => wanted.has(e.date.slice(0, 7))));
+  };
 
   private assertYearOpen(fiscalYearId?: ID) {
     if (!fiscalYearId) return;

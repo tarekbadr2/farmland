@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
   Clock,
@@ -14,6 +15,7 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
+import { QueryErrorState } from "@/components/common/query-error";
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -57,13 +59,15 @@ export default function ReportsPage() {
   const { t, locale, formatNumber } = useI18n();
   const [period, setPeriod] = React.useState<"daily" | "weekly" | "monthly" | "yearly">("monthly");
 
+  const qc = useQueryClient();
   const { data: farm } = useFarm();
-  const { data: animalPage } = useAnimals({ pageSize: 100000 });
-  const { data: milkDaily = [] } = useMilkDaily();
-  const { data: health = [] } = useHealth();
-  const { data: breeding = [] } = useBreeding();
-  const { data: txns = [] } = useTransactions();
-  const { data: feedCons = [] } = useFeedConsumption();
+  const { data: animalPage, isError: e1 } = useAnimals({ pageSize: 100000 });
+  const { data: milkDaily = [], isError: e2 } = useMilkDaily();
+  const { data: health = [], isError: e3 } = useHealth();
+  const { data: breeding = [], isError: e4 } = useBreeding();
+  const { data: txns = [], isError: e5 } = useTransactions();
+  const { data: feedCons = [], isError: e6 } = useFeedConsumption();
+  const hasError = e1 || e2 || e3 || e4 || e5 || e6;
 
   /** Builds the report's rows and metadata, format-agnostic. */
   const buildReport = (key: ReportKey): ReportDoc => {
@@ -304,6 +308,8 @@ export default function ReportsPage() {
       nextRun: addDays(TODAY, 4),
     },
   ];
+
+  if (hasError) return <QueryErrorState onRetry={() => void qc.refetchQueries()} />;
 
   return (
     <>

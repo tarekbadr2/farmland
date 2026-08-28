@@ -40,6 +40,7 @@ import { getFirebase, listOrgInvites, revokeOrgInvite } from "./client";
 import { PREFIX_END, animalSearchFields, paths } from "./paths";
 import { getActiveFarm } from "./tenant";
 import { getAuditActor, currentDevice } from "@/lib/audit-actor";
+import { captureError } from "@/lib/monitoring";
 import { permissionsForRole } from "@/core/auth/permissions";
 import type {
   Account,
@@ -107,12 +108,14 @@ import {
   applyHealthEvent,
   assertBreedingAllowed,
   assertHealthAllowed,
+  isMilkAllowed,
   attendanceFromClock,
   kgPerUnit,
 } from "@/core/domain/rules";
 import { addDays, toISODate } from "@/lib/date";
 import { defaultChartOfAccounts } from "@/core/data/chart-of-accounts";
 import { isBalanced, LEDGER_READ_LIMIT } from "@/core/services/accounting";
+import { monthEnd, type LedgerRollup } from "@/core/services/ledger-rollup";
 import {
   chequeNumber,
   invoiceDocNumber,
@@ -291,6 +294,10 @@ export class FirebaseFarmRepository implements FarmRepository {
     const entry: Record<string, unknown> = {
       farmId: this.farmId,
       at: new Date().toISOString(),
+      // Server-set, and what the log is ordered by. `at` stays for display, but
+      // a client can't forge or back-date this — the rules require it to equal
+      // request.time, so history can't be buried under future-dated entries.
+      serverAt: serverTimestamp(),
       actorUid: actor.uid,
       actorName: actor.name,
       actorRole: actor.role,
@@ -307,13 +314,21 @@ export class FirebaseFarmRepository implements FarmRepository {
     await setDoc(doc(this.db, paths.auditLog(this.farmId), id), entry);
   }
 
-  /** Fire-and-forget log — a failed audit write must never fail the action. */
+  /** Fire-and-forget log — a failed audit write must never fail the action, but
+   *  it must not vanish silently either: a swallowed failure is indistinguishable
+   *  from "nobody did this". Surface it so a gap in the trail is at least visible
+   *  in logs. (A durable retry queue alongside the offline write queue is the
+   *  fuller fix.) */
   private audit(input: AuditInput): void {
-    void this.logActivity(input).catch(() => {});
+    void this.logActivity(input).catch((err) => {
+      if (typeof console !== "undefined") {
+        console.warn("[audit] failed to record action", input.action, err);
+      }
+    });
   }
 
   listActivity = (max = 200) =>
-    this.all<AuditEntry>(paths.auditLog(this.farmId), orderBy("at", "desc"), fsLimit(max));
+    this.all<AuditEntry>(paths.auditLog(this.farmId), orderBy("serverAt", "desc"), fsLimit(max));
 
   /* ---------------------------------- Farm -------------------------------- */
 
@@ -625,21 +640,64 @@ export class FirebaseFarmRepository implements FarmRepository {
     return animal ? [{ date: toISODate(new Date()), weightKg: animal.weightKg }] : [];
   }
 
+  /** Best-effort duplicate-tag check against the cached/queried herd — the
+   *  offline fallback for the transactional tagIndex claim. */
+  private async assertTagFreeInCache(id: ID, tagLower: string): Promise<void> {
+    const dup = await getDocs(
+      query(
+        this.col(paths.animals(this.farmId)),
+        where("tagLower", "==", tagLower),
+        fsLimit(2),
+      ),
+    );
+    if (dup.docs.some((d) => d.id !== id)) throw new Error("duplicate-tag");
+  }
+
   async saveAnimal(patch: Partial<Animal> & { id?: ID }): Promise<Animal> {
     const id = patch.id ?? doc(this.col(paths.animals(this.farmId))).id;
     // The tag IS the animal's identity — reject a duplicate so search, the
     // parlor, timelines and per-animal economics can't be mis-attributed.
-    // (Firestore can't enforce uniqueness in rules; this is the practical guard.
-    // Offline it checks the cached herd — best-effort, matching offline-first.)
+    // Firestore can't enforce uniqueness in a rule, so a tagIndex/{tagLower} doc
+    // OWNS each tag: online, we claim it in a transaction, which is the only
+    // thing that stops two concurrent creates (a double-click, two devices) from
+    // both taking one tag. Offline we can't coordinate, so we fall back to the
+    // best-effort cached-herd check — matching the offline-first stance
+    // everywhere else (two offline devices minting the same tag is inherent and
+    // reconciles on sync).
     if (patch.tag) {
-      const dup = await getDocs(
-        query(
-          this.col(paths.animals(this.farmId)),
-          where("tagLower", "==", patch.tag.toLowerCase()),
-          fsLimit(2),
-        ),
-      );
-      if (dup.docs.some((d) => d.id !== id)) throw new Error("duplicate-tag");
+      const tagLower = patch.tag.toLowerCase();
+      const online = !(typeof navigator !== "undefined" && navigator.onLine === false);
+      if (online) {
+        const tagRef = doc(this.db, paths.tagIndex(this.farmId), tagLower);
+        try {
+          await runTransaction(this.db, async (tx) => {
+            const claim = await tx.get(tagRef);
+            if (claim.exists()) {
+              if (claim.data().animalId !== id) throw new Error("duplicate-tag");
+              // Already ours (a re-save/edit keeping the tag) — the claim is
+              // immutable, so don't rewrite it (that would be a forbidden update).
+            } else {
+              tx.set(tagRef, { animalId: id, tag: patch.tag });
+            }
+          });
+        } catch (err) {
+          if (err instanceof Error && err.message === "duplicate-tag") throw err;
+          // The claim couldn't be made for another reason (dropped offline
+          // mid-transaction, say) — fall back to the cached check so the animal
+          // still saves rather than stranding the user.
+          await this.assertTagFreeInCache(id, tagLower);
+        }
+        // On a rename, release the animal's previous tag so it can be reused.
+        if (patch.id) {
+          const prev = await this.getAnimal(patch.id);
+          const prevLower = prev?.tag?.toLowerCase();
+          if (prevLower && prevLower !== tagLower) {
+            await deleteDoc(doc(this.db, paths.tagIndex(this.farmId), prevLower)).catch(() => {});
+          }
+        }
+      } else {
+        await this.assertTagFreeInCache(id, tagLower);
+      }
     }
     const searchable =
       patch.tag && patch.name
@@ -778,6 +836,28 @@ export class FirebaseFarmRepository implements FarmRepository {
    */
   async recordMilkSession(input: MilkSessionInput): Promise<WriteOutcome> {
     const { date, session, entries } = input;
+
+    // Reject a session that carries an animal which has left the herd or can't
+    // lactate — the write-layer backstop for the parlor's lactating-only list
+    // (a stale dialog, or a direct SDK write), symmetric with the breeding and
+    // health guards. Read each referenced animal from the LOCAL cache, not the
+    // server: the parlor just loaded the herd, so it's instant, and this stays
+    // offline-safe — an animal we can't resolve offline is left alone rather
+    // than stranding the milker. A malicious writer is bounded by the milk.write
+    // rule regardless; this catches the accidental cases the UI can't.
+    for (const entry of entries) {
+      let animal: Pick<Animal, "status" | "sex"> | undefined;
+      try {
+        const snap = await getDocFromCache(
+          doc(this.db, paths.animals(this.farmId), entry.animalId),
+        );
+        animal = snap.data() as Pick<Animal, "status" | "sex"> | undefined;
+      } catch {
+        continue; // not cached / offline — can't verify, so allow (offline-first)
+      }
+      if (animal && !isMilkAllowed(animal)) throw new Error("milk-animal-ineligible");
+    }
+
     const batch = writeBatch(this.db);
 
     entries.forEach((entry) => {
@@ -1040,6 +1120,15 @@ export class FirebaseFarmRepository implements FarmRepository {
     return record;
   }
 
+  /** Re-run the ledger posting for every transaction flagged `postingFailed`.
+   *  autoPost is keyed on the transaction id (so it replaces, never duplicates)
+   *  and clears the flag on success. Returns the number re-posted. */
+  async retryFailedPostings(): Promise<number> {
+    const failed = (await this.getTransactions()).filter((t) => t.postingFailed);
+    for (const txn of failed) await this.autoPost(txn);
+    return failed.length;
+  }
+
   /**
    * Mirrors a transaction into the general ledger. Keyed on the transaction id
    * so re-saving replaces the entry instead of double-posting. Never throws —
@@ -1069,7 +1158,10 @@ export class FirebaseFarmRepository implements FarmRepository {
       // The money row is saved, but it did NOT reach the ledger. Don't swallow
       // it silently — flag the source so a reconcile pass / banner can surface
       // "N transactions not posted" instead of the books drifting invisibly.
-      console.error("[autoPost] ledger posting failed", e);
+      // Silent (autoPost never throws), so this is the only path to telemetry —
+      // route it there, not just the console, or a farm's books can drift with
+      // no server-side signal at all.
+      captureError(e, { source: "autoPost", txnId: txn.id });
       await setDoc(
         doc(this.db, paths.transactions(this.farmId), txn.id),
         { postingFailed: true },
@@ -1486,7 +1578,19 @@ export class FirebaseFarmRepository implements FarmRepository {
   }
 
   async deleteAsset(id: ID): Promise<void> {
+    // Name it before it's gone, so the audit entry is legible. (Depreciation is
+    // currently derived, not posted to the journal, so there are no ledger
+    // entries to orphan; if a depreciation-posting run is ever added, guard this
+    // on sourceId === id the way deleteAccount guards on postings.)
+    const asset = (await this.getAssets()).find((a) => a.id === id);
     await trackWrite(deleteDoc(doc(this.db, paths.assets(this.farmId), id)));
+    this.audit({
+      category: "finance",
+      action: "asset.delete",
+      summary: `Deleted asset ${asset?.name ?? id}`,
+      summaryAr: `حذف أصل ${asset?.name ?? id}`,
+      target: id,
+    });
   }
 
   /* ------------------------------- Automation ------------------------------- */
@@ -1594,6 +1698,7 @@ export class FirebaseFarmRepository implements FarmRepository {
         total,
         warehouseId: input.warehouseId,
         paymentMethod: input.paymentMethod,
+        payments: input.payments,
         note: input.note,
         createdBy: actor.uid,
         createdByName: actor.name,
@@ -1616,6 +1721,7 @@ export class FirebaseFarmRepository implements FarmRepository {
       description: `${meta.name} — ${input.quantity} ${meta.unit}`,
       counterpartyId: input.supplierId,
       paymentMethod: input.paymentMethod,
+      payments: input.payments,
     });
   }
 
@@ -2261,6 +2367,33 @@ export class FirebaseFarmRepository implements FarmRepository {
       orderBy("date", "desc"),
       fsLimit(LEDGER_READ_LIMIT),
     );
+
+  /**
+   * The rollups the accounting screen actually computes from. One document per
+   * (month, branch, fiscal year), so this grows with how long the farm has been
+   * running rather than with how much it posts — which is the whole point.
+   */
+  getLedgerRollups = () => this.all<LedgerRollup>(paths.ledgerRollups(this.farmId));
+
+  /**
+   * Raw entries for specific months, for the months a reporting window only
+   * partly covers (usually just the current one). One range query per month
+   * rather than a single span, so a window whose edges are months apart doesn't
+   * drag everything between them along.
+   */
+  async getJournalEntriesInMonths(months: string[]): Promise<JournalEntry[]> {
+    if (months.length === 0) return [];
+    const pages = await Promise.all(
+      months.map((m) =>
+        this.all<JournalEntry>(
+          paths.journalEntries(this.farmId),
+          where("date", ">=", `${m}-01`),
+          where("date", "<=", monthEnd(m)),
+        ),
+      ),
+    );
+    return pages.flat();
+  }
 
   private async assertYearOpen(fiscalYearId?: ID): Promise<void> {
     if (!fiscalYearId) return;

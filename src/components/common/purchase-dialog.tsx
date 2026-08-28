@@ -30,7 +30,13 @@ import { purchaseTotal } from "@/core/services/automation";
 import { defaultWarehouse } from "@/core/services/warehouse";
 import { lastSupplierPrice } from "@/core/services/purchasing";
 import { TODAY } from "@/core/data/seed";
-import type { Transaction } from "@/core/domain/types";
+import type { PaymentMethod, PaymentSplit } from "@/core/domain/types";
+
+/** Immediate-payment methods a split can allocate to, plus credit. Order drives
+ *  the split rows and the primary-method pick (first non-credit wins ties). */
+const SPLIT_METHODS: PaymentMethod[] = ["cash", "bank", "card", "credit"];
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
  * Record a stock purchase. One form does all three jobs the farm used to do by
@@ -65,7 +71,18 @@ export function PurchaseDialog({
   const [date, setDate] = React.useState(TODAY);
   const [supplierId, setSupplierId] = React.useState("");
   const [warehouseId, setWarehouseId] = React.useState("");
-  const [paymentMethod, setPaymentMethod] = React.useState<Transaction["paymentMethod"]>("cash");
+  const [paymentMethod, setPaymentMethod] = React.useState<PaymentMethod>("cash");
+  // Split payment: allocate the total across methods (part cash/bank/card, part
+  // credit). Off by default — the single `paymentMethod` covers the whole amount.
+  const [split, setSplit] = React.useState(false);
+  const [buckets, setBuckets] = React.useState<Record<PaymentMethod, string>>({
+    cash: "",
+    bank: "",
+    card: "",
+    credit: "",
+  });
+  const setBucket = (m: PaymentMethod, v: string) =>
+    setBuckets((b) => ({ ...b, [m]: v }));
 
   // Default the destination store once warehouses load.
   React.useEffect(() => {
@@ -77,6 +94,22 @@ export function PurchaseDialog({
   const qty = Number(quantity) || 0;
   const cost = Number(unitCost) || 0;
   const total = purchaseTotal({ quantity: qty, unitCost: cost });
+
+  const methodLabel = (m: PaymentMethod) =>
+    m === "cash"
+      ? ar ? "نقدًا" : "Cash"
+      : m === "bank"
+        ? ar ? "تحويل بنكي" : "Bank transfer"
+        : m === "card"
+          ? ar ? "فيزا / بطاقة" : "Visa / card"
+          : ar ? "آجل (على الحساب)" : "On credit";
+
+  // Split allocation: what's been assigned across methods, and the shortfall.
+  const allocated = round2(
+    SPLIT_METHODS.reduce((s, m) => s + (Number(buckets[m]) || 0), 0),
+  );
+  const remainder = round2(total - allocated);
+  const splitBalanced = total > 0 && remainder === 0;
 
   // Default the price to what the item last cost, so a repeat order is one field.
   React.useEffect(() => {
@@ -96,6 +129,21 @@ export function PurchaseDialog({
 
   const submit = async () => {
     if (!itemId || qty <= 0 || cost <= 0) return;
+
+    // A split must reconcile to the total before it can post; the button is
+    // disabled otherwise, this is the belt-and-braces guard.
+    let payments: PaymentSplit[] | undefined;
+    let method: PaymentMethod = paymentMethod;
+    if (split) {
+      if (!splitBalanced) return;
+      payments = SPLIT_METHODS.map((m) => ({ method: m, amount: round2(Number(buckets[m]) || 0) })).filter(
+        (p) => p.amount > 0,
+      );
+      // Representative method for display/filtering: the biggest slice, with a
+      // non-credit slice winning ties (SPLIT_METHODS lists credit last).
+      method = [...payments].sort((a, b) => b.amount - a.amount)[0]?.method ?? paymentMethod;
+    }
+
     try {
       await record.mutateAsync({
         kind,
@@ -105,7 +153,8 @@ export function PurchaseDialog({
         date,
         supplierId: supplierId || undefined,
         warehouseId: warehouseId || undefined,
-        paymentMethod,
+        paymentMethod: method,
+        payments,
       });
       toast.success(
         ar
@@ -114,6 +163,7 @@ export function PurchaseDialog({
       );
       setQuantity("");
       setUnitCost("");
+      setBuckets({ cash: "", bank: "", card: "", credit: "" });
       setOpen(false);
     } catch {
       toast.error(ar ? "تعذّر تسجيل الشراء." : "Couldn't record that purchase.");
@@ -185,22 +235,90 @@ export function PurchaseDialog({
               <Label htmlFor="purchase-date">{ar ? "التاريخ" : "Date"}</Label>
               <Input id="purchase-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
-            <div>
-              <Label htmlFor="purchase-payment">{ar ? "طريقة الدفع" : "Payment"}</Label>
-              <Select
-                value={paymentMethod}
-                onValueChange={(v) => setPaymentMethod(v as Transaction["paymentMethod"])}
-              >
-                <SelectTrigger id="purchase-payment">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">{ar ? "نقدًا" : "Cash"}</SelectItem>
-                  <SelectItem value="bank">{ar ? "بنك" : "Bank"}</SelectItem>
-                  <SelectItem value="credit">{ar ? "آجل" : "On credit"}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!split && (
+              <div>
+                <Label htmlFor="purchase-payment">{ar ? "طريقة الدفع" : "Payment"}</Label>
+                <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
+                  <SelectTrigger id="purchase-payment">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SPLIT_METHODS.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {methodLabel(m)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+
+          {/* Split the payment across methods — part cash/bank/card, part on
+              credit. The credit slice goes to the supplier's balance. */}
+          <div className="rounded-lg border border-border/70">
+            <button
+              type="button"
+              onClick={() => setSplit((s) => !s)}
+              className="flex w-full items-center justify-between px-3 py-2 text-[13px] font-medium"
+            >
+              <span>{ar ? "تقسيم الدفع" : "Split payment"}</span>
+              <span className="text-[12px] text-muted-foreground">
+                {split ? (ar ? "إخفاء" : "Hide") : (ar ? "دفع بأكثر من طريقة" : "Pay with more than one method")}
+              </span>
+            </button>
+            {split && (
+              <div className="border-t border-border/70 p-3">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {SPLIT_METHODS.map((m) => (
+                    <div key={m}>
+                      <Label htmlFor={`split-${m}`}>{methodLabel(m)}</Label>
+                      <Input
+                        id={`split-${m}`}
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        inputMode="decimal"
+                        value={buckets[m]}
+                        onChange={(e) => setBucket(m, e.target.value)}
+                        className="tabular-nums"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 flex items-center justify-between text-[12.5px]">
+                  <span className="text-muted-foreground">
+                    {ar ? "الموزّع" : "Allocated"}{" "}
+                    <span className="tabular-nums text-foreground">{formatCurrency(allocated)}</span>{" "}
+                    / {formatCurrency(total)}
+                  </span>
+                  {remainder !== 0 ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setBucket(
+                          "credit",
+                          String(round2((Number(buckets.credit) || 0) + remainder)),
+                        )
+                      }
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {remainder > 0
+                        ? ar
+                          ? `الباقي ${formatCurrency(remainder)} ← آجل`
+                          : `${formatCurrency(remainder)} left → credit`
+                        : ar
+                          ? `زائد ${formatCurrency(-remainder)}`
+                          : `over by ${formatCurrency(-remainder)}`}
+                    </button>
+                  ) : (
+                    <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                      {ar ? "مضبوط" : "Balanced"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -249,7 +367,10 @@ export function PurchaseDialog({
           <Button variant="outline" onClick={() => setOpen(false)} disabled={record.isPending}>
             {ar ? "إلغاء" : "Cancel"}
           </Button>
-          <Button onClick={submit} disabled={record.isPending || !itemId || qty <= 0 || cost <= 0}>
+          <Button
+            onClick={submit}
+            disabled={record.isPending || !itemId || qty <= 0 || cost <= 0 || (split && !splitBalanced)}
+          >
             {record.isPending ? <Loader2 className="animate-spin" /> : <ShoppingCart />}
             {ar ? "تسجيل" : "Record purchase"}
           </Button>

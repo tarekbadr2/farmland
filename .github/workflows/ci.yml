@@ -19,4 +19,26 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm test
+
+  # The security rules are the only thing standing between tenants, so they get
+  # their own gate. These tests skip under plain `npm test` (no emulator), which
+  # is exactly how a rule that denied every legitimate settings write on a farm
+  # missing an optional field stayed green for weeks. The emulator needs a JDK.
+  rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: npm ci
+      - run: npm install --no-save firebase-tools
+      - run: npm run test:rules
+      - run: npm run test:storage-rules

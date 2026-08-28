@@ -196,6 +196,20 @@ export function useSaveJournalEntry() {
   });
 }
 
+/** Re-post transactions whose ledger entry previously failed to write. Refreshes
+ *  both the transactions (to clear the flag/banner) and the journal. */
+export function useRetryFailedPostings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: ["retryFailedPostings"],
+    mutationFn: () => repo.retryFailedPostings(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.transactions });
+      qc.invalidateQueries({ queryKey: qk.journal });
+    },
+  });
+}
+
 export function useSetJournalStatus() {
   const qc = useQueryClient();
   return useMutation({

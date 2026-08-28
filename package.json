@@ -22,7 +22,8 @@
     "verify": "node scripts/verify-firestore.mjs",
     "grant": "node scripts/grant-role.mjs",
     "members": "node scripts/grant-role.mjs --list",
-    "emulators": "firebase emulators:start"
+    "emulators": "firebase emulators:start",
+    "test:storage-rules": "firebase emulators:exec --only firestore,storage \"vitest run storage-rules\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.4",

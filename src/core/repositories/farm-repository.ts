@@ -6,6 +6,7 @@
  * through `getRepository()` so the data source is a one-line swap.
  */
 
+import type { LedgerRollup } from "@/core/services/ledger-rollup";
 import type {
   Account,
   Branch,
@@ -249,6 +250,13 @@ export interface FarmRepository {
 
   getTransactions(): Promise<Transaction[]>;
   saveTransaction(txn: EventWrite<Omit<Transaction, "id" | "farmId">>): Promise<Transaction>;
+  /**
+   * Re-post any transactions whose ledger entry previously failed to write
+   * (`postingFailed`). Idempotent — posting is keyed on the transaction id, so a
+   * re-post replaces rather than duplicates, and the flag clears on success.
+   * Returns how many transactions were re-posted.
+   */
+  retryFailedPostings(): Promise<number>;
   getInvoices(): Promise<Invoice[]>;
   saveInvoice(invoice: EventWrite<Omit<Invoice, "id" | "farmId">>): Promise<Invoice>;
   setInvoiceStatus(id: ID, status: Invoice["status"]): Promise<Invoice>;
@@ -348,6 +356,15 @@ export interface FarmRepository {
   deleteAccount(id: ID): Promise<void>;
 
   getJournalEntries(): Promise<JournalEntry[]>;
+  /**
+   * Server-maintained period rollups of the posted journal. Statements are
+   * composed from these plus `getJournalEntriesInMonths` for whichever months
+   * the reporting window cuts through — a read bounded by the farm's age
+   * instead of by how much it has posted. See `core/services/ledger-rollup`.
+   */
+  getLedgerRollups(): Promise<LedgerRollup[]>;
+  /** Raw entries for specific `YYYY-MM` months — the rollups' edge top-up. */
+  getJournalEntriesInMonths(months: string[]): Promise<JournalEntry[]>;
   /** Saves a draft or posted entry; rejects one whose debits ≠ credits. */
   saveJournalEntry(
     entry: EventWrite<Omit<JournalEntry, "id" | "farmId" | "number"> & { number?: string }>,

@@ -80,9 +80,33 @@ service cloud.firestore {
     // never wrongly locked out of paying; only an explicit "blocked" stops writes).
     // Reads are never gated on billing — a lapsed farm stays read-only, able to
     // view and export its own data.
+    //
+    // This flag is the SINGLE source of truth for write access, on purpose. It is
+    // eventually consistent: payment/signup set it immediately, but a trial that
+    // simply runs out is only flipped by the daily billingSweep, so a lapse can
+    // take up to ~24h to bite — a deliberate day of grace, not a bug. Do NOT try
+    // to make this immediate by comparing subscription dates here: the graced
+    // entitlement logic (trial/past-due/cancel windows) lives in one place,
+    // src/lib/billing/status.ts resolveEntitlement, which is for UI display;
+    // duplicating a subset of it in rules would create a second, divergent
+    // source of truth. If immediacy is ever required, have the webhook/sweep set
+    // the flag on the exact transition instead.
     function farmActive(farmId) {
       return get(/databases/$(database)/documents/farms/$(farmId))
         .data.get('subscription', {}).get('access', 'active') != 'blocked';
+    }
+
+    // Herd cap: a create is refused once the on-farm count reaches the plan's
+    // animalLimit. counts.total is maintained by the counters trigger and only
+    // counts on-farm animals (disposed ones don't), so this is the plan's real
+    // ceiling. The counter trails a burst of creates by the in-flight batch, so
+    // this is a soft cap — it stops sustained over-provisioning, not a single
+    // racing batch — which is the right trade for a rule that can't COUNT live.
+    function withinHerdCap(farmId) {
+      return get(/databases/$(database)/documents/farms/$(farmId)).data
+               .get('counts', {}).get('total', 0)
+           < get(/databases/$(database)/documents/farms/$(farmId)).data
+               .get('animalLimit', 1000000);
     }
 
     // Guards privilege grants on member docs: only an owner may hand out the
@@ -92,6 +116,17 @@ service cloud.firestore {
       return isOwner(farmId)
         || (request.resource.data.get('role', '') != 'owner'
             && !request.resource.data.get('permissions', []).hasAny(['*']));
+    }
+
+    // Prevents lateral privilege amplification: a non-owner may only grant a
+    // permission set that is a subset of their OWN. Stored permission arrays are
+    // concrete keys (owner is the sole '*' holder), so a token-exact subset is
+    // correct — farm_manager is a superset of every assignable role, so no
+    // legitimate grant is blocked, while a custom member holding org.members but
+    // not, say, accounting can no longer mint a second account that does.
+    function grantWithinGranter(farmId) {
+      return permsOf(farmId).hasAny(['*'])
+        || request.resource.data.get('permissions', []).hasOnly(permsOf(farmId));
     }
 
     // The org a user belongs to (top-level mapping written server-side).
@@ -119,9 +154,14 @@ service cloud.firestore {
       // server-only: `subscription` and `aiUsage` can never be changed by a
       // client — the Cloud Functions / API routes write those with admin
       // credentials, which bypass these rules.
+      // NB: use get() with a default on every one of these — a farm doc that
+      // predates the billing fields (or any doc simply missing one) makes a
+      // bare `data.subscription` a "property is undefined" evaluation error,
+      // and an erroring rule denies. That silently locked legitimate settings
+      // writes out of older tenants.
       allow update: if hasPerm(farmId, 'org.settings', 'org.*')
-        && request.resource.data.subscription == resource.data.subscription
-        && request.resource.data.aiUsage == resource.data.aiUsage
+        && request.resource.data.get('subscription', {}) == resource.data.get('subscription', {})
+        && request.resource.data.get('aiUsage', {}) == resource.data.get('aiUsage', {})
         // Billing/structural fields are server-only too: a client must not be
         // able to raise its own herd cap or plan, or re-parent the farm.
         && request.resource.data.get('plan', '') == resource.data.get('plan', '')
@@ -141,12 +181,15 @@ service cloud.firestore {
         // Managing members needs org.members, but you can never mint an owner
         // unless you are one (grantOk), and you can never change your OWN role or
         // permissions (no self-promotion — the stated guarantee, now enforced).
-        allow create: if hasPerm(farmId, 'org.members', 'org.*') && grantOk(farmId);
-        allow update: if hasPerm(farmId, 'org.members', 'org.*') && grantOk(farmId)
+        allow create: if hasPerm(farmId, 'org.members', 'org.*') && farmActive(farmId)
+                      && grantOk(farmId) && grantWithinGranter(farmId);
+        allow update: if hasPerm(farmId, 'org.members', 'org.*') && farmActive(farmId)
+                      && grantOk(farmId) && grantWithinGranter(farmId)
                       && (request.auth.uid != uid
                           || (request.resource.data.get('role', '') == resource.data.get('role', '')
                               && request.resource.data.get('permissions', []) == resource.data.get('permissions', [])));
-        allow delete: if hasPerm(farmId, 'org.members', 'org.*') && request.auth.uid != uid;
+        allow delete: if hasPerm(farmId, 'org.members', 'org.*') && farmActive(farmId)
+                      && request.auth.uid != uid;
       }
 
       // Legacy per-farm invites (email-keyed). New invites live at org level and
@@ -158,18 +201,45 @@ service cloud.firestore {
       // --------------------------- Herd ------------------------------
       match /animals/{animalId} {
         allow read: if isMember(farmId);
-        allow create, update: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
-        allow delete: if hasPerm(farmId, 'animals.delete', 'animals.*') && farmActive(farmId);
+        allow update: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
+        // A new animal counts against the plan's herd cap (H-3).
+        allow create: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId)
+                      && withinHerdCap(farmId);
+        // An animal is NEVER hard-deleted: milk, health, breeding and journal
+        // records join on animalId, so deletion orphans history silently.
+        // Leaving the herd is a disposal (sold/culled/dead), a soft transition.
+        allow delete: if false;
 
         match /weights/{weightId} {
           allow read: if isMember(farmId);
-          allow write: if isMember(farmId) && farmActive(farmId);   // smart scale writes as the handler
+          // Needs a herd-write permission (not just membership), and a weight is
+          // a positive number within a plausible buffalo range — a scale glitch
+          // or a fat-fingered value must not skew growth curves and ADG banding.
+          allow create, update: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId)
+                        && request.resource.data.weightKg is number
+                        && request.resource.data.weightKg > 0
+                        && request.resource.data.weightKg < 2000;
+          allow delete: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
         }
+      }
+
+      // A tag uniquely identifies an animal, which Firestore rules can't enforce
+      // by themselves. The app claims farms/{farmId}/tagIndex/{tagLower} in the
+      // same transaction as the animal, so two concurrent creates can't both take
+      // one tag. The claim is immutable (move a tag by delete + re-create), which
+      // is what makes "already claimed by another animal" a reliable signal.
+      match /tagIndex/{tagLower} {
+        allow read: if isMember(farmId);
+        allow create, delete: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
+        allow update: if false;
       }
 
       match /zones/{zoneId} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
+        allow create, update: if hasPerm(farmId, 'animals.write', 'animals.*') && farmActive(farmId);
+        // A pen deletion orphans every animal's zoneId. Retire a pen, don't
+        // delete it.
+        allow delete: if false;
       }
 
       // --------------------------- Milk ------------------------------
@@ -182,11 +252,12 @@ service cloud.firestore {
                       && request.resource.data.volumeL is number
                       && request.resource.data.volumeL >= 0
                       && request.resource.data.volumeL < 80;
-        allow update: if hasPerm(farmId, 'org.settings', 'org.*')
-                      || (hasPerm(farmId, 'milk.write', 'milk.*')
-                          && resource.data.recordedAt is timestamp
-                          && request.time < resource.data.recordedAt + duration.value(2, 'd'));
-        allow delete: if hasPerm(farmId, 'org.settings', 'org.*');
+        allow update: if farmActive(farmId)
+                      && (hasPerm(farmId, 'org.settings', 'org.*')
+                          || (hasPerm(farmId, 'milk.write', 'milk.*')
+                              && resource.data.recordedAt is timestamp
+                              && request.time < resource.data.recordedAt + duration.value(2, 'd')));
+        allow delete: if hasPerm(farmId, 'org.settings', 'org.*') && farmActive(farmId);
       }
 
       match /milkDaily/{date} {
@@ -198,13 +269,13 @@ service cloud.firestore {
       match /health/{eventId} {
         allow read: if isMember(farmId);
         allow create, update: if hasPerm(farmId, 'medical.write', 'medical.*') && farmActive(farmId);
-        allow delete: if isOwner(farmId);
+        allow delete: if isOwner(farmId) && farmActive(farmId);
       }
 
       match /breeding/{eventId} {
         allow read: if isMember(farmId);
         allow create, update: if hasPerm(farmId, 'breeding.write', 'breeding.*') && farmActive(farmId);
-        allow delete: if isOwner(farmId);
+        allow delete: if isOwner(farmId) && farmActive(farmId);
       }
 
       match /semen/{strawId} {
@@ -233,9 +304,10 @@ service cloud.firestore {
       // advance its counter; the transaction that does it is the integrity point.
       match /docCounters/{series} {
         allow read: if isMember(farmId);
-        allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*')
-                      || hasPerm(farmId, 'expenses.write', 'expenses.*')
-                      || hasPerm(farmId, 'inventory.write', 'inventory.*');
+        allow write: if farmActive(farmId)
+                      && (hasPerm(farmId, 'accounting.write', 'accounting.*')
+                          || hasPerm(farmId, 'expenses.write', 'expenses.*')
+                          || hasPerm(farmId, 'inventory.write', 'inventory.*'));
       }
       // Branches and rates shape every report, so only the people who own the
       // numbers may change them.
@@ -356,6 +428,15 @@ service cloud.firestore {
         allow create, update: if hasPerm(farmId, 'accounting.write', 'accounting.*') && farmActive(farmId);
         allow delete: if false;
       }
+      // Period rollups of the journal. Derived data, maintained exclusively by
+      // the ledger-rollup trigger with admin credentials — a client that could
+      // write these could restate the books without touching a single entry,
+      // which is worse than being able to post a bad one (that at least leaves
+      // an auditable document behind).
+      match /ledgerRollups/{rollupId} {
+        allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*');
+        allow write: if false;
+      }
       match /fiscalYears/{yearId} {
         allow read: if hasPerm(farmId, 'accounting.read', 'accounting.*');
         allow write: if hasPerm(farmId, 'accounting.write', 'accounting.*') && farmActive(farmId);
@@ -386,7 +467,13 @@ service cloud.firestore {
       // deletes history.
       match /auditLog/{entryId} {
         allow read: if hasPerm(farmId, 'audit.read', 'audit.*');
-        allow create: if isMember(farmId) && farmActive(farmId);
+        // Provenance is server-enforced: an entry must be attributed to the
+        // caller (no forging one as the owner) and carry a server timestamp in
+        // `serverAt` (no back- or future-dating to bury real history in the
+        // newest-first view). Entries remain immutable once written.
+        allow create: if isMember(farmId) && farmActive(farmId)
+                      && request.resource.data.actorUid == request.auth.uid
+                      && request.resource.data.serverAt == request.time;
         allow update, delete: if false;
       }
     }

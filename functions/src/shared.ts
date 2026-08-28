@@ -61,6 +61,7 @@ const KIND_TO_CATEGORY: Record<string, string> = {
   milk_drop: "milk",
   missed_milking: "milk",
   overdue_tasks: "task",
+  upload_rejected: "system",
 };
 
 export interface AlertInput {

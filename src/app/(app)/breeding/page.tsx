@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
+import { QueryErrorState } from "@/components/common/query-error";
 import { StatCard } from "@/components/common/stat-card";
 import { ChartCard, ChartTooltip, axisProps, gridProps } from "@/components/common/chart";
 import { DataTable, type Column } from "@/components/common/data-table";
@@ -41,13 +42,16 @@ import { breedingMetrics } from "@/core/services/metrics";
 import { groupBy } from "@/lib/utils";
 import type { Animal, SemenStraw } from "@/core/domain/types";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function BreedingPage() {
   const { t, ln, locale, formatNumber, formatCurrency } = useI18n();
   const router = useRouter();
-  const { data: animalPage } = useAnimals({ pageSize: 100000 });
-  const { data: events = [] } = useBreeding();
-  const { data: semen = [] } = useSemen();
+  const qc = useQueryClient();
+  const { data: animalPage, isError: animalsErr } = useAnimals({ pageSize: 100000 });
+  const { data: events = [], isError: eventsErr } = useBreeding();
+  const { data: semen = [], isError: semenErr } = useSemen();
+  const hasError = animalsErr || eventsErr || semenErr;
   const animals = React.useMemo(() => animalPage?.items ?? [], [animalPage]);
 
   const m = React.useMemo(() => breedingMetrics(events, animals, TODAY), [events, animals]);
@@ -176,6 +180,8 @@ export default function BreedingPage() {
       cell: (s) => <span className="tabular text-[12.5px]">{formatCurrency(s.costPerStraw)}</span>,
     },
   ];
+
+  if (hasError) return <QueryErrorState onRetry={() => void qc.refetchQueries()} />;
 
   return (
     <>

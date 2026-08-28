@@ -58,7 +58,7 @@ async function pool<T>(
 }
 
 export function ImportAnimalsDialog() {
-  const { t, locale } = useI18n();
+  const { locale } = useI18n();
   const ar = locale === "ar";
   const queryClient = useQueryClient();
   const { data: zones = [] } = useZones();
@@ -78,6 +78,8 @@ export function ImportAnimalsDialog() {
   const [fileName, setFileName] = React.useState("");
   const [progress, setProgress] = React.useState(0);
   const [failed, setFailed] = React.useState(0);
+  const [failedRows, setFailedRows] = React.useState<{ item: ParsedRow; error: string }[]>([]);
+  const [importTotal, setImportTotal] = React.useState(0);
   const [dragging, setDragging] = React.useState(false);
   const fileInput = React.useRef<HTMLInputElement>(null);
 
@@ -90,6 +92,8 @@ export function ImportAnimalsDialog() {
     setFileName("");
     setProgress(0);
     setFailed(0);
+    setFailedRows([]);
+    setImportTotal(0);
     if (fileInput.current) fileInput.current.value = "";
   };
 
@@ -142,28 +146,51 @@ export function ImportAnimalsDialog() {
     }
   };
 
-  const runImport = async () => {
+  // Map a save error to a line the person can act on, instead of a bare count.
+  const failReason = (e: unknown): string => {
+    const code = e instanceof Error ? e.message : String(e);
+    if (code === "duplicate-tag") return ar ? "الرقم مستخدم بالفعل" : "Tag already in use";
+    if (code === "offline-needs-connection") return ar ? "لا يوجد اتصال" : "No connection";
+    return ar ? "تعذّر الحفظ" : "Save failed";
+  };
+
+  const importRows = async (targets: ParsedRow[]) => {
     setStage("importing");
     setProgress(0);
-    let fail = 0;
+    setImportTotal(targets.length);
+    const failures: { item: ParsedRow; error: string }[] = [];
     const repo = getRepository();
     await pool(
-      valid,
+      targets,
       async (r) => {
         try {
           await repo.saveAnimal(draftToPatch(r.draft!, TODAY));
-        } catch {
-          fail++;
+        } catch (e) {
+          // Keep WHICH row failed and WHY, so the person can fix or retry those
+          // exact rows rather than re-run the whole file and risk duplicates.
+          failures.push({ item: r, error: failReason(e) });
         }
       },
       () => setProgress((n) => n + 1),
     );
-    setFailed(fail);
+    setFailedRows(failures);
+    setFailed(failures.length);
     queryClient.invalidateQueries();
     setStage("done");
-    const ok = valid.length - fail;
-    toast.success(ar ? `تم استيراد ${ok} حيوان` : `Imported ${ok} animal${ok === 1 ? "" : "s"}`);
+    const ok = targets.length - failures.length;
+    if (failures.length) {
+      toast.warning(
+        ar
+          ? `تم استيراد ${ok} · فشل ${failures.length}`
+          : `Imported ${ok} · ${failures.length} failed`,
+      );
+    } else {
+      toast.success(ar ? `تم استيراد ${ok} حيوان` : `Imported ${ok} animal${ok === 1 ? "" : "s"}`);
+    }
   };
+
+  const runImport = () => importRows(valid);
+  const retryFailed = () => importRows(failedRows.map((f) => f.item));
 
   const downloadTemplate = () =>
     downloadCsv("herd-import-template.csv", [
@@ -292,18 +319,30 @@ export function ImportAnimalsDialog() {
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
                 className="h-full rounded-full bg-primary transition-all"
-                style={{ width: `${valid.length ? (progress / valid.length) * 100 : 100}%` }}
+                style={{ width: `${importTotal ? (progress / importTotal) * 100 : 100}%` }}
               />
             </div>
             <p className="text-[13px] text-muted-foreground">
               {stage === "done"
                 ? ar
-                  ? `تم: ${valid.length - failed} حيوان${failed ? ` · فشل ${failed}` : ""}`
-                  : `Done: ${valid.length - failed} imported${failed ? ` · ${failed} failed` : ""}`
+                  ? `تم: ${importTotal - failed} حيوان${failed ? ` · فشل ${failed}` : ""}`
+                  : `Done: ${importTotal - failed} imported${failed ? ` · ${failed} failed` : ""}`
                 : ar
-                  ? `جارٍ الاستيراد… ${progress}/${valid.length}`
-                  : `Importing… ${progress}/${valid.length}`}
+                  ? `جارٍ الاستيراد… ${progress}/${importTotal}`
+                  : `Importing… ${progress}/${importTotal}`}
             </p>
+            {stage === "done" && failedRows.length > 0 && (
+              <div className="max-h-52 space-y-1.5 overflow-y-auto rounded-lg border border-destructive/40 p-2">
+                {failedRows.slice(0, 60).map((f) => (
+                  <div key={f.item.row} className="text-[12px]">
+                    <span className="tabular font-medium">
+                      {ar ? "صف" : "Row"} {f.item.row} · {f.item.tag}
+                    </span>
+                    <span className="text-destructive"> — {f.error}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -324,7 +363,14 @@ export function ImportAnimalsDialog() {
             </Button>
           )}
           {stage === "done" && (
-            <Button onClick={() => setOpen(false)}>{ar ? "تم" : "Close"}</Button>
+            <>
+              {failedRows.length > 0 && (
+                <Button variant="outline" onClick={retryFailed}>
+                  {ar ? `إعادة محاولة ${failedRows.length}` : `Retry ${failedRows.length} failed`}
+                </Button>
+              )}
+              <Button onClick={() => setOpen(false)}>{ar ? "تم" : "Close"}</Button>
+            </>
           )}
         </DialogFooter>
       </DialogContent>

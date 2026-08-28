@@ -24,6 +24,7 @@ import { StatCard } from "@/components/common/stat-card";
 import { ChartCard, ChartTooltip, CHART_COLORS, axisProps, gridProps } from "@/components/common/chart";
 import { DataTable, type Column } from "@/components/common/data-table";
 import { RecordTransactionDialog } from "@/components/finance/record-transaction-dialog";
+import { UnpostedBanner } from "@/components/finance/unposted-banner";
 import { Can } from "@/lib/auth/guard";
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -215,6 +216,8 @@ export default function FinancePage() {
           </>
         }
       />
+
+      <UnpostedBanner />
 
       <motion.div
         variants={gridStagger}

@@ -14,6 +14,7 @@ import type {
   Asset,
   ID,
   InventoryCategory,
+  PaymentSplit,
   Transaction,
   TxnCategory,
 } from "@/core/domain/types";
@@ -47,6 +48,10 @@ export interface PurchaseInput {
   /** Store the purchased stock lands in. Defaults to the main store when unset. */
   warehouseId?: ID;
   paymentMethod: Transaction["paymentMethod"];
+  /** Split the payment across methods (part cash/bank/card, part on credit).
+   *  When set, the slices must sum to the purchase total; absent → paid in full
+   *  by `paymentMethod`. */
+  payments?: PaymentSplit[];
   note?: string;
 }
 

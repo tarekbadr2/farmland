@@ -202,14 +202,25 @@ function Overlay({
   const copy = ar ? s.ar : s.en;
   const last = step === STEPS.length - 1;
 
-  const spot = rect
-    ? {
-        top: rect.top - PAD,
-        left: rect.left - PAD,
-        width: rect.width + PAD * 2,
-        height: rect.height + PAD * 2,
-      }
-    : null;
+  // Keyed on the rect's numbers, not the rect object: the parent re-measures
+  // into a fresh object, so an identity-keyed memo below would recompute on
+  // every render and defeat itself.
+  const top = rect?.top;
+  const left = rect?.left;
+  const width = rect?.width;
+  const height = rect?.height;
+  const spot = React.useMemo(
+    () =>
+      top === undefined || left === undefined || width === undefined || height === undefined
+        ? null
+        : {
+            top: top - PAD,
+            left: left - PAD,
+            width: width + PAD * 2,
+            height: height + PAD * 2,
+          },
+    [top, left, width, height],
+  );
 
   // Place the tooltip in whichever margin around the spotlight has the most
   // room; fall back to dead-centre when there's no anchor.

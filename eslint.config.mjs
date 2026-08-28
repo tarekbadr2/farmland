@@ -12,6 +12,15 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
+    // The Electron main/preload/test files are CommonJS by necessity — Electron
+    // loads them with require(), and they are outside the Next build. The
+    // TS-oriented no-require-imports rule can't apply there.
+    files: ["desktop/**/*.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+  {
     ignores: [
       "node_modules/**",
       ".next/**",

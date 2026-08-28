@@ -2,12 +2,71 @@ rules_version = '2';
 
 // Animal photos, videos, documents and voice notes.
 // Path: farms/{farmId}/animals/{animalId}/{fileName}
+//
+// Storage mirrors the Firestore permission model rather than collapsing every
+// role to "is a member". Membership, permissions and subscription state all
+// live in Firestore, so the rules read the caller's member document to decide.
+// A read-only worker can view files but can no longer overwrite or delete them
+// — deletion here is unrecoverable (no version history, no server rebuild), so
+// it is gated the tightest.
+//
+// Note: these use direct field access (`.data.permissions`) with `in` guards
+// rather than `.data.get(key, default)` — the map-get accessor does not resolve
+// cross-service firestore data inside the Storage emulator.
 service firebase.storage {
   match /b/{bucket}/o {
+
+    function memberData(farmId) {
+      return firestore.get(/databases/(default)/documents/farms/$(farmId)/members/$(request.auth.uid)).data;
+    }
 
     function isMember(farmId) {
       return request.auth != null
         && firestore.exists(/databases/(default)/documents/farms/$(farmId)/members/$(request.auth.uid));
+    }
+
+    // Permission keys held by the caller (empty for legacy members, who fall
+    // back to their role below).
+    function perms(farmId) {
+      return 'permissions' in memberData(farmId) ? memberData(farmId).permissions : [];
+    }
+
+    function memberRole(farmId) {
+      return 'role' in memberData(farmId) ? memberData(farmId).role : '';
+    }
+
+    // A farm may write only while its subscription is in good standing — same
+    // gate Firestore uses. A missing flag reads as active (grandfathered).
+    function farmData(farmId) {
+      return firestore.get(/databases/(default)/documents/farms/$(farmId)).data;
+    }
+
+    function farmActive(farmId) {
+      return !('subscription' in farmData(farmId))
+        || !('access' in farmData(farmId).subscription)
+        || farmData(farmId).subscription.access != 'blocked';
+    }
+
+    // Uploading/replacing media needs a herd- or clinical-write permission — the
+    // roles that actually attach files (managers, vets). A read-only worker has
+    // none of these. The role fallback keeps legacy (pre-RBAC) members working.
+    function canWrite(farmId) {
+      return isMember(farmId) && (
+        perms(farmId).hasAny([
+          '*', 'animals.write', 'animals.delete', 'medical.write',
+          'breeding.write', 'org.settings', 'org.*'
+        ])
+        || memberRole(farmId) in ['owner', 'manager', 'farm_manager', 'assistant_manager', 'veterinarian']
+      );
+    }
+
+    // Deletion is unrecoverable, so it is gated to delete-capable roles only —
+    // not everyone who can upload.
+    function canDelete(farmId) {
+      return isMember(farmId) && (
+        perms(farmId).hasAny(['*', 'animals.delete', 'org.settings', 'org.*'])
+        || memberRole(farmId) in ['owner', 'manager', 'farm_manager']
+      );
     }
 
     function isImageOrDoc() {
@@ -21,9 +80,11 @@ service firebase.storage {
       allow read: if isMember(farmId);
       // 25 MB ceiling: a phone photo of a swollen udder is under 5 MB, and an
       // unbounded upload from the pen is how a storage bill gets interesting.
-      allow write: if isMember(farmId)
+      allow create, update: if canWrite(farmId)
+                   && farmActive(farmId)
                    && request.resource.size < 25 * 1024 * 1024
                    && isImageOrDoc();
+      allow delete: if canDelete(farmId) && farmActive(farmId);
     }
 
     match /{allPaths=**} {

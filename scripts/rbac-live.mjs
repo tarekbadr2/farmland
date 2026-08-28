@@ -101,7 +101,8 @@ function expect(label, status, kind) {
   const allowed = status === 200 || status === 404;
   const ok = kind === "ALLOW" ? allowed : status === 403;
   out.push(`  ${ok ? "ok  " : "FAIL"}  [${status}] ${label}`);
-  ok ? pass++ : fail++;
+  if (ok) pass++;
+  else fail++;
 }
 
 // ---- Stranger ------------------------------------------------------------

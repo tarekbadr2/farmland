@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Area,
   AreaChart,
@@ -22,6 +23,7 @@ import { Download, Droplets, Milk, Plus, Thermometer, TrendingDown, TrendingUp }
 import { PageHeader, gridStagger, cardIn } from "@/components/common/page-header";
 import { StatCard } from "@/components/common/stat-card";
 import { ChartCard, ChartTooltip, axisProps, gridProps } from "@/components/common/chart";
+import { QueryErrorState } from "@/components/common/query-error";
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,9 +40,11 @@ import { average, round } from "@/lib/utils";
 
 export default function MilkPage() {
   const { t, ln, locale, formatNumber, formatCompact } = useI18n();
-  const { data: daily = [] } = useMilkDaily();
+  const qc = useQueryClient();
+  const { data: daily = [], isError: milkErr } = useMilkDaily();
   const { data: weather } = useWeather();
-  const { data: animalPage } = useAnimals({ pageSize: 100000 });
+  const { data: animalPage, isError: animalsErr } = useAnimals({ pageSize: 100000 });
+  const hasError = milkErr || animalsErr;
   const animals = animalPage?.items ?? [];
 
   const [range, setRange] = React.useState<7 | 30 | 90>(30);
@@ -90,6 +94,8 @@ export default function MilkPage() {
     evening: d.eveningL,
     rejected: d.rejectedL,
   }));
+
+  if (hasError) return <QueryErrorState onRetry={() => void qc.refetchQueries()} />;
 
   return (
     <>
