@@ -576,6 +576,9 @@ export interface Purchase {
   total: number;
   warehouseId?: ID;
   paymentMethod: Transaction["paymentMethod"];
+  /** Split payment breakdown, mirroring the booked transaction. See
+   *  `Transaction.payments`. Absent → paid in full by `paymentMethod`. */
+  payments?: PaymentSplit[];
   note?: string;
   createdBy?: ID;
   createdByName?: string;
@@ -657,6 +660,26 @@ export interface FarmTask {
 /* ---------------------------------- Finance -------------------------------- */
 
 export type TxnKind = "income" | "expense";
+
+/**
+ * How money changed hands. `cash`, `bank` (transfer) and `card` (Visa/POS) are
+ * settled immediately; `credit` is deferred and lands in the partner's
+ * receivable/payable balance until it's paid. Card settles through the bank in
+ * the ledger but is recorded distinctly here so reports can tell the two apart.
+ */
+export type PaymentMethod = "cash" | "bank" | "card" | "credit";
+
+/**
+ * One slice of a split payment — how much of the transaction was settled by a
+ * given method. Present on a transaction/purchase only when the amount was split
+ * across methods (e.g. part cash, part on credit); the slices must sum to the
+ * transaction amount, and the `credit` slice is what remains owed.
+ */
+export interface PaymentSplit {
+  method: PaymentMethod;
+  amount: number;
+}
+
 export type TxnCategory =
   | "milk_sales"
   | "animal_sales"
@@ -686,7 +709,14 @@ export interface Transaction {
   /** Links the money to a specific animal (e.g. an animal sale) for per-animal
    *  profitability. */
   animalId?: ID;
-  paymentMethod: "cash" | "bank" | "credit";
+  paymentMethod: PaymentMethod;
+  /**
+   * Split payment breakdown. When present and non-empty, the ledger posts one
+   * cash-side line per non-credit slice (card settling through the bank) plus a
+   * receivable/payable line for the credit slice — the slices must sum to
+   * `amount`. Absent → the single `paymentMethod` settles the whole amount.
+   */
+  payments?: PaymentSplit[];
   /** Set by the ledger auto-poster when the money row saved but its journal
    *  entry did NOT (a transient error, a missing account mapping). The transaction
    *  is real; the books are behind until it's re-posted. Surfaced as a banner and

@@ -1116,6 +1116,7 @@ export class DemoFarmRepository implements FarmRepository {
       total,
       warehouseId: input.warehouseId,
       paymentMethod: input.paymentMethod,
+      payments: input.payments,
       note: input.note,
     });
 
@@ -1140,6 +1141,7 @@ export class DemoFarmRepository implements FarmRepository {
       description: `${name} — ${input.quantity} ${unit}`,
       counterpartyId: input.supplierId,
       paymentMethod: input.paymentMethod,
+      payments: input.payments,
     });
   }
 

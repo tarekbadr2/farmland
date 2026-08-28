@@ -150,6 +150,38 @@ describe("demo repository — documents reach the ledger", () => {
     expect(await booksBalance()).toBe(true);
   });
 
+  it("a split-payment purchase fans the cost across cash, bank and the supplier", async () => {
+    const feed = (await repo.getFeedItems())[0];
+    const supplier = (await repo.getPartners()).find((p) => p.kind === "supplier")!;
+
+    const beforeFeed = await balanceOf("expense_feed");
+    const beforeCash = await balanceOf("cash");
+    const beforeBank = await balanceOf("bank");
+    const beforePayable = await balanceOf("payable");
+
+    // 2 × 500 = 1,000, paid 600 cash + 300 card (→ bank) + 100 on credit.
+    await repo.recordPurchase({
+      kind: "feed",
+      itemId: feed.id,
+      quantity: 2,
+      unitCost: 500,
+      date: TODAY,
+      supplierId: supplier.id,
+      paymentMethod: "cash",
+      payments: [
+        { method: "cash", amount: 600 },
+        { method: "card", amount: 300 },
+        { method: "credit", amount: 100 },
+      ],
+    });
+
+    expect((await balanceOf("expense_feed")) - beforeFeed).toBe(1_000); // full cost debited
+    expect((await balanceOf("cash")) - beforeCash).toBe(-600); // credit side
+    expect((await balanceOf("bank")) - beforeBank).toBe(-300); // card settles through bank
+    expect((await balanceOf("payable")) - beforePayable).toBe(-100); // owed to the supplier
+    expect(await booksBalance()).toBe(true);
+  });
+
   it("a cheque moves the debt into notes and keeps the books balanced", async () => {
     const beforeNotes = await balanceOf("notes_receivable");
     const cheque = await repo.saveCheque({

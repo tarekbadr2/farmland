@@ -1698,6 +1698,7 @@ export class FirebaseFarmRepository implements FarmRepository {
         total,
         warehouseId: input.warehouseId,
         paymentMethod: input.paymentMethod,
+        payments: input.payments,
         note: input.note,
         createdBy: actor.uid,
         createdByName: actor.name,
@@ -1720,6 +1721,7 @@ export class FirebaseFarmRepository implements FarmRepository {
       description: `${meta.name} — ${input.quantity} ${meta.unit}`,
       counterpartyId: input.supplierId,
       paymentMethod: input.paymentMethod,
+      payments: input.payments,
     });
   }
 

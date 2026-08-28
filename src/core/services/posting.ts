@@ -16,8 +16,10 @@ import type {
   InvoiceKind,
   JournalEntry,
   JournalLine,
+  PaymentMethod,
   Transaction,
   TxnCategory,
+  TxnKind,
 } from "@/core/domain/types";
 import { findBySystemKey } from "@/core/data/chart-of-accounts";
 import { round } from "@/lib/utils";
@@ -41,21 +43,51 @@ export const CATEGORY_ACCOUNT: Record<TxnCategory, string> = {
 };
 
 /**
- * The account the cash side of a transaction hits. Credit sales sit in
- * receivables and credit purchases in payables until they're settled.
+ * The account the cash side of a payment method hits. Cash and bank hit their
+ * own accounts; a card settles through the bank (recorded distinctly on the
+ * transaction, but there's no separate card account); credit sits in
+ * receivables (income) or payables (expense) until it's settled.
  */
-function counterKey(txn: Pick<Transaction, "kind" | "paymentMethod">): string {
-  if (txn.paymentMethod === "bank") return "bank";
-  if (txn.paymentMethod === "cash") return "cash";
-  return txn.kind === "income" ? "receivable" : "payable";
+function accountKeyForMethod(method: PaymentMethod, kind: TxnKind): string {
+  if (method === "bank" || method === "card") return "bank";
+  if (method === "cash") return "cash";
+  return kind === "income" ? "receivable" : "payable"; // credit
+}
+
+/**
+ * Normalise a transaction's payment into slices that sum to its total.
+ *
+ * With no `payments` breakdown the single `paymentMethod` covers the whole
+ * amount (the legacy one-line-per-side case). With a breakdown, its slices must
+ * reconcile exactly to the total — otherwise the entry would be lopsided, so we
+ * return null and let the caller flag the posting rather than book bad books.
+ */
+function paymentSlices(
+  txn: Pick<Transaction, "payments" | "paymentMethod">,
+  total: number,
+): { method: PaymentMethod; amount: number }[] | null {
+  const raw = (txn.payments ?? []).filter(
+    (p) => p && Number.isFinite(p.amount) && p.amount > 0,
+  );
+  if (raw.length === 0) return [{ method: txn.paymentMethod, amount: total }];
+  const slices = raw.map((p) => ({ method: p.method, amount: round(p.amount, 2) }));
+  const sum = round(
+    slices.reduce((s, p) => s + p.amount, 0),
+    2,
+  );
+  return sum === total ? slices : null;
 }
 
 /**
  * One transaction → one balanced entry.
  *
- * Income debits where the money landed and credits the revenue account;
- * an expense debits the cost and credits where the money left. Returns null if
- * the chart is missing an account it needs, so a half-formed entry never posts.
+ * Income debits where the money landed and credits the revenue account; an
+ * expense debits the cost and credits where the money left. A split payment
+ * (part cash/bank/card, part on credit) fans the cash side out into one line
+ * per settlement account — cash, bank (card folds in here), and the partner's
+ * receivable/payable for the credit slice. Returns null if the chart is missing
+ * an account it needs, or the split doesn't reconcile, so a half-formed or
+ * lopsided entry never posts.
  */
 export function journalEntryFromTransaction(
   txn: Transaction,
@@ -63,24 +95,48 @@ export function journalEntryFromTransaction(
   number: string,
 ): JournalEntry | null {
   const category = findBySystemKey(accounts, CATEGORY_ACCOUNT[txn.category]);
-  const counter = findBySystemKey(accounts, counterKey(txn));
-  if (!category || !counter) return null;
+  if (!category) return null;
 
   const amount = round(Math.abs(txn.amount), 2);
   if (amount === 0) return null;
 
-  const line = (accountId: ID, side: "debit" | "credit"): JournalLine => ({
+  const slices = paymentSlices(txn, amount);
+  if (!slices) return null;
+
+  // Fold slices that settle through the same account together (e.g. bank + card),
+  // so a split books at most one line per distinct account.
+  const byAccountKey = new Map<string, number>();
+  for (const s of slices) {
+    const key = accountKeyForMethod(s.method, txn.kind);
+    byAccountKey.set(key, round((byAccountKey.get(key) ?? 0) + s.amount, 2));
+  }
+
+  const counters: { accountId: ID; amount: number }[] = [];
+  for (const [key, amt] of byAccountKey) {
+    if (amt <= 0) continue;
+    const account = findBySystemKey(accounts, key);
+    if (!account) return null; // chart missing an account it needs → don't half-post
+    counters.push({ accountId: account.id, amount: amt });
+  }
+  if (counters.length === 0) return null;
+
+  const line = (accountId: ID, debit: number, credit: number): JournalLine => ({
     accountId,
-    debit: side === "debit" ? amount : 0,
-    credit: side === "credit" ? amount : 0,
+    debit,
+    credit,
     partnerId: txn.counterpartyId,
     animalId: txn.animalId,
   });
 
+  // Expense: debit the cost in full, credit each settlement account.
+  // Income: credit the revenue in full, debit each settlement account.
+  const categoryLine =
+    txn.kind === "income" ? line(category.id, 0, amount) : line(category.id, amount, 0);
+  const counterLines = counters.map((c) =>
+    txn.kind === "income" ? line(c.accountId, c.amount, 0) : line(c.accountId, 0, c.amount),
+  );
   const lines =
-    txn.kind === "income"
-      ? [line(counter.id, "debit"), line(category.id, "credit")]
-      : [line(category.id, "debit"), line(counter.id, "credit")];
+    txn.kind === "income" ? [...counterLines, categoryLine] : [categoryLine, ...counterLines];
 
   return {
     id: `jv_${txn.id}`,
@@ -393,7 +449,11 @@ export function journalEntryFromInvoicePayment(
   const kind = invoice.kind ?? "sale";
   const incoming = kind === "sale" || kind === "purchase_return";
   const party = findBySystemKey(accounts, incoming ? "receivable" : "payable");
-  const treasury = findBySystemKey(accounts, paymentMethod === "bank" ? "bank" : "cash");
+  // Card settles through the bank, same as a transfer.
+  const treasury = findBySystemKey(
+    accounts,
+    paymentMethod === "bank" || paymentMethod === "card" ? "bank" : "cash",
+  );
   if (!party || !treasury) return null;
 
   const line = (accountId: ID, side: "debit" | "credit"): JournalLine => ({
